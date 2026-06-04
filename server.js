@@ -69,6 +69,20 @@ app.get('/api/teams', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Proxy crest images to avoid CORS issues
+app.get('/api/crest/:id', async (req, res) => {
+  try {
+    const url = 'https://crests.football-data.org/' + req.params.id;
+    const r = await fetch(url, { headers: { 'X-Auth-Token': API_KEY } });
+    if (!r.ok) { res.status(404).send('Not found'); return; }
+    const buf = await r.arrayBuffer();
+    const ct = r.headers.get('content-type') || 'image/png';
+    res.set('Content-Type', ct);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(Buffer.from(buf));
+  } catch(e) { res.status(500).send(e.message); }
+});
+
 
 app.post('/api/ai-reply', async (req, res) => {
   try {
@@ -180,7 +194,6 @@ function Badge({code,size=24}){
       <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
         <img src={crest} width={size} height={size}
           style={{objectFit:'contain',display:'block',maxWidth:size,maxHeight:size}}
-          crossOrigin="anonymous"
           onError={()=>setErr(true)}
           alt={code}/>
       </div>
@@ -200,7 +213,11 @@ function useCrests(){
     fetch('/api/teams').then(r=>r.json()).then(d=>{
       (d.teams||[]).forEach(t=>{
         const code=TCODE[t.name]||TCODE[t.shortName]||TCODE[t.tla];
-        if(code&&t.crest) CRESTS[code]=t.crest;
+        if(code&&t.crest){
+          // Extract just the filename from the crest URL and proxy it
+          const filename=t.crest.split('/').pop();
+          CRESTS[code]='/api/crest/'+filename;
+        }
       });
       CRESTS_LOADED=true;
       forceUpdate(n=>n+1);
