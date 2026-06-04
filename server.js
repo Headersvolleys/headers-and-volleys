@@ -734,30 +734,78 @@ function Predictions(){
 }
 
 // -- QUIZ --------------------------------------------------
+// Answer matching - accepts abbreviations and common alternatives
+function matchAnswer(typed, accepted) {
+  const t = typed.trim().toLowerCase();
+  const ALIASES = {
+    'manchester city':['man city','city','man c'],
+    'manchester united':['man utd','man united','man u','united'],
+    'tottenham hotspur':['spurs','tottenham','thfc'],
+    'wolverhampton wanderers':['wolves','wolverhampton'],
+    'west ham united':['west ham','hammers'],
+    'nottingham forest':['nottm forest','forest'],
+    'newcastle united':['newcastle','newcastle utd','the toon'],
+    'brighton & hove albion':['brighton','bhafc'],
+    'leicester city':['leicester'],
+    'aston villa':['villa'],
+    'crystal palace':['palace'],
+    'leeds united':['leeds'],
+  };
+  const expand = (s) => {
+    const low = s.toLowerCase();
+    const extras = [];
+    Object.entries(ALIASES).forEach(([full, shorts]) => {
+      if (low === full || shorts.includes(low)) extras.push(full, ...shorts);
+    });
+    return [low, ...extras];
+  };
+  const tVariants = expand(t);
+  return accepted.some(a => {
+    const aVariants = expand(a);
+    return tVariants.some(tv => aVariants.some(av => tv === av || tv.includes(av) || av.includes(tv)));
+  });
+}
+
 const QUIZZES=[
   {id:'champions',title:'PL Champions',cat:'History',questions:[
-    {q:'Who won the Premier League in 2023-24?',a:['Manchester City'],hint:'Pep Guardiola'},
-    {q:'Which club has won the most Premier League titles?',a:['Manchester United','Man Utd'],hint:'Manchester'},
-    {q:'Who was top scorer in PL 2024-25?',a:['Mohamed Salah','Salah'],hint:'Liverpool No.10'},
-    {q:'Which team was relegated in 2024-25?',a:['Leicester','Leicester City','Ipswich','Southampton'],hint:'Multiple teams'},
-    {q:'Who scored the most PL goals ever?',a:['Alan Shearer','Shearer']},
-    {q:'Which club won the first ever Premier League title in 1992-93?',a:['Manchester United','Man Utd']},
+    {q:'Who won the Premier League in 2023-24?',a:['Manchester City','Man City','City'],hint:'Pep Guardiola'},
+    {q:'Which club has won the most Premier League titles?',a:['Manchester United','Man Utd','Man United','United'],hint:'13 titles'},
+    {q:'Who was the PL top scorer in 2024-25?',a:['Mohamed Salah','Salah','Mo Salah'],hint:'Liverpool forward'},
+    {q:'Which club was relegated from the PL in 2024-25?',a:['Leicester','Leicester City','Ipswich','Southampton'],hint:'Multiple correct answers'},
+    {q:'Who has scored the most PL goals in history?',a:['Alan Shearer','Shearer'],hint:'260 goals'},
+    {q:'Which club won the first ever Premier League in 1992-93?',a:['Manchester United','Man Utd','Man United']},
+    {q:'Which team won the 2015-16 title as 5000-1 outsiders?',a:['Leicester','Leicester City']},
+    {q:'Who won back-to-back titles in 2018-19 and 2019-20?',a:['Manchester City','Man City','City']},
   ]},
   {id:'managers',title:'PL Managers',cat:'Managers',questions:[
     {q:'Who manages Arsenal in 2025-26?',a:['Mikel Arteta','Arteta']},
-    {q:'Who is Manchester City manager in 2025-26?',a:['Pep Guardiola','Guardiola']},
-    {q:'Which manager won the most PL titles?',a:['Alex Ferguson','Sir Alex Ferguson','Ferguson']},
+    {q:'Who manages Manchester City in 2025-26?',a:['Pep Guardiola','Guardiola']},
+    {q:'Which manager has won the most PL titles?',a:['Alex Ferguson','Sir Alex Ferguson','Ferguson']},
     {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot']},
     {q:'Who replaced Jurgen Klopp at Liverpool?',a:['Arne Slot','Slot']},
     {q:'Who manages Chelsea in 2025-26?',a:['Enzo Maresca','Maresca']},
+    {q:'Which manager is known as The Special One?',a:['Jose Mourinho','Mourinho']},
+    {q:'Who managed the Invincibles Arsenal side in 2003-04?',a:['Arsene Wenger','Wenger']},
   ]},
   {id:'records',title:'PL Records',cat:'Stats',questions:[
     {q:'What is the highest ever PL season points tally?',a:['100'],hint:'Man City 2017-18'},
-    {q:'Who holds the PL record for most assists in a season?',a:['Kevin De Bruyne','De Bruyne'],hint:'16 assists'},
-    {q:'Which club went unbeaten in the 2003-04 season?',a:['Arsenal'],hint:'The Invincibles'},
-    {q:'What is the record PL winning margin in a single game?',a:['9','9-0'],hint:'Southampton vs Leicester'},
+    {q:'Who holds the PL record for most assists in a season?',a:['Kevin De Bruyne','De Bruyne','KDB'],hint:'16 assists'},
+    {q:'Which club went unbeaten in the entire 2003-04 season?',a:['Arsenal'],hint:'The Invincibles'},
+    {q:'Who scored the most goals in a single PL season?',a:['Erling Haaland','Haaland'],hint:'36 goals in 2022-23'},
     {q:'Who scored the fastest PL hat-trick?',a:['Sadio Mane','Mane'],hint:'2 minutes 56 seconds'},
-    {q:'Which PL season saw the most goals scored?',a:['2022-23'],hint:'1084 goals'},
+    {q:'Who has made the most PL appearances ever?',a:['Gareth Barry','Barry'],hint:'653 appearances'},
+    {q:'What is the record PL winning scoreline?',a:['9-0','9'],hint:'Southampton vs Leicester'},
+    {q:'Which club has won the PL most times after Man Utd?',a:['Manchester City','Man City','City'],hint:'6 titles'},
+  ]},
+  {id:'clubs',title:'Club Knowledge',cat:'Clubs',questions:[
+    {q:'Which PL club plays at the Amex Stadium?',a:['Brighton','Brighton & Hove Albion','Brighton and Hove Albion']},
+    {q:'Which club has the nickname The Toffees?',a:['Everton']},
+    {q:'Which PL club plays at Selhurst Park?',a:['Crystal Palace','Palace']},
+    {q:'Which club plays at the London Stadium?',a:['West Ham','West Ham United','Hammers']},
+    {q:'Which club has the nickname The Foxes?',a:['Leicester','Leicester City']},
+    {q:'What colour shirts do Wolves wear?',a:['Gold','Yellow','Old Gold'],hint:'Old Gold'},
+    {q:'Which club plays at Craven Cottage?',a:['Fulham']},
+    {q:'Which PL club is nicknamed The Cherries?',a:['Bournemouth','AFC Bournemouth']},
   ]},
 ];
 
@@ -824,7 +872,7 @@ function QuickFireQuiz({quiz,onFinish}){
     if(frozen) return;
     setFrozen(true);
     const q=quiz.questions[idx], typed=draft.trim().toLowerCase();
-    const ok=!forceWrong&&q.a.some(a=>typed===a.toLowerCase()||typed.includes(a.toLowerCase())||a.toLowerCase().includes(typed));
+    const ok=!forceWrong&&matchAnswer(draft,q.a);
     setScore(s=>{const ns=s+(ok?1:0);setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));setFlash(ok?'correct':'wrong');setTimeout(()=>{setFlash(null);setFrozen(false);setDraft('');if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},600);return ns;});
   }
   const q=quiz.questions[idx], tc=timeLeft<=3?C.red:timeLeft<=5?C.yellow:C.green;
@@ -860,7 +908,7 @@ function TypeAnswerQuiz({quiz,onFinish}){
   const q=quiz.questions[idx];
   function check(){
     const typed=draft.trim().toLowerCase();
-    const ok=q.a.some(a=>typed===a.toLowerCase()||typed.includes(a.toLowerCase())||a.toLowerCase().includes(typed));
+    const ok=matchAnswer(draft,q.a);
     const ns=score+(ok?1:0);
     if(ok) setScore(ns);
     setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));
