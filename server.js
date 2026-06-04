@@ -119,12 +119,38 @@ const TCODE={'Arsenal':'ARS','Aston Villa':'AVL','Brighton & Hove Albion':'BHA',
 const TSHORT={'Arsenal':'Arsenal','Aston Villa':'Aston Villa','Brighton & Hove Albion':'Brighton','AFC Bournemouth':'Bournemouth','Brentford':'Brentford','Burnley':'Burnley','Chelsea':'Chelsea','Crystal Palace':'Crystal Palace','Everton':'Everton','Fulham':'Fulham','Leeds United':'Leeds','Liverpool':'Liverpool','Manchester City':'Man City','Manchester United':'Man Utd','Newcastle United':'Newcastle','Nottingham Forest':'Nottm Forest','Sunderland AFC':'Sunderland','Tottenham Hotspur':'Spurs','West Ham United':'West Ham','Wolverhampton Wanderers':'Wolves'};
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
 
+// Global crest cache - populated from football-data.org /teams endpoint
+const CRESTS = {};
+
 function Badge({code,size=24}){
   const [bg,acc]=CC[code]||['#333','#fff'];
+  const [err,setErr]=useState(false);
+  const crest=CRESTS[code];
+  if(crest&&!err){
+    return(
+      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <img src={crest} width={size} height={size} style={{objectFit:'contain',display:'block'}}
+          onError={()=>setErr(true)} alt={code}/>
+      </div>
+    );
+  }
   return React.createElement('svg',{width:size,height:size,viewBox:'0 0 40 40',style:{flexShrink:0,display:'block'}},
     React.createElement('circle',{cx:20,cy:20,r:19,fill:bg,stroke:acc,strokeWidth:2.5}),
     React.createElement('text',{x:20,y:26,textAnchor:'middle',fontSize:11,fontWeight:900,fontFamily:'Arial,sans-serif',fill:acc,letterSpacing:-0.5},(code||'?').slice(0,3))
   );
+}
+
+// Load crests once on app start
+function useCrests(){
+  useEffect(()=>{
+    if(Object.keys(CRESTS).length>0) return;
+    fetch('/api/teams').then(r=>r.json()).then(d=>{
+      (d.teams||[]).forEach(t=>{
+        const code=TCODE[t.name];
+        if(code&&t.crest) CRESTS[code]=t.crest;
+      });
+    }).catch(()=>{});
+  },[]);
 }
 function Spinner({size=36}){return <div style={{width:size,height:size,border:'3px solid '+C.d4,borderTop:'3px solid '+C.teal,borderRadius:'50%',margin:'0 auto',animation:'spin 1s linear infinite'}}/>;}
 function Tag({label,col}){const c=col==='teal'?C.teal:col==='green'?C.green:col==='red'?C.red:col==='orange'?C.orange:col==='gold'?C.gold:C.muted;return <span style={{fontSize:9,fontWeight:700,color:c,border:'1px solid '+c,borderRadius:5,padding:'2px 5px',letterSpacing:.4,whiteSpace:'nowrap'}}>{label}</span>;}
@@ -1136,6 +1162,7 @@ const TABS=[
 
 function App(){
   const [tab,setTab]=useState('live');
+  useCrests();
   return(
     <div style={{minHeight:'100vh',background:C.dark}}>
       <nav style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'0 16px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100}}>
