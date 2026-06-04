@@ -115,22 +115,74 @@ input[type=number]{-moz-appearance:textfield}
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
 const C={dark:'#070B10',d2:'#0D1420',d3:'#141D2C',d4:'#1C2738',white:'#fff',text:'#E8F0FA',muted:'#8899AA',teal:'#00FFD4',green:'#00E676',red:'#FF3D3D',yellow:'#FFD600',orange:'#FF8000',blue:'#2979FF',gold:'#FFD700'};
-const TCODE={'Arsenal':'ARS','Aston Villa':'AVL','Brighton & Hove Albion':'BHA','AFC Bournemouth':'BOU','Brentford':'BRE','Burnley':'BUR','Chelsea':'CHE','Crystal Palace':'CRY','Everton':'EVE','Fulham':'FUL','Leeds United':'LEE','Liverpool':'LIV','Manchester City':'MCI','Manchester United':'MUN','Newcastle United':'NEW','Nottingham Forest':'NFO','Sunderland AFC':'SUN','Tottenham Hotspur':'TOT','West Ham United':'WHU','Wolverhampton Wanderers':'WOL'};
-const TSHORT={'Arsenal':'Arsenal','Aston Villa':'Aston Villa','Brighton & Hove Albion':'Brighton','AFC Bournemouth':'Bournemouth','Brentford':'Brentford','Burnley':'Burnley','Chelsea':'Chelsea','Crystal Palace':'Crystal Palace','Everton':'Everton','Fulham':'Fulham','Leeds United':'Leeds','Liverpool':'Liverpool','Manchester City':'Man City','Manchester United':'Man Utd','Newcastle United':'Newcastle','Nottingham Forest':'Nottm Forest','Sunderland AFC':'Sunderland','Tottenham Hotspur':'Spurs','West Ham United':'West Ham','Wolverhampton Wanderers':'Wolves'};
+const TCODE={
+  'Arsenal':'ARS','Arsenal FC':'ARS',
+  'Aston Villa':'AVL','Aston Villa FC':'AVL',
+  'Brighton & Hove Albion':'BHA','Brighton & Hove Albion FC':'BHA',
+  'AFC Bournemouth':'BOU','Bournemouth':'BOU',
+  'Brentford':'BRE','Brentford FC':'BRE',
+  'Burnley':'BUR','Burnley FC':'BUR',
+  'Chelsea':'CHE','Chelsea FC':'CHE',
+  'Crystal Palace':'CRY','Crystal Palace FC':'CRY',
+  'Everton':'EVE','Everton FC':'EVE',
+  'Fulham':'FUL','Fulham FC':'FUL',
+  'Leeds United':'LEE','Leeds United FC':'LEE',
+  'Liverpool':'LIV','Liverpool FC':'LIV',
+  'Manchester City':'MCI','Manchester City FC':'MCI',
+  'Manchester United':'MUN','Manchester United FC':'MUN',
+  'Newcastle United':'NEW','Newcastle United FC':'NEW',
+  'Nottingham Forest':'NFO','Nottingham Forest FC':'NFO',
+  'Sunderland AFC':'SUN','Sunderland':'SUN','Sunderland AFC':'SUN',
+  'Tottenham Hotspur':'TOT','Tottenham Hotspur FC':'TOT',
+  'West Ham United':'WHU','West Ham United FC':'WHU',
+  'Wolverhampton Wanderers':'WOL','Wolverhampton Wanderers FC':'WOL',
+};
+const TSHORT={
+  'Arsenal':'Arsenal','Arsenal FC':'Arsenal',
+  'Aston Villa':'Aston Villa','Aston Villa FC':'Aston Villa',
+  'Brighton & Hove Albion':'Brighton','Brighton & Hove Albion FC':'Brighton',
+  'AFC Bournemouth':'Bournemouth','Bournemouth':'Bournemouth',
+  'Brentford':'Brentford','Brentford FC':'Brentford',
+  'Burnley':'Burnley','Burnley FC':'Burnley',
+  'Chelsea':'Chelsea','Chelsea FC':'Chelsea',
+  'Crystal Palace':'Crystal Palace','Crystal Palace FC':'Crystal Palace',
+  'Everton':'Everton','Everton FC':'Everton',
+  'Fulham':'Fulham','Fulham FC':'Fulham',
+  'Leeds United':'Leeds','Leeds United FC':'Leeds',
+  'Liverpool':'Liverpool','Liverpool FC':'Liverpool',
+  'Manchester City':'Man City','Manchester City FC':'Man City',
+  'Manchester United':'Man Utd','Manchester United FC':'Man Utd',
+  'Newcastle United':'Newcastle','Newcastle United FC':'Newcastle',
+  'Nottingham Forest':'Nottm Forest','Nottingham Forest FC':'Nottm Forest',
+  'Sunderland AFC':'Sunderland','Sunderland':'Sunderland',
+  'Tottenham Hotspur':'Spurs','Tottenham Hotspur FC':'Spurs',
+  'West Ham United':'West Ham','West Ham United FC':'West Ham',
+  'Wolverhampton Wanderers':'Wolves','Wolverhampton Wanderers FC':'Wolves',
+};
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
 
-// Global crest cache - populated from football-data.org /teams endpoint
+// Global crest cache
 const CRESTS = {};
+let CRESTS_LOADED = false;
 
 function Badge({code,size=24}){
   const [bg,acc]=CC[code]||['#333','#fff'];
   const [err,setErr]=useState(false);
+  const [loaded,setLoaded]=useState(false);
   const crest=CRESTS[code];
+
+  useEffect(()=>{
+    if(CRESTS_LOADED&&CRESTS[code]) setLoaded(true);
+  },[code]);
+
   if(crest&&!err){
     return(
-      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <img src={crest} width={size} height={size} style={{objectFit:'contain',display:'block'}}
-          onError={()=>setErr(true)} alt={code}/>
+      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
+        <img src={crest} width={size} height={size}
+          style={{objectFit:'contain',display:'block',maxWidth:size,maxHeight:size}}
+          crossOrigin="anonymous"
+          onError={()=>setErr(true)}
+          alt={code}/>
       </div>
     );
   }
@@ -140,15 +192,18 @@ function Badge({code,size=24}){
   );
 }
 
-// Load crests once on app start
+// Load crests once - stored in module-level cache
 function useCrests(){
+  const [,forceUpdate]=useState(0);
   useEffect(()=>{
-    if(Object.keys(CRESTS).length>0) return;
+    if(CRESTS_LOADED) return;
     fetch('/api/teams').then(r=>r.json()).then(d=>{
       (d.teams||[]).forEach(t=>{
-        const code=TCODE[t.name];
+        const code=TCODE[t.name]||TCODE[t.shortName]||TCODE[t.tla];
         if(code&&t.crest) CRESTS[code]=t.crest;
       });
+      CRESTS_LOADED=true;
+      forceUpdate(n=>n+1);
     }).catch(()=>{});
   },[]);
 }
