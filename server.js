@@ -736,9 +736,9 @@ function Predictions(){
 // -- QUIZ --------------------------------------------------
 const QUIZZES=[
   {id:'champions',title:'PL Champions',cat:'History',questions:[
-    {q:'Who won the Premier League in 2023-24?',a:['Manchester City'],hint:'Pep\'s side'},
-    {q:'Which club has won the most Premier League titles?',a:['Manchester United','Man Utd'],hint:'Red Devils'},
-    {q:'Who was top scorer in PL 2024-25?',a:['Mohamed Salah','Salah'],hint:'Liverpool Egyptian King'},
+    {q:'Who won the Premier League in 2023-24?',a:['Manchester City'],hint:'Pep Guardiola'},
+    {q:'Which club has won the most Premier League titles?',a:['Manchester United','Man Utd'],hint:'Manchester'},
+    {q:'Who was top scorer in PL 2024-25?',a:['Mohamed Salah','Salah'],hint:'Liverpool No.10'},
     {q:'Which team was relegated in 2024-25?',a:['Leicester','Leicester City','Ipswich','Southampton'],hint:'Multiple teams'},
     {q:'Who scored the most PL goals ever?',a:['Alan Shearer','Shearer']},
     {q:'Which club won the first ever Premier League title in 1992-93?',a:['Manchester United','Man Utd']},
