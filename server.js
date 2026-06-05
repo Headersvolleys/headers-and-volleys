@@ -1462,9 +1462,9 @@ function PitchLineup({lineup, side}) {
 function MatchModal({match, onClose}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
-  const [stats, setStats] = useState(null);
-  const [lineups, setLineups] = useState(null);
-  const [events, setEvents] = useState(null);
+  const [stats, setStats] = useState([]);
+  const [lineups, setLineups] = useState([]);
+  const [events, setEvents] = useState([]);
   const [h2h, setH2h] = useState(null);
   const [hForm, setHForm] = useState(null);
   const [aForm, setAForm] = useState(null);
@@ -1511,8 +1511,8 @@ function MatchModal({match, onClose}){
     (stats[1]?.statistics||[]).forEach(s => awayStats[s.type] = s.value);
   }
 
-  const homeLineup = lineups.find ? lineups.find(l => l.team?.id === match.homeTeam?.id) : null;
-  const awayLineup = lineups.find ? lineups.find(l => l.team?.id === match.awayTeam?.id) : null;
+  const homeLineup = lineups.find(l => l.team?.id === match.homeTeam?.id) || null;
+  const awayLineup = lineups.find(l => l.team?.id === match.awayTeam?.id) || null;
 
   const goals = (events||[]).filter(e=>e.type==='Goal');
   const cards = (events||[]).filter(e=>e.type==='Card');
