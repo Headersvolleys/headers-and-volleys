@@ -69,6 +69,64 @@ app.get('/api/teams', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// API-Football (v3.football.api-sports.io)
+const AF_KEY = process.env.API_FOOTBALL_KEY || '';
+const AF_BASE = 'https://v3.football.api-sports.io';
+const afCache = {};
+
+async function af(endpoint, ttl) {
+  const now = Date.now();
+  if (afCache[endpoint] && now - afCache[endpoint].ts < ttl) return afCache[endpoint].data;
+  const r = await fetch(AF_BASE + endpoint, {
+    headers: { 'x-apisports-key': AF_KEY }
+  });
+  if (!r.ok) throw new Error('AF API ' + r.status);
+  const data = await r.json();
+  afCache[endpoint] = { data, ts: now };
+  return data;
+}
+
+// Match statistics - possession, shots, xG, corners etc
+app.get('/api/af/stats/:fixtureId', async (req, res) => {
+  try {
+    const data = await af('/fixtures/statistics?fixture=' + req.params.fixtureId, 2*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// Match lineups with formations and player positions
+app.get('/api/af/lineups/:fixtureId', async (req, res) => {
+  try {
+    const data = await af('/fixtures/lineups?fixture=' + req.params.fixtureId, 5*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// Match events - goals, cards, subs with minutes
+app.get('/api/af/events/:fixtureId', async (req, res) => {
+  try {
+    const data = await af('/fixtures/events?fixture=' + req.params.fixtureId, 2*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// Find API-Football fixture ID from date + team names
+app.get('/api/af/fixture', async (req, res) => {
+  try {
+    const {date, team} = req.query;
+    const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// All PL fixtures for 2025 season - used to map fd.org IDs to AF IDs
+app.get('/api/af/fixtures', async (req, res) => {
+  try {
+    const data = await af('/fixtures?league=39&season=2025', 60*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
 // Understat - fetch and parse JSON embedded in page HTML
 async function fetchUnderstat(url) {
   const r = await fetch(url, { headers: {'User-Agent':'Mozilla/5.0 (compatible; HaV/1.0)'} });
@@ -1453,4 +1511,450 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 </html>`);
 });
 
-app.listen(PORT, () => console.log('H&V running on port ' + PORT));
+app.listen(PORT, () => console.log('H&V running on port ' + PORT));//  MATCH DETAIL MODAL 
+// Finds API-Football fixture ID by matching date + team names
+async function findAFFixture(match) {
+  const dt = new Date(match.utcDate);
+  const date = dt.toISOString().split('T')[0];
+  const r = await fetch('/api/af/fixture?date=' + date);
+  const d = await r.json();
+  const fixtures = d.response || [];
+  const hn = (TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '').toLowerCase();
+  const an = (TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '').toLowerCase();
+  const found = fixtures.find(f => {
+    const fh = (f.teams?.home?.name || '').toLowerCase();
+    const fa = (f.teams?.away?.name || '').toLowerCase();
+    return (fh.includes(hn.split(' ')[0]) || hn.includes(fh.split(' ')[0])) &&
+           (fa.includes(an.split(' ')[0]) || an.includes(fa.split(' ')[0]));
+  });
+  return found?.fixture?.id || null;
+}
+
+function StatBar({label, home, away, homeCol, awayCol}) {
+  const hv = parseFloat(home) || 0;
+  const av = parseFloat(away) || 0;
+  const total = hv + av || 1;
+  const hPct = Math.round((hv/total)*100);
+  const aPct = 100 - hPct;
+  return(
+    <div style={{marginBottom:10}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+        <span style={{fontWeight:700,fontSize:12,color:homeCol||C.teal}}>{home}</span>
+        <span style={{fontSize:11,color:C.muted,textAlign:'center'}}>{label}</span>
+        <span style={{fontWeight:700,fontSize:12,color:awayCol||C.orange}}>{away}</span>
+      </div>
+      <div style={{display:'flex',height:5,borderRadius:3,overflow:'hidden',gap:1}}>
+        <div style={{width:hPct+'%',background:homeCol||C.teal,borderRadius:'3px 0 0 3px'}}/>
+        <div style={{width:aPct+'%',background:awayCol||C.orange,borderRadius:'0 3px 3px 0'}}/>
+      </div>
+    </div>
+  );
+}
+
+function PitchLineup({lineup, side}) {
+  if (!lineup) return null;
+  const formation = lineup.formation || '4-3-3';
+  const startXI = (lineup.startXI || []).map(p => p.player);
+  const subs = (lineup.substitutes || []).map(p => p.player);
+  const lines = formation.split('-').map(Number);
+  const rows = [[startXI[0]], ...lines.map((n, i) => {
+    const start = 1 + lines.slice(0, i).reduce((a,b)=>a+b, 0);
+    return startXI.slice(start, start + n);
+  })];
+  if (side === 'away') rows.reverse();
+  const pitchH = 280;
+  const pitchW = 160;
+  return(
+    <div style={{position:'relative',width:pitchW,height:pitchH,background:'#1a4a2a',borderRadius:6,border:'1px solid #2a6a3a',flexShrink:0}}>
+      {/* Pitch markings */}
+      <div style={{position:'absolute',top:'50%',left:8,right:8,height:1,background:'rgba(255,255,255,.2)'}}/>
+      <div style={{position:'absolute',top:'10%',left:'25%',right:'25%',height:'20%',border:'1px solid rgba(255,255,255,.2)',borderRadius:2}}/>
+      <div style={{position:'absolute',bottom:'10%',left:'25%',right:'25%',height:'20%',border:'1px solid rgba(255,255,255,.2)',borderRadius:2}}/>
+      <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:40,height:40,border:'1px solid rgba(255,255,255,.2)',borderRadius:'50%'}}/>
+      {rows.map((row, ri) => {
+        const yPct = (ri + 0.7) / (rows.length) * 100;
+        return row.map((player, pi) => {
+          const xPct = (pi + 0.7) / (row.length) * 100;
+          return(
+            <div key={player?.id||pi} style={{
+              position:'absolute',
+              left: xPct + '%',
+              top: yPct + '%',
+              transform:'translate(-50%,-50%)',
+              textAlign:'center',
+              width:30,
+            }}>
+              <div style={{
+                width:22,height:22,borderRadius:'50%',
+                background: side==='home'?C.teal:C.orange,
+                border:'2px solid rgba(255,255,255,.6)',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:9,fontWeight:700,color:C.dark,
+                margin:'0 auto',
+              }}>{player?.number||''}</div>
+              <div style={{fontSize:7,color:'#fff',marginTop:1,lineHeight:1.2,
+                whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
+                maxWidth:36,marginLeft:-7}}>
+                {(player?.name||'').split(' ').pop()}
+              </div>
+            </div>
+          );
+        });
+      })}
+    </div>
+  );
+}
+
+function MatchModal({match, onClose}){
+  const [afId, setAfId] = useState(null);
+  const [afLoading, setAfLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [lineups, setLineups] = useState(null);
+  const [events, setEvents] = useState(null);
+  const [h2h, setH2h] = useState(null);
+  const [hForm, setHForm] = useState(null);
+  const [aForm, setAForm] = useState(null);
+  const [tab, setTab] = useState('stats');
+  const [lineupView, setLineupView] = useState('pitch');
+
+  const hc = TCODE[match.homeTeam?.name]||'???';
+  const ac = TCODE[match.awayTeam?.name]||'???';
+  const hg = match.score?.fullTime?.home;
+  const ag = match.score?.fullTime?.away;
+  const finished = match.status==='FINISHED';
+
+  // Find API-Football ID then fetch all data
+  useEffect(()=>{
+    setAfLoading(true);
+    findAFFixture(match).then(id => {
+      setAfId(id);
+      if (id) {
+        Promise.all([
+          fetch('/api/af/stats/'+id).then(r=>r.json()),
+          fetch('/api/af/lineups/'+id).then(r=>r.json()),
+          fetch('/api/af/events/'+id).then(r=>r.json()),
+        ]).then(([s,l,e]) => {
+          setStats(s.response || []);
+          setLineups(l.response || []);
+          setEvents(e.response || []);
+        }).catch(()=>{});
+      }
+      setAfLoading(false);
+    }).catch(()=>setAfLoading(false));
+    // Also fetch fd.org h2h and form
+    fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
+    if(match.homeTeam?.id){
+      fetch('/api/team/'+match.homeTeam.id+'/matches').then(r=>r.json()).then(setHForm).catch(()=>{});
+      fetch('/api/team/'+match.awayTeam.id+'/matches').then(r=>r.json()).then(setAForm).catch(()=>{});
+    }
+  },[match.id]);
+
+  // Parse stats into a map
+  const homeStats = {};
+  const awayStats = {};
+  if (stats && stats.length >= 2) {
+    (stats[0]?.statistics||[]).forEach(s => homeStats[s.type] = s.value);
+    (stats[1]?.statistics||[]).forEach(s => awayStats[s.type] = s.value);
+  }
+
+  const homeLineup = lineups.find ? lineups.find(l => l.team?.id === match.homeTeam?.id) : null;
+  const awayLineup = lineups.find ? lineups.find(l => l.team?.id === match.awayTeam?.id) : null;
+
+  const goals = (events||[]).filter(e=>e.type==='Goal');
+  const cards = (events||[]).filter(e=>e.type==='Card');
+  const subs = (events||[]).filter(e=>e.type==='subst');
+
+  function getForm(fd2,tid){
+    return (fd2?.matches||[]).slice(-5).reverse().map(m=>{
+      const ih=m.homeTeam?.id===tid, mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
+      if(mh==null) return null;
+      return mh===ma?'D':(ih?mh>ma:ma>mh)?'W':'L';
+    }).filter(Boolean);
+  }
+
+  const tS={padding:'6px 10px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  const STAT_ROWS = [
+    ['Ball Possession','Possession'],
+    ['Expected Goals','xG'],
+    ['Total Shots','Shots'],
+    ['Shots on Goal','On Target'],
+    ['Shots off Goal','Off Target'],
+    ['Blocked Shots','Blocked'],
+    ['Corner Kicks','Corners'],
+    ['Fouls','Fouls'],
+    ['Offsides','Offsides'],
+    ['Yellow Cards','Yellows'],
+    ['Red Cards','Reds'],
+    ['Saves','Saves'],
+    ['Total passes','Passes'],
+    ['Passes accurate','Acc. Passes'],
+  ];
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:500,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:C.d2,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:520,maxHeight:'90vh',overflowY:'auto',animation:'slideUp .25s ease'}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4,position:'sticky',top:0,background:C.d2,zIndex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <div style={{flex:1,display:'flex',alignItems:'center',gap:8}}>
+              <Badge code={hc} size={30}/>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.homeTeam?.name]}</div>
+                {homeLineup&&<div style={{fontSize:10,color:C.muted}}>{homeLineup.formation}</div>}
+              </div>
+            </div>
+            <div style={{textAlign:'center',flexShrink:0}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:4,lineHeight:1}}>
+                {finished?hg+'-'+ag:'vs'}
+              </div>
+              <div style={{fontSize:10,color:C.muted,marginTop:2}}>
+                {finished?'Full Time':new Date(match.utcDate).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
+              </div>
+            </div>
+            <div style={{flex:1,display:'flex',alignItems:'flex-end',flexDirection:'column',gap:2}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.awayTeam?.name]}</div>
+                  {awayLineup&&<div style={{fontSize:10,color:C.muted,textAlign:'right'}}>{awayLineup.formation}</div>}
+                </div>
+                <Badge code={ac} size={30}/>
+              </div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+            {['stats','lineup','events','h2h','form'].map(t=>(
+              <button key={t} onClick={()=>setTab(t)} style={tab===t?tA:tS}>{t.toUpperCase()}</button>
+            ))}
+            <button onClick={onClose} style={{...tS,marginLeft:'auto'}}>Close</button>
+          </div>
+        </div>
+
+        <div style={{padding:16}}>
+
+          {/* STATS TAB */}
+          {tab==='stats'&&(
+            <div>
+              {afLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {!afLoading&&!afId&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Match stats not available</div>}
+              {!afLoading&&afId&&Object.keys(homeStats).length===0&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {!afLoading&&afId&&Object.keys(homeStats).length>0&&(
+                <div>
+                  {/* Team headers */}
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <Badge code={hc} size={20}/>
+                      <span style={{fontSize:12,fontWeight:700,color:C.teal}}>{TSHORT[match.homeTeam?.name]}</span>
+                    </div>
+                    <span style={{fontSize:10,color:C.muted}}>STATS</span>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:12,fontWeight:700,color:C.orange}}>{TSHORT[match.awayTeam?.name]}</span>
+                      <Badge code={ac} size={20}/>
+                    </div>
+                  </div>
+                  {STAT_ROWS.map(([key,label])=>{
+                    const hv = homeStats[key];
+                    const av = awayStats[key];
+                    if(hv==null&&av==null) return null;
+                    return <StatBar key={key} label={label} home={hv??0} away={av??0} homeCol={C.teal} awayCol={C.orange}/>;
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LINEUP TAB */}
+          {tab==='lineup'&&(
+            <div>
+              {afLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {!afLoading&&(!homeLineup||!awayLineup)&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Lineups not available</div>}
+              {!afLoading&&homeLineup&&awayLineup&&(
+                <>
+                  {/* View toggle */}
+                  <div style={{display:'flex',gap:6,marginBottom:14}}>
+                    <button onClick={()=>setLineupView('pitch')} style={lineupView==='pitch'?tA:tS}>Pitch</button>
+                    <button onClick={()=>setLineupView('list')} style={lineupView==='list'?tA:tS}>List</button>
+                  </div>
+
+                  {lineupView==='pitch'&&(
+                    <div>
+                      <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:14}}>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:11,fontWeight:700,color:C.teal,marginBottom:4}}>{TSHORT[match.homeTeam?.name]}</div>
+                          <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{homeLineup.formation}</div>
+                          <PitchLineup lineup={homeLineup} side="home"/>
+                        </div>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:11,fontWeight:700,color:C.orange,marginBottom:4}}>{TSHORT[match.awayTeam?.name]}</div>
+                          <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{awayLineup.formation}</div>
+                          <PitchLineup lineup={awayLineup} side="away"/>
+                        </div>
+                      </div>
+                      {/* Subs */}
+                      <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Substitutes</div>
+                      <div style={{display:'flex',gap:8}}>
+                        <div style={{flex:1}}>
+                          {(homeLineup.substitutes||[]).map((s,i)=>(
+                            <div key={i} style={{fontSize:11,color:C.muted,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                              <span style={{color:C.teal,fontWeight:700,marginRight:4}}>{s.player?.number}</span>{s.player?.name}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{flex:1}}>
+                          {(awayLineup.substitutes||[]).map((s,i)=>(
+                            <div key={i} style={{fontSize:11,color:C.muted,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)',textAlign:'right'}}>
+                              {s.player?.name}<span style={{color:C.orange,fontWeight:700,marginLeft:4}}>{s.player?.number}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {lineupView==='list'&&(
+                    <div style={{display:'flex',gap:10}}>
+                      {[{lineup:homeLineup,code:hc,col:C.teal,name:TSHORT[match.homeTeam?.name]},
+                        {lineup:awayLineup,code:ac,col:C.orange,name:TSHORT[match.awayTeam?.name]}].map(({lineup,code,col,name})=>(
+                        <div key={code} style={{flex:1}}>
+                          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                            <Badge code={code} size={18}/>
+                            <div>
+                              <div style={{fontSize:11,fontWeight:700,color:col}}>{name}</div>
+                              <div style={{fontSize:10,color:C.muted}}>{lineup.formation}</div>
+                            </div>
+                          </div>
+                          <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,marginBottom:4}}>STARTING XI</div>
+                          {(lineup.startXI||[]).map((p,i)=>(
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                              <div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:C.dark,flexShrink:0}}>{p.player?.number}</div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:11,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div>
+                                <div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div>
+                              </div>
+                            </div>
+                          ))}
+                          <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,margin:'8px 0 4px'}}>SUBS</div>
+                          {(lineup.substitutes||[]).map((p,i)=>(
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                              <div style={{width:16,height:16,borderRadius:'50%',background:C.d4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:C.muted,flexShrink:0}}>{p.player?.number}</div>
+                              <div style={{fontSize:11,color:C.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* EVENTS TAB - goals, cards, subs timeline */}
+          {tab==='events'&&(
+            <div>
+              {afLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {!afLoading&&(!events||events.length===0)&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>No events recorded</div>}
+              {!afLoading&&events&&events.length>0&&[...events].sort((a,b)=>a.time?.elapsed-b.time?.elapsed).map((e,i)=>{
+                const isHome = e.team?.id === match.homeTeam?.id;
+                const icon = e.type==='Goal'?'':e.type==='Card'?(e.detail==='Red Card'?'':''):e.type==='subst'?'':'';
+                const detail = e.type==='subst'?'On: '+e.assist?.name+' Off: '+e.player?.name:
+                               e.type==='Goal'?(e.detail==='Own Goal'?'Own Goal':e.assist?.name?'Assist: '+e.assist.name:''):
+                               e.detail||'';
+                return(
+                  <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                    {isHome?(
+                      <>
+                        <div style={{flex:1,textAlign:'left'}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.white}}>{e.player?.name}</div>
+                          {detail&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{detail}</div>}
+                        </div>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.teal,width:32,textAlign:'center',flexShrink:0}}>{e.time?.elapsed}{e.time?.extra?'+'+e.time.extra:''}&apos;</div>
+                        <div style={{fontSize:15,flexShrink:0,width:20,textAlign:'center'}}>{icon}</div>
+                        <div style={{width:'40%'}}/>
+                      </>
+                    ):(
+                      <>
+                        <div style={{width:'40%'}}/>
+                        <div style={{fontSize:15,flexShrink:0,width:20,textAlign:'center'}}>{icon}</div>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.orange,width:32,textAlign:'center',flexShrink:0}}>{e.time?.elapsed}{e.time?.extra?'+'+e.time.extra:''}&apos;</div>
+                        <div style={{flex:1,textAlign:'right'}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.white}}>{e.player?.name}</div>
+                          {detail&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{detail}</div>}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* H2H TAB */}
+          {tab==='h2h'&&(
+            <div>
+              {!h2h&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {h2h&&<>
+                {h2h.aggregates&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+                  {[[h2h.aggregates.homeTeam?.wins||0,TSHORT[match.homeTeam?.name],hc],
+                    [h2h.aggregates.numberOfMatches||0,'Played',null],
+                    [h2h.aggregates.awayTeam?.wins||0,TSHORT[match.awayTeam?.name],ac]].map(([v,l,code],i)=>(
+                    <div key={i} style={{background:C.d3,borderRadius:9,padding:'10px 8px',textAlign:'center'}}>
+                      {code&&<div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={code} size={18}/></div>}
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{v}</div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:2}}>{l}</div>
+                    </div>
+                  ))}
+                </div>}
+                {(h2h.matches||[]).slice(0,5).map((m,i)=>{
+                  const mhc=TCODE[m.homeTeam?.name]||'???', mac=TCODE[m.awayTeam?.name]||'???';
+                  return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d3,borderRadius:8,marginBottom:4}}>
+                    <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:60}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</div>
+                    <Badge code={mhc} size={18}/>
+                    <span style={{fontSize:12,fontWeight:700,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.homeTeam?.name]||m.homeTeam?.name}</span>
+                    <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,letterSpacing:2,flexShrink:0}}>{m.score?.fullTime?.home}-{m.score?.fullTime?.away}</div>
+                    <span style={{fontSize:12,fontWeight:700,flex:1,textAlign:'right',color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.awayTeam?.name]||m.awayTeam?.name}</span>
+                    <Badge code={mac} size={18}/>
+                  </div>);
+                })}
+              </>}
+            </div>
+          )}
+
+          {/* FORM TAB */}
+          {tab==='form'&&(
+            <div>
+              {(!hForm||!aForm)&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {hForm&&aForm&&[[match.homeTeam,hForm,hc],[match.awayTeam,aForm,ac]].map(([team,fd2,code])=>{
+                const form=getForm(fd2,team?.id);
+                const ms=(fd2?.matches||[]).slice(-5).reverse();
+                return(<div key={code} style={{background:C.d3,borderRadius:10,padding:14,marginBottom:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                    <Badge code={code} size={22}/>
+                    <div style={{fontWeight:700,fontSize:14,color:C.white,flex:1}}>{TSHORT[team?.name]||team?.name}</div>
+                    <div style={{display:'flex',gap:4}}>{form.map((r,i)=><div key={i} style={{width:20,height:20,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark}}>{r}</div>)}</div>
+                  </div>
+                  {ms.map((m,i)=>{
+                    const ih=m.homeTeam?.id===team?.id, opp=ih?m.awayTeam:m.homeTeam, oc=TCODE[opp?.name]||'???';
+                    const mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
+                    const r=mh===ma?'D':(ih?mh>ma:ma>mh)?'W':'L';
+                    return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid rgba(255,255,255,.05)'}}>
+                      <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:55}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                      <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{ih?'H':'A'}</div>
+                      <Badge code={oc} size={16}/>
+                      <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{mh}-{ma}</div>
+                      <div style={{width:18,height:18,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{r}</div>
+                    </div>);
+                  })}
+                </div>);
+              })}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
