@@ -84,24 +84,6 @@ app.get('/api/crest/:id', async (req, res) => {
 });
 
 
-app.post('/api/ai-reply', async (req, res) => {
-  try {
-    const {channel, messages} = req.body;
-    const context = (messages||[]).map(m => m.name+': '+m.text).join('\n');
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','x-api-key': process.env.ANTHROPIC_API_KEY||''},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 150,
-        messages: [{role:'user',content:'You are a football fan chatbot. Reply naturally to this Premier League chat in 1-2 sentences:\n'+context}]
-      })
-    });
-    const d = await r.json();
-    res.json({reply: d.content?.[0]?.text || 'No reply'});
-  } catch(e) { res.status(500).json({error: e.message}); }
-});
-
 app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -1119,108 +1101,6 @@ function Quiz(){
   );
 }
 
-// -- FORUM -------------------------------------------------
-const CHANNELS=[
-  {id:'general',name:'General',icon:''},
-  {id:'ARS',name:'Arsenal',icon:''},
-  {id:'LIV',name:'Liverpool',icon:''},
-  {id:'MCI',name:'Man City',icon:''},
-  {id:'MUN',name:'Man Utd',icon:''},
-  {id:'CHE',name:'Chelsea',icon:''},
-  {id:'TOT',name:'Spurs',icon:''},
-  {id:'AVL',name:'Aston Villa',icon:''},
-  {id:'NEW',name:'Newcastle',icon:''},
-  {id:'BHA',name:'Brighton',icon:''},
-  {id:'NFO',name:'Nottm Forest',icon:''},
-];
-
-const SEED_MSGS={
-  general:[
-    {name:'FootballFan',text:'What a season so far! Who do you think wins it?',ts:Date.now()-3600000},
-    {name:'PremierHead',text:'The top 4 race is so tight this year',ts:Date.now()-1800000},
-  ],
-  ARS:[
-    {name:'GunnerForLife',text:'Arteta has us playing amazing football this season',ts:Date.now()-7200000},
-    {name:'NorthLondon',text:'Saka is genuinely world class',ts:Date.now()-3600000},
-  ],
-  LIV:[
-    {name:'KopEnd',text:'Slot has done a brilliant job taking over from Klopp',ts:Date.now()-5400000},
-    {name:'AnfieldRoad',text:'Salah still the best in the league',ts:Date.now()-2700000},
-  ],
-};
-
-function Forum(){
-  const [channel,setChannel]=useState('general');
-  const [messages,setMessages]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem('hav_forum')||'null')||SEED_MSGS;}
-    catch(e){return SEED_MSGS;}
-  });
-  const [draft,setDraft]=useState('');
-  const [userName,setUserName]=useState(()=>localStorage.getItem('hav_name')||'You');
-  const [aiLoading,setAiLoading]=useState(false);
-  const bottomRef=useRef(null);
-
-  const channelMsgs=messages[channel]||[];
-
-  function send(){
-    if(!draft.trim()) return;
-    const msg={name:userName,text:draft.trim(),ts:Date.now(),you:true};
-    const next={...messages,[channel]:[...channelMsgs,msg]};
-    setMessages(next);
-    localStorage.setItem('hav_forum',JSON.stringify(next));
-    setDraft('');
-    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:'smooth'}),100);
-  }
-
-  async function getAiReply(){
-    setAiLoading(true);
-    try{
-      const r=await fetch('/api/ai-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel,messages:channelMsgs.slice(-5)})});
-      const d=await r.json();
-      if(d.reply){
-        const msg={name:'H&V Bot',text:d.reply,ts:Date.now(),bot:true};
-        const next={...messages,[channel]:[...channelMsgs,msg]};
-        setMessages(next);
-        localStorage.setItem('hav_forum',JSON.stringify(next));
-      }
-    }catch(e){}
-    setAiLoading(false);
-  }
-
-  return(
-    <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 110px)',paddingBottom:0}}>
-      {/* Channel list */}
-      <div style={{display:'flex',gap:4,overflowX:'auto',padding:'12px 16px 8px',borderBottom:'1px solid '+C.d4,flexShrink:0}}>
-        {CHANNELS.map(ch=>(
-          <button key={ch.id} onClick={()=>setChannel(ch.id)} style={{flexShrink:0,padding:'5px 10px',borderRadius:8,border:'1px solid '+(channel===ch.id?C.teal:C.d4),background:channel===ch.id?'rgba(0,255,212,.08)':C.d2,color:channel===ch.id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
-            {ch.icon} {ch.name}
-          </button>
-        ))}
-      </div>
-      {/* Messages */}
-      <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
-        {channelMsgs.map((m,i)=>(
-          <div key={i} style={{display:'flex',flexDirection:'column',alignItems:m.you?'flex-end':'flex-start'}}>
-            <div style={{fontSize:10,color:C.muted,marginBottom:2,fontWeight:700}}>{m.name} {m.bot&&<span style={{color:C.teal}}>BOT</span>}</div>
-            <div style={{background:m.you?'rgba(0,255,212,.12)':m.bot?'rgba(41,121,255,.12)':C.d3,border:'1px solid '+(m.you?C.teal:m.bot?C.blue:C.d4),borderRadius:10,padding:'8px 12px',maxWidth:'80%',fontSize:13,color:C.text,lineHeight:1.5}}>
-              {m.text}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef}/>
-      </div>
-      {/* Input */}
-      <div style={{padding:'8px 16px 16px',borderTop:'1px solid '+C.d4,flexShrink:0,background:C.dark}}>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder={'Message #'+(CHANNELS.find(c=>c.id===channel)?.name||channel)+'...'} style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:13,padding:'10px 12px',outline:'none'}}/>
-          <button onClick={getAiReply} disabled={aiLoading} style={{padding:'10px 10px',borderRadius:10,border:'1px solid rgba(41,121,255,.3)',background:'rgba(41,121,255,.08)',color:C.blue,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>{aiLoading?'...':'AI'}</button>
-          <button onClick={send} disabled={!draft.trim()} style={{width:40,height:40,borderRadius:'50%',border:'none',background:draft.trim()?C.teal:C.d4,color:C.dark,cursor:draft.trim()?'pointer':'default',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>&uarr;</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // -- APP ---------------------------------------------------
 const TABS=[
   {id:'live',label:'Live',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
@@ -1229,7 +1109,6 @@ const TABS=[
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
   {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'},
-  {id:'forum',label:'Forum',path:'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'},
 ];
 
 function App(){
@@ -1251,7 +1130,6 @@ function App(){
         {tab==='table'&&<Table/>}
         {tab==='stats'&&<Stats/>}
         {tab==='quiz'&&<Quiz/>}
-        {tab==='forum'&&<Forum/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
