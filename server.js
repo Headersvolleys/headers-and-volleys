@@ -1415,26 +1415,33 @@ function PitchLineup({lineup, side}) {
   if (!lineup) return null;
   const formation = lineup.formation || '4-3-3';
   const startXI = (lineup.startXI || []).map(p => p.player);
-  const subs = (lineup.substitutes || []).map(p => p.player);
   const lines = formation.split('-').map(Number);
+  // Build rows: GK first, then outfield lines
   const rows = [[startXI[0]], ...lines.map((n, i) => {
     const start = 1 + lines.slice(0, i).reduce((a,b)=>a+b, 0);
     return startXI.slice(start, start + n);
   })];
-  if (side === 'away') rows.reverse();
-  const pitchH = 280;
-  const pitchW = 160;
+  // For away team, reverse so GK is at top
+  const displayRows = side === 'away' ? [...rows].reverse() : rows;
+  const totalRows = displayRows.length;
+  const pitchH = 290;
+  const pitchW = 168;
+  const col = side === 'home' ? C.teal : C.orange;
   return(
-    <div style={{position:'relative',width:pitchW,height:pitchH,background:'#1a4a2a',borderRadius:6,border:'1px solid #2a6a3a',flexShrink:0}}>
+    <div style={{position:'relative',width:pitchW,height:pitchH,background:'#1a4a2a',borderRadius:6,border:'1px solid #2a6a3a',flexShrink:0,overflow:'hidden'}}>
       {/* Pitch markings */}
-      <div style={{position:'absolute',top:'50%',left:8,right:8,height:1,background:'rgba(255,255,255,.2)'}}/>
-      <div style={{position:'absolute',top:'10%',left:'25%',right:'25%',height:'20%',border:'1px solid rgba(255,255,255,.2)',borderRadius:2}}/>
-      <div style={{position:'absolute',bottom:'10%',left:'25%',right:'25%',height:'20%',border:'1px solid rgba(255,255,255,.2)',borderRadius:2}}/>
-      <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:40,height:40,border:'1px solid rgba(255,255,255,.2)',borderRadius:'50%'}}/>
-      {rows.map((row, ri) => {
-        const yPct = (ri + 0.7) / (rows.length) * 100;
+      <div style={{position:'absolute',top:'50%',left:6,right:6,height:1,background:'rgba(255,255,255,.15)'}}/>
+      <div style={{position:'absolute',top:'8%',left:'22%',right:'22%',height:'18%',border:'1px solid rgba(255,255,255,.15)',borderRadius:2}}/>
+      <div style={{position:'absolute',bottom:'8%',left:'22%',right:'22%',height:'18%',border:'1px solid rgba(255,255,255,.15)',borderRadius:2}}/>
+      <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:36,height:36,border:'1px solid rgba(255,255,255,.15)',borderRadius:'50%'}}/>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,border:'1px solid rgba(255,255,255,.15)',borderRadius:6,pointerEvents:'none'}}/>
+      {displayRows.map((row, ri) => {
+        // Evenly space rows with padding top and bottom
+        const yPct = 8 + (ri / (totalRows - 1)) * 84;
+        const rowLen = row.length;
         return row.map((player, pi) => {
-          const xPct = (pi + 0.7) / (row.length) * 100;
+          // Center players in each row
+          const xPct = rowLen === 1 ? 50 : 10 + (pi / (rowLen - 1)) * 80;
           return(
             <div key={player?.id||pi} style={{
               position:'absolute',
@@ -1442,19 +1449,24 @@ function PitchLineup({lineup, side}) {
               top: yPct + '%',
               transform:'translate(-50%,-50%)',
               textAlign:'center',
-              width:30,
+              zIndex:1,
             }}>
               <div style={{
-                width:22,height:22,borderRadius:'50%',
-                background: side==='home'?C.teal:C.orange,
-                border:'2px solid rgba(255,255,255,.6)',
+                width:24,height:24,borderRadius:'50%',
+                background:col,
+                border:'2px solid rgba(255,255,255,.7)',
                 display:'flex',alignItems:'center',justifyContent:'center',
                 fontSize:9,fontWeight:700,color:C.dark,
-                margin:'0 auto',
+                margin:'0 auto',boxShadow:'0 1px 3px rgba(0,0,0,.4)',
               }}>{player?.number||''}</div>
-              <div style={{fontSize:7,color:'#fff',marginTop:1,lineHeight:1.2,
-                whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
-                maxWidth:36,marginLeft:-7}}>
+              <div style={{
+                fontSize:7,color:'#fff',marginTop:1,lineHeight:1.2,
+                whiteSpace:'nowrap',
+                textShadow:'0 1px 2px rgba(0,0,0,.8)',
+                maxWidth:40,
+                overflow:'hidden',textOverflow:'ellipsis',
+                marginLeft:-8,
+              }}>
                 {(player?.name||'').split(' ').pop()}
               </div>
             </div>
