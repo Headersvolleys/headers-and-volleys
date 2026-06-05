@@ -69,6 +69,158 @@ app.get('/api/teams', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Understat - fetch and parse JSON embedded in page HTML
+async function fetchUnderstat(url) {
+  const r = await fetch(url, { headers: {'User-Agent':'Mozilla/5.0 (compatible; HaV/1.0)'} });
+  const html = await r.text();
+  const out = {};
+  const scriptRe = /<script>([\s\S]*?)<\/script>/g;
+  let sm;
+  while ((sm = scriptRe.exec(html)) !== null) {
+    const src = sm[1];
+    const pairs = [
+      ['players', /var\s+playersData\s*=\s*JSON\.parse\('(.+?)'\)/],
+      ['teams',   /var\s+teamsData\s*=\s*JSON\.parse\('(.+?)'\)/],
+      ['dates',   /var\s+datesData\s*=\s*JSON\.parse\('(.+?)'\)/],
+    ];
+    for (const [key, re] of pairs) {
+      const m = src.match(re);
+      if (m) {
+        try {
+          const decoded = m[1].replace(/\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h,16)))
+                               .replace(/\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h,16)));
+          out[key] = JSON.parse(decoded);
+        } catch(e) {}
+      }
+    }
+  }
+  return out;
+}
+
+app.get('/api/xg/players', async (req, res) => {
+  const key = 'us_players';
+  const now = Date.now();
+  if (cache[key] && now - cache[key].ts < 30*MIN) return res.json(cache[key].data);
+  try {
+    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const players = (d.players || []).map(p => ({
+      id: p.id, name: p.player_name, team: p.team_title,
+      games: +p.games, mins: +p.time, goals: +p.goals,
+      assists: +p.assists, shots: +p.shots,
+      xG: +parseFloat(p.xG).toFixed(2),
+      xA: +parseFloat(p.xA).toFixed(2),
+      npxG: +parseFloat(p.npxG).toFixed(2),
+      xGChain: +parseFloat(p.xGChain).toFixed(2),
+      keyPasses: +p.key_passes, position: p.position,
+    })).sort((a,b) => b.xG - a.xG);
+    cache[key] = { data: {players}, ts: now };
+    res.json({players});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+app.get('/api/xg/teams', async (req, res) => {
+  const key = 'us_teams';
+  const now = Date.now();
+  if (cache[key] && now - cache[key].ts < 30*MIN) return res.json(cache[key].data);
+  try {
+    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const teams = Object.values(d.teams || {}).map(t => ({
+      name: t.title,
+      xG: +parseFloat(t.xG||0).toFixed(2),
+      xGA: +parseFloat(t.xGA||0).toFixed(2),
+      npxG: +parseFloat(t.npxG||0).toFixed(2),
+      npxGA: +parseFloat(t.npxGA||0).toFixed(2),
+      xPts: +parseFloat(t.xpts||0).toFixed(2),
+      ppda: t.ppda ? +parseFloat(t.ppda.att/t.ppda.def).toFixed(2) : null,
+    })).sort((a,b) => b.xG - a.xG);
+    cache[key] = { data: {teams}, ts: now };
+    res.json({teams});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// Understat - parse JSON embedded in page HTML
+async function fetchUnderstat(url) {
+  const r = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HaV/1.0)' }
+  });
+  const html = await r.text();
+  // Understat embeds data as JSON.parse('...') inside script tags
+  const matches = [...html.matchAll(/JSON\.parse\('([^']+)'/g)];
+  const results = {};
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  for (const s of scripts) {
+    const src = s[1];
+    // playersData
+    const pm = src.match(/var\s+playersData\s*=\s*JSON\.parse\('(.*?)'\)/);
+    if (pm) { try { results.players = JSON.parse(pm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+    // teamsData
+    const tm = src.match(/var\s+teamsData\s*=\s*JSON\.parse\('(.*?)'\)/);
+    if (tm) { try { results.teams = JSON.parse(tm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+    // datesData (match results)
+    const dm = src.match(/var\s+datesData\s*=\s*JSON\.parse\('(.*?)'\)/);
+    if (dm) { try { results.dates = JSON.parse(dm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+  }
+  return results;
+}
+
+// xG player stats for EPL 2025
+app.get('/api/xg/players', async (req, res) => {
+  const cacheKey = 'understat_players_2025';
+  const now = Date.now();
+  if (cache[cacheKey] && now - cache[cacheKey].ts < 30*MIN) {
+    return res.json(cache[cacheKey].data);
+  }
+  try {
+    const data = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const players = (data.players || []).map(p => ({
+      id: p.id,
+      name: p.player_name,
+      team: p.team_title,
+      games: parseInt(p.games),
+      mins: parseInt(p.time),
+      goals: parseInt(p.goals),
+      assists: parseInt(p.assists),
+      shots: parseInt(p.shots),
+      xG: parseFloat(parseFloat(p.xG).toFixed(2)),
+      xA: parseFloat(parseFloat(p.xA).toFixed(2)),
+      npxG: parseFloat(parseFloat(p.npxG).toFixed(2)),
+      xGChain: parseFloat(parseFloat(p.xGChain).toFixed(2)),
+      keyPasses: parseInt(p.key_passes),
+      position: p.position,
+      yellowCards: parseInt(p.yellow_cards),
+      redCards: parseInt(p.red_cards),
+    })).sort((a,b) => b.xG - a.xG);
+    const result = { players };
+    cache[cacheKey] = { data: result, ts: now };
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// xG team table for EPL 2025
+app.get('/api/xg/teams', async (req, res) => {
+  const cacheKey = 'understat_teams_2025';
+  const now = Date.now();
+  if (cache[cacheKey] && now - cache[cacheKey].ts < 30*MIN) {
+    return res.json(cache[cacheKey].data);
+  }
+  try {
+    const data = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const teams = data.teams || {};
+    const result = { teams: Object.values(teams).map(t => ({
+      id: t.id,
+      name: t.title,
+      xG: parseFloat(parseFloat(t.xG || 0).toFixed(2)),
+      xGA: parseFloat(parseFloat(t.xGA || 0).toFixed(2)),
+      npxG: parseFloat(parseFloat(t.npxG || 0).toFixed(2)),
+      npxGA: parseFloat(parseFloat(t.npxGA || 0).toFixed(2)),
+      ppda: t.ppda ? parseFloat(parseFloat(t.ppda.att / t.ppda.def).toFixed(2)) : null,
+      xPts: parseFloat(parseFloat(t.xpts || 0).toFixed(2)),
+    })).sort((a,b) => b.xG - a.xG) };
+    cache[cacheKey] = { data: result, ts: now };
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Proxy crest images to avoid CORS issues
 app.get('/api/crest/:id', async (req, res) => {
   try {
@@ -1101,6 +1253,154 @@ function Quiz(){
   );
 }
 
+// -- XG STATS --------------------------------------------
+function XGStats(){
+  const [view, setView] = useState('players');
+  const {data:pData, loading:pLoad, error:pErr} = useApi('/api/xg/players', 30*60000);
+  const {data:tData, loading:tLoad, error:tErr} = useApi('/api/xg/teams', 30*60000);
+  const players = pData?.players || [];
+  const teams = tData?.teams || [];
+  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  function Bar({val, max, col}){
+    const pct = max > 0 ? Math.min(100, (val/max)*100) : 0;
+    return(
+      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+        <div style={{width:pct+'%',height:'100%',background:col,borderRadius:2,transition:'width .4s'}}/>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,lineHeight:1}}>
+          xG <span style={{color:C.teal}}>STATS</span>
+        </div>
+        <div style={{fontSize:11,color:C.muted,marginTop:2}}>Expected goals data via Understat</div>
+      </div>
+      <div style={{display:'flex',gap:6,marginBottom:14}}>
+        <button onClick={()=>setView('players')} style={view==='players'?tA:tS}>Players</button>
+        <button onClick={()=>setView('teams')} style={view==='teams'?tA:tS}>Teams</button>
+      </div>
+
+      {view==='players'&&(
+        <div>
+          {pLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {pErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{pErr}</div>}
+          {!pLoad&&!pErr&&(
+            <>
+              {/* Header */}
+              <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
+                {['#','','xG','G','xA','A'].map((h,i)=>(
+                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>
+                ))}
+              </div>
+              {players.slice(0,30).map((p,i)=>{
+                const maxXG = players[0]?.xG || 1;
+                const overPerf = p.goals - p.xG;
+                return(
+                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'9px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
+                    <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,alignItems:'center',marginBottom:6}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{i+1}</div>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{p.team}  {p.position}</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.teal,lineHeight:1}}>{p.xG}</div>
+                        <div style={{fontSize:8,color:C.muted}}>xG</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:overPerf>0?C.green:overPerf<0?C.red:C.white,lineHeight:1}}>{p.goals}</div>
+                        <div style={{fontSize:8,color:C.muted}}>G</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.orange,lineHeight:1}}>{p.xA}</div>
+                        <div style={{fontSize:8,color:C.muted}}>xA</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,lineHeight:1}}>{p.assists}</div>
+                        <div style={{fontSize:8,color:C.muted}}>A</div>
+                      </div>
+                    </div>
+                    {/* xG vs Goals bar */}
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>xG</div>
+                      <Bar val={p.xG} max={maxXG} col={C.teal}/>
+                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>G</div>
+                      <Bar val={p.goals} max={maxXG} col={overPerf>0?C.green:overPerf<0?C.red:C.white}/>
+                      <div style={{fontSize:9,fontWeight:700,color:overPerf>0?C.green:overPerf<0?C.red:C.muted,flexShrink:0,minWidth:28,textAlign:'right'}}>
+                        {overPerf>0?'+':''}{overPerf.toFixed(1)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:11,color:C.muted,textAlign:'center',padding:'12px 0'}}>
+                Green border = overperforming xG  Red = underperforming
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {view==='teams'&&(
+        <div>
+          {tLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {tErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{tErr}</div>}
+          {!tLoad&&!tErr&&(
+            <>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,padding:'4px 10px',marginBottom:4}}>
+                {['Team','xG','xGA','npxG','PPDA','xPts'].map((h,i)=>(
+                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>
+                ))}
+              </div>
+              {teams.map((t,i)=>{
+                const code = Object.entries(TSHORT).find(([k,v])=>v===t.name||k.includes(t.name)||t.name.includes(v))?.[0];
+                const tcode = code ? TCODE[code] : null;
+                const xGD = +(t.xG - t.xGA).toFixed(2);
+                return(
+                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'10px 10px',
+                    borderLeft:'3px solid '+(xGD>0?C.teal:xGD<0?C.red:C.d4)}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,alignItems:'center',marginBottom:6}}>
+                      <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
+                        {tcode&&<Badge code={tcode} size={18}/>}
+                        <span style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
+                      </div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted}}>{t.npxG}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{t.ppda||'-'}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
+                    </div>
+                    {/* xG vs xGA bar */}
+                    <div style={{display:'flex',alignItems:'center',gap:4}}>
+                      <div style={{fontSize:8,color:C.teal,flexShrink:0,width:16}}>xG</div>
+                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(t.xG/80)*100)+'%',height:'100%',background:C.teal,borderRadius:2}}/>
+                      </div>
+                      <div style={{fontSize:8,color:C.red,flexShrink:0,width:24}}>xGA</div>
+                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(t.xGA/80)*100)+'%',height:'100%',background:C.red,borderRadius:2}}/>
+                      </div>
+                      <div style={{fontSize:9,fontWeight:700,color:xGD>0?C.teal:C.red,flexShrink:0,minWidth:32,textAlign:'right'}}>
+                        {xGD>0?'+':''}{xGD}
+                      </div>
+                    </div>
+                    <div style={{fontSize:9,color:C.muted,marginTop:3}}>xGD: {xGD>0?'+':''}{xGD}  PPDA: {t.ppda||'n/a'} (lower = more pressing)</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // -- APP ---------------------------------------------------
 const TABS=[
   {id:'live',label:'Live',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
@@ -1109,6 +1409,7 @@ const TABS=[
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
   {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'},
+  {id:'xg',label:'xG',path:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z'},
 ];
 
 function App(){
@@ -1130,6 +1431,7 @@ function App(){
         {tab==='table'&&<Table/>}
         {tab==='stats'&&<Stats/>}
         {tab==='quiz'&&<Quiz/>}
+        {tab==='xg'&&<XGStats/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
