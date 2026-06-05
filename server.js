@@ -1373,13 +1373,19 @@ async function findAFFixture(match) {
   const r = await fetch('/api/af/fixture?date=' + date);
   const d = await r.json();
   const fixtures = d.response || [];
+  // Get first word of each team name for fuzzy matching
   const hn = (TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '').toLowerCase();
   const an = (TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '').toLowerCase();
+  const hw = hn.split(' ')[0];
+  const aw = an.split(' ')[0];
   const found = fixtures.find(f => {
     const fh = (f.teams?.home?.name || '').toLowerCase();
     const fa = (f.teams?.away?.name || '').toLowerCase();
-    return (fh.includes(hn.split(' ')[0]) || hn.includes(fh.split(' ')[0])) &&
-           (fa.includes(an.split(' ')[0]) || an.includes(fa.split(' ')[0]));
+    const homeMatch = fh.includes(hw) || hw.includes(fh.split(' ')[0]) || 
+                      hn.includes(fh.split(' ')[0]) || fh.includes(hn.split(' ')[0]);
+    const awayMatch = fa.includes(aw) || aw.includes(fa.split(' ')[0]) ||
+                      an.includes(fa.split(' ')[0]) || fa.includes(an.split(' ')[0]);
+    return homeMatch && awayMatch;
   });
   return found?.fixture?.id || null;
 }
@@ -1511,8 +1517,16 @@ function MatchModal({match, onClose}){
     (stats[1]?.statistics||[]).forEach(s => awayStats[s.type] = s.value);
   }
 
-  const homeLineup = lineups.find(l => l.team?.id === match.homeTeam?.id) || null;
-  const awayLineup = lineups.find(l => l.team?.id === match.awayTeam?.id) || null;
+  const hn2 = (TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'').toLowerCase();
+  const an2 = (TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'').toLowerCase();
+  const homeLineup = lineups.find(l => {
+    const ln = (l.team?.name||'').toLowerCase();
+    return ln.includes(hn2.split(' ')[0]) || hn2.includes(ln.split(' ')[0]);
+  }) || null;
+  const awayLineup = lineups.find(l => {
+    const ln = (l.team?.name||'').toLowerCase();
+    return ln.includes(an2.split(' ')[0]) || an2.includes(ln.split(' ')[0]);
+  }) || null;
 
   const goals = (events||[]).filter(e=>e.type==='Goal');
   const cards = (events||[]).filter(e=>e.type==='Card');
