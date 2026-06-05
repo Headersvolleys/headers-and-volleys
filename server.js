@@ -112,8 +112,8 @@ app.get('/', (req, res) => {
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#070B10;color:#E8F0FA;font-family:'DM Sans',sans-serif;max-width:520px;margin:0 auto}
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:#1C2738;border-radius:2px}
+body{background:#0F2027;color:#E0FFFD;font-family:'DM Sans',sans-serif;max-width:520px;margin:0 auto}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:#1E3545;border-radius:2px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
@@ -128,7 +128,7 @@ input[type=number]{-moz-appearance:textfield}
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
-const C={dark:'#070B10',d2:'#0D1420',d3:'#141D2C',d4:'#1C2738',white:'#fff',text:'#E8F0FA',muted:'#8899AA',teal:'#00FFD4',green:'#00E676',red:'#FF3D3D',yellow:'#FFD600',orange:'#FF8000',blue:'#2979FF',gold:'#FFD700'};
+const C={dark:'#0F2027',d2:'#1A3340',d3:'#162D3A',d4:'#1E3545',white:'#fff',text:'#E0FFFD',muted:'#5A9AAA',teal:'#0ABFB8',green:'#00E676',red:'#FF3D3D',yellow:'#FFD600',orange:'#FF8000',blue:'#2979FF',gold:'#FFD700'};
 const TCODE={
   'Arsenal':'ARS','Arsenal FC':'ARS',
   'Aston Villa':'AVL','Aston Villa FC':'AVL',
