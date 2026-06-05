@@ -210,13 +210,13 @@ async function fetchUnderstat(url) {
     const src = s[1];
     // playersData
     const pm = src.match(/var\s+playersData\s*=\s*JSON\.parse\('(.*?)'\)/);
-    if (pm) { try { results.players = JSON.parse(pm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+    if (pm) { try { results.players = JSON.parse(pm[1]); } catch(e){} }
     // teamsData
     const tm = src.match(/var\s+teamsData\s*=\s*JSON\.parse\('(.*?)'\)/);
-    if (tm) { try { results.teams = JSON.parse(tm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+    if (tm) { try { results.teams = JSON.parse(tm[1]); } catch(e){} }
     // datesData (match results)
     const dm = src.match(/var\s+datesData\s*=\s*JSON\.parse\('(.*?)'\)/);
-    if (dm) { try { results.dates = JSON.parse(dm[1].replace(/\\x/g,'\x').replace(/\\u/g,'\u')); } catch(e){} }
+    if (dm) { try { results.dates = JSON.parse(dm[1]); } catch(e){} }
   }
   return results;
 }
@@ -1364,12 +1364,8 @@ function App(){
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
 
-</script>
-</body>
-</html>`);
-});
 
-app.listen(PORT, () => console.log('H&V running on port ' + PORT));//  MATCH DETAIL MODAL 
+//  MATCH DETAIL MODAL 
 // Finds API-Football fixture ID by matching date + team names
 async function findAFFixture(match) {
   const dt = new Date(match.utcDate);
@@ -1816,3 +1812,9 @@ function MatchModal({match, onClose}){
     </div>
   );
 }
+</script>
+</body>
+</html>`);
+});
+
+app.listen(PORT, () => console.log('H&V running on port ' + PORT));
