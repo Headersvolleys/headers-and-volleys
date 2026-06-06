@@ -113,13 +113,35 @@ app.get('/api/af/events/:fixtureId', async (req, res) => {
 // Find API-Football fixture ID from date + team names
 app.get('/api/af/fixture', async (req, res) => {
   try {
-    const {date, team} = req.query;
+    const {date} = req.query;
     const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
     res.json(data);
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
-// All PL fixtures for 2025 season - used to map fd.org IDs to AF IDs
+// Smart lookup - returns AF fixture ID for given date + team names
+app.get('/api/af/lookup', async (req, res) => {
+  try {
+    const {home, away, date} = req.query;
+    const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
+    const fixtures = data.response || [];
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const hn = norm(home), an = norm(away);
+    let found = fixtures.find(f => {
+      const fh = norm(f.teams?.home?.name), fa = norm(f.teams?.away?.name);
+      return (fh===hn||fh.startsWith(hn.slice(0,5))||hn.startsWith(fh.slice(0,5))) &&
+             (fa===an||fa.startsWith(an.slice(0,5))||an.startsWith(fa.slice(0,5)));
+    });
+    if (!found) found = fixtures.find(f => {
+      const fh = norm(f.teams?.home?.name), fa = norm(f.teams?.away?.name);
+      return (fh.includes(hn.slice(0,4))||hn.includes(fh.slice(0,4))) &&
+             (fa.includes(an.slice(0,4))||an.includes(fa.slice(0,4)));
+    });
+    res.json({ fixtureId: found?.fixture?.id || null });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// All PL fixtures for 2025 season
 app.get('/api/af/fixtures', async (req, res) => {
   try {
     const data = await af('/fixtures?league=39&season=2025', 60*MIN);
@@ -1370,24 +1392,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 async function findAFFixture(match) {
   const dt = new Date(match.utcDate);
   const date = dt.toISOString().split('T')[0];
-  const r = await fetch('/api/af/fixture?date=' + date);
+  const hn = TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '';
+  const an = TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '';
+  const r = await fetch('/api/af/lookup?date=' + date + '&home=' + encodeURIComponent(hn) + '&away=' + encodeURIComponent(an));
   const d = await r.json();
-  const fixtures = d.response || [];
-  // Get first word of each team name for fuzzy matching
-  const hn = (TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '').toLowerCase();
-  const an = (TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '').toLowerCase();
-  const hw = hn.split(' ')[0];
-  const aw = an.split(' ')[0];
-  const found = fixtures.find(f => {
-    const fh = (f.teams?.home?.name || '').toLowerCase();
-    const fa = (f.teams?.away?.name || '').toLowerCase();
-    const homeMatch = fh.includes(hw) || hw.includes(fh.split(' ')[0]) || 
-                      hn.includes(fh.split(' ')[0]) || fh.includes(hn.split(' ')[0]);
-    const awayMatch = fa.includes(aw) || aw.includes(fa.split(' ')[0]) ||
-                      an.includes(fa.split(' ')[0]) || fa.includes(an.split(' ')[0]);
-    return homeMatch && awayMatch;
-  });
-  return found?.fixture?.id || null;
+  return d.fixtureId || null;
 }
 
 function StatBar({label, home, away, homeCol, awayCol}) {
