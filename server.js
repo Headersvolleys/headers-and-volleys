@@ -125,18 +125,31 @@ app.get('/api/af/lookup', async (req, res) => {
     const {home, away, date} = req.query;
     const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
     const fixtures = data.response || [];
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    // Map short names to full names that API-Football uses
+    const EXPAND = {
+      'man utd': 'manchester united', 'man united': 'manchester united',
+      'man city': 'manchester city', 'spurs': 'tottenham',
+      'nottm forest': 'nottingham', 'nott': 'nottingham',
+      'wolves': 'wolverhampton', 'west ham': 'west ham',
+      'newcastle': 'newcastle', 'brighton': 'brighton',
+      'bournemouth': 'bournemouth', 'brentford': 'brentford',
+    };
+    const norm = s => {
+      const low = (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
+      return EXPAND[low] || low;
+    };
+    const normShort = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
     const hn = norm(home), an = norm(away);
-    let found = fixtures.find(f => {
-      const fh = norm(f.teams?.home?.name), fa = norm(f.teams?.away?.name);
-      return (fh===hn||fh.startsWith(hn.slice(0,5))||hn.startsWith(fh.slice(0,5))) &&
-             (fa===an||fa.startsWith(an.slice(0,5))||an.startsWith(fa.slice(0,5)));
-    });
-    if (!found) found = fixtures.find(f => {
-      const fh = norm(f.teams?.home?.name), fa = norm(f.teams?.away?.name);
-      return (fh.includes(hn.slice(0,4))||hn.includes(fh.slice(0,4))) &&
-             (fa.includes(an.slice(0,4))||an.includes(fa.slice(0,4)));
-    });
+    const hns = normShort(hn), ans = normShort(an);
+    const match = (afName, ourName, ourShort) => {
+      const fn = norm(afName), fs = normShort(fn);
+      return fn===ourName || fs===ourShort ||
+             fn.includes(ourName.slice(0,6)) || ourName.includes(fn.slice(0,6)) ||
+             fs.includes(ourShort.slice(0,5)) || ourShort.includes(fs.slice(0,5));
+    };
+    const found = fixtures.find(f =>
+      match(f.teams?.home?.name, hn, hns) && match(f.teams?.away?.name, an, ans)
+    );
     res.json({ fixtureId: found?.fixture?.id || null });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
