@@ -950,47 +950,308 @@ function matchAnswer(typed, accepted) {
 }
 
 const QUIZZES=[
-  {id:'champions',title:'PL Champions',cat:'History',questions:[
-    {q:'Who won the Premier League in 2023-24?',a:['Manchester City','Man City','City'],hint:'Pep Guardiola'},
-    {q:'Which club has won the most Premier League titles?',a:['Manchester United','Man Utd','Man United','United'],hint:'13 titles'},
-    {q:'Who was the PL top scorer in 2024-25?',a:['Mohamed Salah','Salah','Mo Salah'],hint:'Liverpool forward'},
-    {q:'Which club was relegated from the PL in 2024-25?',a:['Leicester','Leicester City','Ipswich','Southampton'],hint:'Multiple correct answers'},
-    {q:'Who has scored the most PL goals in history?',a:['Alan Shearer','Shearer'],hint:'260 goals'},
-    {q:'Which club won the first ever Premier League in 1992-93?',a:['Manchester United','Man Utd','Man United']},
-    {q:'Which team won the 2015-16 title as 5000-1 outsiders?',a:['Leicester','Leicester City']},
-    {q:'Who won back-to-back titles in 2018-19 and 2019-20?',a:['Manchester City','Man City','City']},
+  // 1
+  {id:'champions',title:'PL Champions',cat:'Premier League',questions:[
+    {q:'Who won the Premier League in 2023-24?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Arsenal','Chelsea']},
+    {q:'Which club has won the most PL titles?',a:['Manchester United','Man Utd'],mc:['Manchester United','Manchester City','Arsenal','Liverpool']},
+    {q:'Who was PL top scorer in 2024-25?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Erling Haaland','Cole Palmer','Alexander Isak']},
+    {q:'Which team won the 2015-16 title as 5000-1 outsiders?',a:['Leicester','Leicester City'],mc:['Leicester City','Burnley','Watford','Crystal Palace']},
+    {q:'Who has scored the most PL goals in history?',a:['Alan Shearer','Shearer'],mc:['Alan Shearer','Wayne Rooney','Andrew Cole','Frank Lampard']},
+    {q:'Which club won the first ever Premier League in 1992-93?',a:['Manchester United','Man Utd'],mc:['Manchester United','Blackburn Rovers','Arsenal','Leeds United']},
+    {q:'Who won back-to-back titles in 2018-19 and 2019-20?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Chelsea','Arsenal']},
+    {q:'Which team went unbeaten for the entire 2003-04 season?',a:['Arsenal'],mc:['Arsenal','Chelsea','Manchester United','Liverpool']},
+    {q:'Who won the PL title in 2021-22?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Chelsea','Tottenham']},
+    {q:'Who scored the most PL goals in a single season?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Harry Kane','Andy Cole']},
+    {q:'Which manager has won the most PL titles?',a:['Alex Ferguson','Ferguson'],mc:['Alex Ferguson','Pep Guardiola','Jose Mourinho','Arsene Wenger']},
+    {q:'Who was the first foreign player to win PL Player of the Season?',a:['Gianfranco Zola','Zola'],mc:['Gianfranco Zola','Eric Cantona','Dennis Bergkamp','Thierry Henry']},
   ]},
-  {id:'managers',title:'PL Managers',cat:'Managers',questions:[
-    {q:'Who manages Arsenal in 2025-26?',a:['Mikel Arteta','Arteta']},
-    {q:'Who manages Manchester City in 2025-26?',a:['Pep Guardiola','Guardiola']},
-    {q:'Which manager has won the most PL titles?',a:['Alex Ferguson','Sir Alex Ferguson','Ferguson']},
-    {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot']},
-    {q:'Who replaced Jurgen Klopp at Liverpool?',a:['Arne Slot','Slot']},
-    {q:'Who manages Chelsea in 2025-26?',a:['Enzo Maresca','Maresca']},
-    {q:'Which manager is known as The Special One?',a:['Jose Mourinho','Mourinho']},
-    {q:'Who managed the Invincibles Arsenal side in 2003-04?',a:['Arsene Wenger','Wenger']},
+  // 2
+  {id:'records',title:'PL Records',cat:'Premier League',questions:[
+    {q:'What is the highest ever PL points tally in a season?',a:['100'],mc:['100','97','95','93']},
+    {q:'What is the record PL winning scoreline?',a:['9-0','9'],mc:['9-0','8-0','7-0','10-0']},
+    {q:'Who scored the fastest ever PL goal?',a:['Shane Long','Long'],mc:['Shane Long','Ledley King','Alan Shearer','Christian Eriksen']},
+    {q:'Who has made the most PL appearances ever?',a:['Gareth Barry','Barry'],mc:['Gareth Barry','Ryan Giggs','David James','Frank Lampard']},
+    {q:'Who scored the fastest PL hat-trick?',a:['Sadio Mane','Mane'],mc:['Sadio Mane','Robbie Fowler','Michael Owen','Alan Shearer']},
+    {q:'Which goalkeeper has the most PL clean sheets?',a:['Petr Cech','Cech'],mc:['Petr Cech','David James','David Seaman','Edwin van der Sar']},
+    {q:'Who has the most PL assists ever?',a:['Ryan Giggs','Giggs'],mc:['Ryan Giggs','Cesc Fabregas','Kevin De Bruyne','Dennis Bergkamp']},
+    {q:'What is the highest scoring PL match ever?',a:['9-7'],mc:['9-7','8-5','7-5','6-6']},
+    {q:'Who holds the record for most PL assists in a season?',a:['Kevin De Bruyne','De Bruyne'],mc:['Kevin De Bruyne','Thierry Henry','Ryan Giggs','Cesc Fabregas']},
+    {q:'Which player has the most PL red cards ever?',a:['Richard Dunne','Dunne'],mc:['Richard Dunne','Patrick Vieira','Roy Keane','Duncan Ferguson']},
+    {q:'Who scored the most PL goals in a calendar year?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Harry Kane','Cristiano Ronaldo']},
+    {q:'Which player scored in the most consecutive PL games?',a:['Jamie Vardy','Vardy'],mc:['Jamie Vardy','Ruud van Nistelrooy','Daniel Sturridge','Thierry Henry']},
   ]},
-  {id:'records',title:'PL Records',cat:'Stats',questions:[
-    {q:'What is the highest ever PL season points tally?',a:['100'],hint:'Man City 2017-18'},
-    {q:'Who holds the PL record for most assists in a season?',a:['Kevin De Bruyne','De Bruyne','KDB'],hint:'16 assists'},
-    {q:'Which club went unbeaten in the entire 2003-04 season?',a:['Arsenal'],hint:'The Invincibles'},
-    {q:'Who scored the most goals in a single PL season?',a:['Erling Haaland','Haaland'],hint:'36 goals in 2022-23'},
-    {q:'Who scored the fastest PL hat-trick?',a:['Sadio Mane','Mane'],hint:'2 minutes 56 seconds'},
-    {q:'Who has made the most PL appearances ever?',a:['Gareth Barry','Barry'],hint:'653 appearances'},
-    {q:'What is the record PL winning scoreline?',a:['9-0','9'],hint:'Southampton vs Leicester'},
-    {q:'Which club has won the PL most times after Man Utd?',a:['Manchester City','Man City','City'],hint:'6 titles'},
+  // 3
+  {id:'managers',title:'PL Managers',cat:'Premier League',questions:[
+    {q:'Who manages Arsenal in 2025-26?',a:['Mikel Arteta','Arteta'],mc:['Mikel Arteta','Unai Emery','Thomas Tuchel','Mauricio Pochettino']},
+    {q:'Who manages Manchester City in 2025-26?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Jurgen Klopp','Jose Mourinho','Carlo Ancelotti']},
+    {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot'],mc:['Arne Slot','Jurgen Klopp','Brendan Rodgers','Rafael Benitez']},
+    {q:'Who manages Chelsea in 2025-26?',a:['Enzo Maresca','Maresca'],mc:['Enzo Maresca','Thomas Tuchel','Graham Potter','Frank Lampard']},
+    {q:'Which manager is known as The Special One?',a:['Jose Mourinho','Mourinho'],mc:['Jose Mourinho','Pep Guardiola','Alex Ferguson','Arsene Wenger']},
+    {q:'Who managed Blackburn to the PL title in 1994-95?',a:['Kenny Dalglish','Dalglish'],mc:['Kenny Dalglish','Ray Harford','Brian Kidd','Joe Royle']},
+    {q:'Which manager took Leicester to the 2015-16 title?',a:['Claudio Ranieri','Ranieri'],mc:['Claudio Ranieri','Nigel Pearson','Craig Shakespeare','Brendan Rodgers']},
+    {q:'Who replaced Jurgen Klopp at Liverpool?',a:['Arne Slot','Slot'],mc:['Arne Slot','Graham Potter','Roberto De Zerbi','Ruben Amorim']},
+    {q:'Who managed the Invincibles Arsenal side in 2003-04?',a:['Arsene Wenger','Wenger'],mc:['Arsene Wenger','George Graham','Bruce Rioch','Terry Neill']},
+    {q:'Which manager won the PL with Chelsea twice in his first spell?',a:['Jose Mourinho','Mourinho'],mc:['Jose Mourinho','Carlo Ancelotti','Claudio Ranieri','Avram Grant']},
+    {q:'Who was the first manager to win the PL in its inaugural season?',a:['Alex Ferguson','Ferguson'],mc:['Alex Ferguson','Howard Wilkinson','George Graham','Kenny Dalglish']},
+    {q:'Who manages Spurs in 2025-26?',a:['Ange Postecoglou','Postecoglou'],mc:['Ange Postecoglou','Jose Mourinho','Nuno Espirito Santo','Antonio Conte']},
   ]},
-  {id:'clubs',title:'Club Knowledge',cat:'Clubs',questions:[
-    {q:'Which PL club plays at the Amex Stadium?',a:['Brighton','Brighton & Hove Albion','Brighton and Hove Albion']},
-    {q:'Which club has the nickname The Toffees?',a:['Everton']},
-    {q:'Which PL club plays at Selhurst Park?',a:['Crystal Palace','Palace']},
-    {q:'Which club plays at the London Stadium?',a:['West Ham','West Ham United','Hammers']},
-    {q:'Which club has the nickname The Foxes?',a:['Leicester','Leicester City']},
-    {q:'What colour shirts do Wolves wear?',a:['Gold','Yellow','Old Gold'],hint:'Old Gold'},
-    {q:'Which club plays at Craven Cottage?',a:['Fulham']},
-    {q:'Which PL club is nicknamed The Cherries?',a:['Bournemouth','AFC Bournemouth']},
+  // 4
+  {id:'clubs',title:'Club Knowledge',cat:'Premier League',questions:[
+    {q:'Which PL club plays at the Amex Stadium?',a:['Brighton','Brighton & Hove Albion'],mc:['Brighton','Crystal Palace','Brentford','Luton Town']},
+    {q:'Which club has the nickname The Toffees?',a:['Everton'],mc:['Everton','Burnley','Leicester City','Watford']},
+    {q:'Which PL club plays at Selhurst Park?',a:['Crystal Palace','Palace'],mc:['Crystal Palace','Charlton Athletic','Millwall','Wimbledon']},
+    {q:'Which club plays at the London Stadium?',a:['West Ham','West Ham United'],mc:['West Ham United','Leyton Orient','Charlton','Millwall']},
+    {q:'What colour shirts do Wolves wear?',a:['Gold','Yellow','Old Gold'],mc:['Gold and Black','Red and White','Blue and White','Green and Yellow']},
+    {q:'Which club plays at Craven Cottage?',a:['Fulham'],mc:['Fulham','QPR','Brentford','Chelsea']},
+    {q:'Which PL club is nicknamed The Cherries?',a:['Bournemouth','AFC Bournemouth'],mc:['Bournemouth','Watford','Bristol City','Luton']},
+    {q:'At which ground do Arsenal play?',a:['Emirates','Emirates Stadium'],mc:['Emirates Stadium','Highbury','Wembley','White Hart Lane']},
+    {q:'Which club plays at Goodison Park?',a:['Everton'],mc:['Everton','Liverpool','Tranmere Rovers','Blackburn']},
+    {q:'What is the nickname of Newcastle United?',a:['Magpies','The Magpies'],mc:['The Magpies','The Toon','The Geordies','Black and Whites']},
+    {q:'Which PL club plays at Villa Park?',a:['Aston Villa','Villa'],mc:['Aston Villa','Birmingham City','West Bromwich Albion','Coventry City']},
+    {q:'Which club has the nickname The Hornets?',a:['Watford'],mc:['Watford','Norwich City','Oxford United','Burton Albion']},
+  ]},
+  // 5
+  {id:'players',title:'PL Players',cat:'Premier League',questions:[
+    {q:'Which player scored 44 PL goals in 2023-24?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Ollie Watkins','Cole Palmer']},
+    {q:'Who won PL Young Player of the Season in 2023-24?',a:['Cole Palmer','Palmer'],mc:['Cole Palmer','Bukayo Saka','Phil Foden','Kobbie Mainoo']},
+    {q:'Who scored the famous bicycle kick for Man Utd vs Man City in 2011?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Cristiano Ronaldo','Robin van Persie','Carlos Tevez']},
+    {q:'Which Liverpool player scored 32 PL goals in 2017-18?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Roberto Firmino','Sadio Mane','Philippe Coutinho']},
+    {q:'Who is the only player to win the PL with 3 different clubs?',a:['Nicolas Anelka','Anelka'],mc:['Nicolas Anelka','Ashley Cole','Sol Campbell','Robbie Keane']},
+    {q:'Who scored 30 goals in 2022-23 for Tottenham?',a:['Harry Kane','Kane'],mc:['Harry Kane','Son Heung-min','Richarlison','Dejan Kulusevski']},
+    {q:'Which player won PL Player of the Season in 2021-22?',a:['Kevin De Bruyne','De Bruyne'],mc:['Kevin De Bruyne','Mohamed Salah','Virgil van Dijk','Harry Kane']},
+    {q:'Who was the first teenager to score in a PL north west derby?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Phil Foden','Marcus Rashford','Ryan Giggs']},
+    {q:'Which player has started the most PL games ever?',a:['Gareth Barry','Barry'],mc:['Gareth Barry','Ryan Giggs','Frank Lampard','David James']},
+    {q:'Who scored the most PL goals for Arsenal?',a:['Thierry Henry','Henry'],mc:['Thierry Henry','Ian Wright','Robin van Persie','Olivier Giroud']},
+    {q:'Which player scored 5 goals in a single PL game in 2022?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Jermain Defoe','Andy Cole']},
+    {q:'Who wore the number 7 shirt for Man Utd before Cristiano Ronaldo?',a:['David Beckham','Beckham'],mc:['David Beckham','Eric Cantona','Bryan Robson','George Best']},
+  ]},
+  // 6
+  {id:'ballon_dor_winners',title:'Ballon d\'Or Winners',cat:'World Football',questions:[
+    {q:'Who won the Ballon d\'Or in 2023?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Erling Haaland','Kylian Mbappe','Vinicius Junior']},
+    {q:'Who won the Ballon d\'Or in 2022?',a:['Karim Benzema','Benzema'],mc:['Karim Benzema','Kylian Mbappe','Luka Modric','Sadio Mane']},
+    {q:'Who won the Ballon d\'Or in 2018?',a:['Luka Modric','Modric'],mc:['Luka Modric','Cristiano Ronaldo','Lionel Messi','Kylian Mbappe']},
+    {q:'How many Ballons d\'Or has Lionel Messi won?',a:['8'],mc:['8','7','6','9']},
+    {q:'How many Ballons d\'Or has Cristiano Ronaldo won?',a:['5'],mc:['5','4','6','7']},
+    {q:'Who was the first player to win the Ballon d\'Or?',a:['Stanley Matthews','Matthews'],mc:['Stanley Matthews','Alfredo di Stefano','Raymond Kopa','Johan Cruyff']},
+    {q:'Who won the Ballon d\'Or in 2024?',a:['Rodri'],mc:['Rodri','Vinicius Junior','Kylian Mbappe','Erling Haaland']},
+    {q:'Which player won the Ballon d\'Or 3 times in a row from 2019-2021?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Luka Modric','Robert Lewandowski']},
+    {q:'Who won the Ballon d\'Or in 2004 and 2005?',a:['Ronaldinho'],mc:['Ronaldinho','Ronaldo','Thierry Henry','Zinedine Zidane']},
+    {q:'Who was the first non-European to win the Ballon d\'Or?',a:['George Weah','Weah'],mc:['George Weah','Ronaldo','Rivaldo','Ronaldinho']},
+    {q:'Who won the Ballon d\'Or in 1998?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Ronaldo','Roberto Baggio','Davor Suker']},
+    {q:'Who won back-to-back Ballons d\'Or in 2007 and 2008?',a:['Kaka','Ricardo Kaka'],mc:['Kaka','Cristiano Ronaldo','Lionel Messi','Ronaldinho']},
+  ]},
+  // 7
+  {id:'ballon_dor_nominees',title:'Ballon d\'Or Nominees',cat:'World Football',questions:[
+    {q:'Who finished 2nd in the 2023 Ballon d\'Or?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Kylian Mbappe','Vinicius Junior','Kevin De Bruyne']},
+    {q:'Who finished 2nd in the 2022 Ballon d\'Or?',a:['Sadio Mane','Mane'],mc:['Sadio Mane','Kylian Mbappe','Mohamed Salah','Robert Lewandowski']},
+    {q:'Which player finished 2nd to Luka Modric in 2018?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Kylian Mbappe','Antoine Griezmann']},
+    {q:'Who was controversially left off the 2021 Ballon d\'Or shortlist?',a:['Robert Lewandowski','Lewandowski'],mc:['Robert Lewandowski','Sergio Ramos','Harry Kane','Romelu Lukaku']},
+    {q:'Which goalkeeper has been nominated for Ballon d\'Or most recently?',a:['Gianluigi Buffon','Buffon'],mc:['Gianluigi Buffon','Manuel Neuer','Iker Casillas','Thibaut Courtois']},
+    {q:'Who finished 3rd in the 2023 Ballon d\'Or?',a:['Kylian Mbappe','Mbappe'],mc:['Kylian Mbappe','Vinicius Junior','Kevin De Bruyne','Rodri']},
+    {q:'Which defender won the Ballon d\'Or in 2006?',a:['Fabio Cannavaro','Cannavaro'],mc:['Fabio Cannavaro','Rio Ferdinand','John Terry','Roberto Ayala']},
+    {q:'Who was the youngest ever Ballon d\'Or nominee?',a:['Cesc Fabregas','Fabregas'],mc:['Cesc Fabregas','Kylian Mbappe','Wayne Rooney','Lionel Messi']},
+    {q:'Which Brazilian won the Ballon d\'Or in 1997?',a:['Ronaldo'],mc:['Ronaldo','Rivaldo','Ronaldinho','Roberto Carlos']},
+    {q:'Who finished 2nd in the 2024 Ballon d\'Or?',a:['Vinicius Junior','Vinicius'],mc:['Vinicius Junior','Kylian Mbappe','Erling Haaland','Lamine Yamal']},
+    {q:'Which player has finished 2nd in the Ballon d\'Or the most times?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Luka Modric','Thierry Henry']},
+    {q:'Who won the 2020 Ballon d\'Or (not awarded due to COVID)?',a:['Robert Lewandowski','Lewandowski'],mc:['Robert Lewandowski','Lionel Messi','Cristiano Ronaldo','Neymar']},
+  ]},
+  // 8
+  {id:'ucl_managers',title:'Champions League Managers',cat:'World Football',questions:[
+    {q:'Who managed Real Madrid to 3 consecutive UCL titles from 2016-2018?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Carlo Ancelotti','Jose Mourinho','Rafael Benitez']},
+    {q:'Who managed Liverpool to the 2018-19 UCL title?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Brendan Rodgers','Rafael Benitez','Roy Evans']},
+    {q:'Who managed Chelsea to the 2020-21 UCL title?',a:['Thomas Tuchel','Tuchel'],mc:['Thomas Tuchel','Frank Lampard','Jose Mourinho','Roberto Di Matteo']},
+    {q:'Who managed Man City to their first UCL title in 2023?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Roberto Mancini','Mark Hughes','Brian Kidd']},
+    {q:'Who managed Bayern Munich to the 2019-20 UCL title?',a:['Hansi Flick','Flick'],mc:['Hansi Flick','Niko Kovac','Jupp Heynckes','Carlo Ancelotti']},
+    {q:'Who managed Real Madrid to the 2021-22 UCL title?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Zinedine Zidane','Jose Mourinho','Julen Lopetegui']},
+    {q:'Who is the only manager to win the UCL with 3 different clubs?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Jose Mourinho','Pep Guardiola','Alex Ferguson']},
+    {q:'Who managed Barcelona to the treble in 2008-09?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Frank Rijkaard','Johan Cruyff','Louis van Gaal']},
+    {q:'Who managed Chelsea to the 2011-12 UCL title?',a:['Roberto Di Matteo','Di Matteo'],mc:['Roberto Di Matteo','Jose Mourinho','Andre Villas-Boas','Guus Hiddink']},
+    {q:'Who managed Borussia Dortmund to the 2012-13 UCL final?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Thomas Tuchel','Peter Bosz','Lucien Favre']},
+    {q:'Who managed Ajax to the 2018-19 UCL semi-final as underdogs?',a:['Erik ten Hag','ten Hag'],mc:['Erik ten Hag','Peter Bosz','Frank de Boer','Ronald Koeman']},
+    {q:'Who managed Real Madrid to their record 14th UCL title in 2022?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Zinedine Zidane','Fabio Capello','Vicente del Bosque']},
+  ]},
+  // 9
+  {id:'world_cup',title:'World Cup General',cat:'World Football',questions:[
+    {q:'Which country has won the most World Cups?',a:['Brazil'],mc:['Brazil','Germany','Italy','Argentina']},
+    {q:'Who won the 2022 World Cup?',a:['Argentina'],mc:['Argentina','France','Croatia','Morocco']},
+    {q:'Who is the all-time top scorer at World Cups?',a:['Miroslav Klose','Klose'],mc:['Miroslav Klose','Ronaldo','Gerd Muller','Just Fontaine']},
+    {q:'Which country hosted the 2022 World Cup?',a:['Qatar'],mc:['Qatar','Russia','Brazil','South Africa']},
+    {q:'Who scored the winning penalty in the 2022 World Cup final?',a:['Gonzalo Montiel','Montiel'],mc:['Gonzalo Montiel','Lionel Messi','Kylian Mbappe','Angel Di Maria']},
+    {q:'Who won the 2018 World Cup?',a:['France'],mc:['France','Croatia','Belgium','England']},
+    {q:'Which player has appeared in the most World Cup matches?',a:['Lothar Matthaus','Matthaus'],mc:['Lothar Matthaus','Lionel Messi','Cristiano Ronaldo','Paolo Maldini']},
+    {q:'Who scored a hat-trick in the 2022 World Cup final?',a:['Kylian Mbappe','Mbappe'],mc:['Kylian Mbappe','Lionel Messi','Olivier Giroud','Antoine Griezmann']},
+    {q:'Which country won the first ever World Cup in 1930?',a:['Uruguay'],mc:['Uruguay','Argentina','Brazil','Italy']},
+    {q:'Who won the 2014 World Cup?',a:['Germany'],mc:['Germany','Argentina','Brazil','Netherlands']},
+    {q:'How many World Cup goals did Just Fontaine score in one tournament?',a:['13'],mc:['13','11','9','10']},
+    {q:'Which country has hosted the World Cup the most times?',a:['Brazil','Mexico'],mc:['Brazil','Italy','Germany','Mexico']},
+  ]},
+  // 10
+  {id:'messi_ronaldo',title:'Messi vs Ronaldo',cat:'World Football',questions:[
+    {q:'How many Ballons d\'Or has Messi won?',a:['8'],mc:['8','7','6','9']},
+    {q:'How many Ballons d\'Or has Ronaldo won?',a:['5'],mc:['5','4','6','7']},
+    {q:'Who scored more PL goals - Messi or Ronaldo?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Neither - Messi never played in PL']},
+    {q:'Who has more Champions League titles?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Both never won it']},
+    {q:'Who won the 2022 World Cup?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Neither','Both']},
+    {q:'Who scored more goals for their country?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Messi by one goal']},
+    {q:'Who has more La Liga titles?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Neither - equal','Ronaldo by 2']},
+    {q:'Who won the 2010 Ballon d\'Or?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Xavi','Andres Iniesta']},
+    {q:'At which club did Ronaldo win his first Champions League?',a:['Manchester United','Man Utd'],mc:['Manchester United','Real Madrid','Juventus','Sporting CP']},
+    {q:'Which club did Messi leave Barcelona for in 2021?',a:['PSG','Paris Saint-Germain','Paris SG'],mc:['PSG','Manchester City','Inter Miami','Bayern Munich']},
+    {q:'Who has more Serie A goals?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Messi never played in Serie A']},
+    {q:'Who scored a hat-trick against the other in El Clasico?',a:['Both','Messi and Ronaldo','Neither - both'],mc:['Both have done it','Only Messi','Only Ronaldo','Neither has done it']},
+  ]},
+  // 11
+  {id:'transfers',title:'Transfer Fees',cat:'World Football',questions:[
+    {q:'Who is the most expensive player transfer of all time?',a:['Neymar'],mc:['Neymar','Kylian Mbappe','Cristiano Ronaldo','Gareth Bale']},
+    {q:'How much did PSG pay for Neymar in 2017?',a:['222 million','222'],mc:['222 million euros','150 million euros','180 million euros','200 million euros']},
+    {q:'Who became the most expensive British player ever when joining Man City?',a:['Jack Grealish','Grealish'],mc:['Jack Grealish','Raheem Sterling','John Stones','Kyle Walker']},
+    {q:'Which club paid a record fee for Kylian Mbappe in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Bayern Munich']},
+    {q:'How much did Man Utd pay for Paul Pogba in 2016?',a:['89 million','89'],mc:['89 million','75 million','100 million','65 million']},
+    {q:'Which player cost Chelsea 115 million euros in 2023?',a:['Moises Caicedo','Caicedo'],mc:['Moises Caicedo','Enzo Fernandez','Mykhailo Mudryk','Romeo Lavia']},
+    {q:'How much did Real Madrid pay for Gareth Bale in 2013?',a:['100 million','100'],mc:['100 million','85 million','91 million','95 million']},
+    {q:'Which player did Arsenal buy for a then club-record 72 million in 2023?',a:['Declan Rice','Rice'],mc:['Declan Rice','Kai Havertz','Leandro Trossard','Thomas Partey']},
+    {q:'Who did Liverpool sign for 75 million in 2018 as a goalkeeper?',a:['Alisson','Alisson Becker'],mc:['Alisson','Jordan Pickford','Ederson','David De Gea']},
+    {q:'Which player joined Chelsea for a British record fee of 97 million in 2023?',a:['Enzo Fernandez','Fernandez'],mc:['Enzo Fernandez','Moises Caicedo','Mykhailo Mudryk','Wesley Fofana']},
+    {q:'How much did Man City pay for Erling Haaland in 2022?',a:['51 million','51'],mc:['51 million','75 million','100 million','60 million']},
+    {q:'Which club signed Cristiano Ronaldo from Sporting CP in 2003?',a:['Manchester United','Man Utd'],mc:['Manchester United','Real Madrid','Arsenal','Liverpool']},
+  ]},
+  // 12
+  {id:'arsenal',title:'Arsenal Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who is Arsenal\'s all-time top scorer?',a:['Thierry Henry','Henry'],mc:['Thierry Henry','Ian Wright','Robin van Persie','Olivier Giroud']},
+    {q:'In what year did Arsenal move to the Emirates Stadium?',a:['2006'],mc:['2006','2004','2008','2002']},
+    {q:'Who managed Arsenal to the 2003-04 Invincibles season?',a:['Arsene Wenger','Wenger'],mc:['Arsene Wenger','George Graham','Bruce Rioch','Terry Neill']},
+    {q:'What is Arsenal\'s nickname?',a:['The Gunners','Gunners'],mc:['The Gunners','The Cannon','The Reds','The North Londoners']},
+    {q:'How many goals did Thierry Henry score for Arsenal?',a:['228'],mc:['228','208','175','250']},
+    {q:'Which Arsenal player won the PL Golden Boot in 2022-23?',a:['Bukayo Saka','Saka'],mc:['Bukayo Saka','Martin Odegaard','Gabriel Martinelli','Leandro Trossard']},
+    {q:'Who did Arsenal sign from Brighton for 65 million in 2022?',a:['Ben White','White'],mc:['Ben White','Oleksandr Zinchenko','Gabriel Magalhaes','Takehiro Tomiyasu']},
+    {q:'What year did Arsenal last win the Premier League?',a:['2004'],mc:['2004','2002','1998','2005']},
+    {q:'Who scored Arsenal\'s famous last-minute title winning goal in 1989?',a:['Michael Thomas','Thomas'],mc:['Michael Thomas','Alan Smith','Paul Merson','David Rocastle']},
+    {q:'Which country is Arsenal captain Martin Odegaard from?',a:['Norway'],mc:['Norway','Sweden','Denmark','Netherlands']},
+    {q:'Who is Arsenal\'s current manager in 2025-26?',a:['Mikel Arteta','Arteta'],mc:['Mikel Arteta','Unai Emery','Patrick Vieira','Freddie Ljungberg']},
+    {q:'What squad number does Bukayo Saka wear at Arsenal?',a:['7'],mc:['7','11','29','14']},
+  ]},
+  // 13
+  {id:'liverpool',title:'Liverpool Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who is Liverpool\'s all-time top scorer?',a:['Ian Rush','Rush'],mc:['Ian Rush','Mohamed Salah','Steven Gerrard','Robbie Fowler']},
+    {q:'How many European Cups/Champions Leagues has Liverpool won?',a:['6'],mc:['6','5','7','4']},
+    {q:'Who scored the famous goal in the 2005 UCL final comeback?',a:['Steven Gerrard','Gerrard'],mc:['Steven Gerrard','Djibril Cisse','Vladimir Smicer','Xabi Alonso']},
+    {q:'In which year did Liverpool win the Champions League in Istanbul?',a:['2005'],mc:['2005','2007','2001','2003']},
+    {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot'],mc:['Arne Slot','Jurgen Klopp','Brendan Rodgers','Roy Hodgson']},
+    {q:'What is Anfield\'s famous standing section called?',a:['The Kop','Kop'],mc:['The Kop','The Reds End','The Shankly Stand','The Hillsborough End']},
+    {q:'Who signed Mohamed Salah for Liverpool?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Brendan Rodgers','Rafael Benitez','Roy Evans']},
+    {q:'Which player scored 32 goals in Liverpool\'s 2017-18 PL season?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Roberto Firmino','Sadio Mane','Philippe Coutinho']},
+    {q:'How many league titles has Liverpool won in total?',a:['19'],mc:['19','18','20','17']},
+    {q:'Who scored a hat-trick for Liverpool against Leeds on his debut in 2021?',a:['Diogo Jota','Jota'],mc:['Diogo Jota','Roberto Firmino','Mohamed Salah','Sadio Mane']},
+    {q:'Which legendary manager said This is Anfield?',a:['Bill Shankly','Shankly'],mc:['Bill Shankly','Bob Paisley','Kenny Dalglish','Joe Fagan']},
+    {q:'In what year did Liverpool win their first Premier League title?',a:['2020'],mc:['2020','2019','2018','2022']},
+  ]},
+  // 14
+  {id:'man_utd',title:'Manchester United Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who is Manchester United\'s all-time top scorer?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Bobby Charlton','Denis Law','George Best']},
+    {q:'How many Premier League titles has Man Utd won?',a:['13'],mc:['13','11','14','10']},
+    {q:'Which year did Man Utd win the treble?',a:['1999'],mc:['1999','1997','2001','2003']},
+    {q:'Who scored the winning goal in the 1999 UCL final?',a:['Ole Gunnar Solskjaer','Solskjaer'],mc:['Ole Gunnar Solskjaer','Teddy Sheringham','Andy Cole','Peter Schmeichel']},
+    {q:'What is Old Trafford\'s nickname?',a:['Theatre of Dreams'],mc:['Theatre of Dreams','Red Cathedral','The Fortress','Pride of Manchester']},
+    {q:'Which number shirt did Cristiano Ronaldo wear at Man Utd?',a:['7'],mc:['7','11','10','9']},
+    {q:'Who was Man Utd manager when they last won the PL in 2012-13?',a:['Alex Ferguson','Ferguson','Sir Alex Ferguson'],mc:['Alex Ferguson','David Moyes','Jose Mourinho','Louis van Gaal']},
+    {q:'Which player made the most PL appearances for Man Utd?',a:['Ryan Giggs','Giggs'],mc:['Ryan Giggs','Paul Scholes','Gary Neville','Roy Keane']},
+    {q:'Who did Man Utd beat in the 1999 UCL final?',a:['Bayern Munich','Bayern'],mc:['Bayern Munich','Juventus','Real Madrid','Arsenal']},
+    {q:'Which Man Utd player won the 2003 Ballon d\'Or?',a:['Pavel Nedved','Nedved'],mc:['Pavel Nedved','Thierry Henry','Zinedine Zidane','Ronaldinho']},
+    {q:'Who scored Man Utd\'s famous injury time winner vs Sheffield Wednesday in 1993?',a:['Steve Bruce','Bruce'],mc:['Steve Bruce','Mark Hughes','Eric Cantona','Brian McClair']},
+    {q:'In which year was Manchester United founded?',a:['1878'],mc:['1878','1902','1885','1892']},
+  ]},
+  // 15
+  {id:'man_city',title:'Manchester City Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who has managed Man City the longest?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Roberto Mancini','Manuel Pellegrini','Brian Horton']},
+    {q:'What is Man City\'s nickname?',a:['The Citizens','Citizens','Blues'],mc:['The Citizens','The Blue Moons','The Sky Blues','City Blues']},
+    {q:'Who scored the famous 93:20 title-winning goal in 2012?',a:['Sergio Aguero','Aguero'],mc:['Sergio Aguero','Mario Balotelli','Edin Dzeko','Carlos Tevez']},
+    {q:'How many consecutive PL titles did Man City win from 2020-2024?',a:['4'],mc:['4','3','5','2']},
+    {q:'Who is Man City\'s all-time top scorer?',a:['Sergio Aguero','Aguero'],mc:['Sergio Aguero','Colin Bell','Tommy Johnson','Erling Haaland']},
+    {q:'What year did Man City win their first Champions League?',a:['2023'],mc:['2023','2019','2021','2022']},
+    {q:'Who scored the winning goal in the 2023 UCL final?',a:['Rodri'],mc:['Rodri','Kevin De Bruyne','Bernardo Silva','Phil Foden']},
+    {q:'Which stadium do Man City play at?',a:['Etihad','Etihad Stadium'],mc:['Etihad Stadium','City of Manchester Stadium','Maine Road','Wembley']},
+    {q:'Who did Man City sign from Borussia Dortmund in 2022 for 51 million?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Jadon Sancho','Jude Bellingham','Julian Brandt']},
+    {q:'Who scored 36 PL goals for Man City in 2022-23?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Phil Foden','Kevin De Bruyne','Riyad Mahrez']},
+    {q:'Which country does Kevin De Bruyne play for?',a:['Belgium'],mc:['Belgium','Netherlands','Germany','France']},
+    {q:'Who did Man City sign from Atletico Madrid in 2023?',a:['Matheus Nunes','Nunes'],mc:['Matheus Nunes','Joao Felix','Julian Alvarez','Rodri']},
+  ]},
+  // 16
+  {id:'chelsea',title:'Chelsea Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who is Chelsea\'s all-time top scorer?',a:['Frank Lampard','Lampard'],mc:['Frank Lampard','Bobby Tambling','Kerry Dixon','Didier Drogba']},
+    {q:'How many UCL titles has Chelsea won?',a:['2'],mc:['2','1','3','4']},
+    {q:'Which owner transformed Chelsea into a superclub from 2003?',a:['Roman Abramovich','Abramovich'],mc:['Roman Abramovich','Todd Boehly','Ken Bates','Bruce Buck']},
+    {q:'Who scored Chelsea\'s winning penalty in the 2012 UCL final?',a:['Didier Drogba','Drogba'],mc:['Didier Drogba','Juan Mata','Frank Lampard','Ashley Cole']},
+    {q:'What is Chelsea\'s nickname?',a:['The Blues','Blues'],mc:['The Blues','The Pensioners','The Lions','The Stamford Boys']},
+    {q:'Who managed Chelsea to the 2020-21 UCL title?',a:['Thomas Tuchel','Tuchel'],mc:['Thomas Tuchel','Frank Lampard','Jose Mourinho','Antonio Conte']},
+    {q:'How many PL titles has Chelsea won?',a:['6'],mc:['6','5','4','7']},
+    {q:'Who scored the most goals for Chelsea in a single season?',a:['Jimmy Greaves','Greaves'],mc:['Jimmy Greaves','Frank Lampard','Didier Drogba','Kerry Dixon']},
+    {q:'Which player did Chelsea sign from Brighton for 115 million in 2023?',a:['Moises Caicedo','Caicedo'],mc:['Moises Caicedo','Enzo Fernandez','Mykhailo Mudryk','Wesley Fofana']},
+    {q:'Who is Chelsea\'s current manager in 2025-26?',a:['Enzo Maresca','Maresca'],mc:['Enzo Maresca','Mauricio Pochettino','Frank Lampard','Graham Potter']},
+    {q:'In which year was Chelsea Football Club founded?',a:['1905'],mc:['1905','1892','1899','1910']},
+    {q:'Who scored the famous header in the 2021 UCL final?',a:['Kai Havertz','Havertz'],mc:['Kai Havertz','Timo Werner','Christian Pulisic','Mason Mount']},
+  ]},
+  // 17
+  {id:'real_madrid',title:'Real Madrid Quiz',cat:'Club Quizzes',questions:[
+    {q:'How many Champions Leagues has Real Madrid won?',a:['15'],mc:['15','14','13','12']},
+    {q:'Who is Real Madrid\'s all-time top scorer?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Raul','Karim Benzema','Alfredo di Stefano']},
+    {q:'What is Real Madrid\'s stadium called?',a:['Santiago Bernabeu','Bernabeu'],mc:['Santiago Bernabeu','Estadio Metropolitano','Nou Camp','Ramon Sanchez Pizjuan']},
+    {q:'Who managed Real Madrid to 3 consecutive UCL titles 2016-2018?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Carlo Ancelotti','Jose Mourinho','Rafael Benitez']},
+    {q:'For how much did Real Madrid sign Gareth Bale in 2013?',a:['100 million','100'],mc:['100 million','91 million','85 million','75 million']},
+    {q:'Who scored the winning goal in the 2022 UCL final?',a:['Vinicius Junior','Vinicius'],mc:['Vinicius Junior','Karim Benzema','Federico Valverde','Luka Modric']},
+    {q:'Who did Kylian Mbappe join from PSG in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Bayern Munich']},
+    {q:'What colour shirts does Real Madrid traditionally wear?',a:['White'],mc:['White','Yellow','Red','Blue']},
+    {q:'Who won the Ballon d\'Or while at Real Madrid in 2022?',a:['Karim Benzema','Benzema'],mc:['Karim Benzema','Luka Modric','Vinicius Junior','Toni Kroos']},
+    {q:'How many La Liga titles did Cristiano Ronaldo win with Real Madrid?',a:['2'],mc:['2','3','4','1']},
+    {q:'Who is Real Madrid\'s captain in 2025-26?',a:['Luka Modric','Modric'],mc:['Luka Modric','Sergio Ramos','Karim Benzema','Dani Carvajal']},
+    {q:'Who scored in 5 consecutive UCL finals?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Karim Benzema','Gareth Bale','Raul']},
+  ]},
+  // 18
+  {id:'barcelona',title:'Barcelona Quiz',cat:'Club Quizzes',questions:[
+    {q:'Who is Barcelona\'s all-time top scorer?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Ronaldo','Samuel Etoo','Johan Cruyff']},
+    {q:'How many Champions Leagues has Barcelona won?',a:['5'],mc:['5','6','4','7']},
+    {q:'What is Barcelona\'s stadium called?',a:['Camp Nou','Nou Camp'],mc:['Camp Nou','Wanda Metropolitano','El Bernabeu','Estadio Olimpic']},
+    {q:'Who managed Barcelona to 2 UCL titles in 2006 and 2009?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Frank Rijkaard','Johan Cruyff','Tito Vilanova']},
+    {q:'Which year did Barcelona complete the treble under Guardiola?',a:['2009'],mc:['2009','2011','2006','2013']},
+    {q:'Who scored the winning goal in the 2009 UCL final?',a:['Samuel Etoo','Etoo'],mc:['Samuel Etoo','Lionel Messi','Thierry Henry','Xavi']},
+    {q:'Which player did Barcelona sign from Neymar\'s fee money in 2017?',a:['Philippe Coutinho','Coutinho'],mc:['Philippe Coutinho','Ousmane Dembele','Nelson Semedo','Paulinho']},
+    {q:'Who left Barcelona for PSG in 2021 due to financial problems?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Antoine Griezmann','Luis Suarez','Sergio Busquets']},
+    {q:'Who is Barcelona\'s president in 2025-26?',a:['Joan Laporta','Laporta'],mc:['Joan Laporta','Josep Maria Bartomeu','Sandro Rosell','Enric Masip']},
+    {q:'What is Barcelona\'s famous youth academy called?',a:['La Masia'],mc:['La Masia','La Cantera','El Barca','La Academia']},
+    {q:'Which player scored the iconic goal against Getafe in 2007?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Ronaldinho','Samuel Etoo','Thierry Henry']},
+    {q:'Who did Barcelona beat in the 2015 UCL final?',a:['Juventus'],mc:['Juventus','Real Madrid','Bayern Munich','Chelsea']},
+  ]},
+  // 19
+  {id:'ucl_general',title:'Champions League General',cat:'World Football',questions:[
+    {q:'Which club has won the most Champions Leagues?',a:['Real Madrid'],mc:['Real Madrid','AC Milan','Bayern Munich','Liverpool']},
+    {q:'Who is the all-time top scorer in UCL history?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Raul','Karim Benzema']},
+    {q:'Which city hosted the 2023 UCL final?',a:['Istanbul'],mc:['Istanbul','London','Paris','Madrid']},
+    {q:'Who scored the fastest UCL goal?',a:['Roy Makaay','Makaay'],mc:['Roy Makaay','Sergio Aguero','Ryan Giggs','Raul']},
+    {q:'Which club won the first ever Champions League in 1956?',a:['Real Madrid'],mc:['Real Madrid','AC Milan','Benfica','Barcelona']},
+    {q:'Who scored for Man Utd in the 2008 UCL final?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Wayne Rooney','Carlos Tevez','Paul Scholes']},
+    {q:'Which team did Liverpool beat 4-0 in a UCL semi-final comeback in 2019?',a:['Barcelona'],mc:['Barcelona','PSG','Bayern Munich','Roma']},
+    {q:'Who scored the bicycle kick winner in the 2018 UCL final?',a:['Gareth Bale','Bale'],mc:['Gareth Bale','Karim Benzema','Cristiano Ronaldo','Marcelo']},
+    {q:'How many times has an English club won the UCL?',a:['15'],mc:['15','12','10','18']},
+    {q:'Which player has won the UCL the most times?',a:['Paco Gento','Gento'],mc:['Paco Gento','Cristiano Ronaldo','Clarence Seedorf','Karim Benzema']},
+    {q:'Who managed Liverpool to the 2019 UCL title?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Rafael Benitez','Brendan Rodgers','Bob Paisley']},
+    {q:'Which club lost 3 consecutive UCL finals from 2013-2015?',a:['Atletico Madrid','Atletico'],mc:['Atletico Madrid','PSG','Borussia Dortmund','Bayer Leverkusen']},
+  ]},
+  // 20
+  {id:'world_football',title:'World Football General',cat:'World Football',questions:[
+    {q:'Which country won Euro 2024?',a:['Spain'],mc:['Spain','England','France','Germany']},
+    {q:'Who is the all-time top scorer for England?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Bobby Charlton','Gary Lineker','Harry Kane']},
+    {q:'Which club did Zinedine Zidane retire from as a player?',a:['Real Madrid'],mc:['Real Madrid','Juventus','Bordeaux','Marseille']},
+    {q:'Who won the 2016 European Championship?',a:['Portugal'],mc:['Portugal','France','Wales','Germany']},
+    {q:'Which country does Erling Haaland play for?',a:['Norway'],mc:['Norway','Denmark','Sweden','Iceland']},
+    {q:'Who won the Copa America 2024?',a:['Argentina'],mc:['Argentina','Colombia','Uruguay','Brazil']},
+    {q:'Which club did Kylian Mbappe join in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Arsenal']},
+    {q:'Who is the most capped international player of all time?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Luka Modric','Sergio Ramos']},
+    {q:'Which country won the first ever European Championship in 1960?',a:['Soviet Union','USSR'],mc:['Soviet Union','Yugoslavia','France','Spain']},
+    {q:'Who scored the fastest international goal ever?',a:['Hakan Sukur','Sukur'],mc:['Hakan Sukur','Clint Dempsey','Robbie Fowler','Marc Wilmots']},
+    {q:'Which country has appeared in the most World Cup finals?',a:['Germany','West Germany'],mc:['Germany','Brazil','Argentina','Italy']},
+    {q:'Who won the 2021 Copa America?',a:['Argentina'],mc:['Argentina','Brazil','Colombia','Chile']},
   ]},
 ];
+
 
 function MultipleChoiceQuiz({quiz,onFinish}){
   const [idx,setIdx]=useState(0);
@@ -998,9 +1259,14 @@ function MultipleChoiceQuiz({quiz,onFinish}){
   const [chosen,setChosen]=useState(null);
   const [score,setScore]=useState(0);
   const [opts]=useState(()=>quiz.questions.map((q,i)=>{
+    // Use curated mc options if available, otherwise generate from other answers
+    if(q.mc&&q.mc.length>=4){
+      return [...q.mc].sort(()=>Math.random()-0.5);
+    }
     const correct=q.a[0];
-    const pool=quiz.questions.filter((_,j)=>j!==i).map(x=>x.a[0]);
-    return [correct,...pool.sort(()=>Math.random()-0.5).slice(0,3)].sort(()=>Math.random()-0.5);
+    const pool=[...new Set(quiz.questions.filter((_,j)=>j!==i).map(x=>x.a[0]))];
+    const unique=[correct,...pool.filter(p=>p!==correct).sort(()=>Math.random()-0.5).slice(0,3)];
+    return unique.sort(()=>Math.random()-0.5);
   }));
   function pick(opt){
     if(chosen!==null) return;
@@ -1022,7 +1288,6 @@ function MultipleChoiceQuiz({quiz,onFinish}){
       <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:14}}>
         <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
         <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-        {q.hint&&<div style={{fontSize:11,color:C.muted,marginTop:6,fontStyle:'italic'}}>Hint: {q.hint}</div>}
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
         {opts[idx].map((opt,i)=>{
@@ -1072,7 +1337,6 @@ function QuickFireQuiz({quiz,onFinish}){
       <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:12}}>
         <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
         <div style={{fontSize:17,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-        {q.hint&&<div style={{fontSize:11,color:C.muted,marginTop:6,fontStyle:'italic'}}>Hint: {q.hint}</div>}
       </div>
       <div style={{display:'flex',gap:8}}>
         <input ref={inputRef} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&draft.trim()&&!frozen)go(false);}} placeholder="Quick! Type your answer..." style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'12px 13px',outline:'none'}} autoFocus/>
@@ -1110,7 +1374,6 @@ function TypeAnswerQuiz({quiz,onFinish}){
       <div style={{background:C.d2,border:'1px solid '+(revealed[idx]?answers[idx]==='correct'?C.green:C.red:C.d4),borderRadius:14,padding:'18px 16px',marginBottom:14,transition:'border-color .3s'}}>
         <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
         <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-        {q.hint&&<div style={{fontSize:11,color:C.muted,marginTop:6,fontStyle:'italic'}}>Hint: {q.hint}</div>}
         {revealed[idx]&&answers[idx]==='wrong'&&<div style={{fontSize:12,color:C.red,marginTop:8,fontWeight:700}}>Answer: {q.a[0]}</div>}
       </div>
       <div style={{display:'flex',gap:8}}>
