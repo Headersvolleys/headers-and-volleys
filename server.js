@@ -1870,7 +1870,8 @@ function PitchLineup({lineup, side, teamCol: tc}) {
         const yPct = 92 - ((rowNum - 1) / Math.max(maxRow - 1, 1)) * 84;
         const row = byRow[rowNum];
         return row.map((player, pi) => {
-          const xPct = row.length === 1 ? 50 : 15 + (pi / (row.length - 1)) * 70;
+          const spread = row.length <= 2 ? 30 : row.length === 3 ? 46 : row.length === 4 ? 58 : 68;
+          const xPct = row.length === 1 ? 50 : (50 - spread/2) + (pi / (row.length - 1)) * spread;
           return(
             <div key={player?.id||pi} style={{
               position:'absolute',
