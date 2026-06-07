@@ -1989,7 +1989,6 @@ function MatchModal({match, onClose}){
 
   const STAT_ROWS = [
     ['Ball Possession','Possession'],
-    ['Expected Goals','xG'],
     ['Total Shots','Shots'],
     ['Shots on Goal','On Target'],
     ['Shots off Goal','Off Target'],
@@ -2006,6 +2005,9 @@ function MatchModal({match, onClose}){
     ['Pass accuracy','Pass %'],
     ['Goalkeeper Saves','GK Saves'],
   ];
+  // xG key varies by API-Football version - check all possible keys
+  const xGHome = homeStats['expected_goals'] ?? homeStats['Expected Goals'] ?? homeStats['xG'] ?? null;
+  const xGAway = awayStats['expected_goals'] ?? awayStats['Expected Goals'] ?? awayStats['xG'] ?? null;
 
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:500,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
@@ -2069,8 +2071,19 @@ function MatchModal({match, onClose}){
                       <Badge code={ac} size={20}/>
                     </div>
                   </div>
+                  {/* xG - shown if available from either source */}
+                  {(xGHome!=null||xGAway!=null)&&(
+                    <div style={{marginBottom:4}}>
+                      <StatBar label="xG (Official)" home={xGHome??0} away={xGAway??0} homeCol={homeCol} awayCol={awayCol}/>
+                    </div>
+                  )}
                   {understatXG&&(
-                    <StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={homeCol} awayCol={awayCol}/>
+                    <div style={{marginBottom:4}}>
+                      <StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={homeCol} awayCol={awayCol}/>
+                    </div>
+                  )}
+                  {!xGHome&&!xGAway&&!understatXG&&(
+                    <div style={{padding:'6px 0 10px',fontSize:11,color:C.muted,textAlign:'center'}}>xG data loading...</div>
                   )}
                   {STAT_ROWS.map(([key,label])=>{
                     const hv = homeStats[key];
