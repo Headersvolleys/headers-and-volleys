@@ -1848,15 +1848,15 @@ function PitchLineup({lineup, side, teamCol: tc}) {
         <rect x={W*0.35} y="6" width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        {/* Top penalty arc - manually calculated to sit just outside the box */}
-        <path d={"M "+(W*0.31)+" "+(H*0.205)+" A "+(H*0.11)+" "+(H*0.11)+" 0 0 0 "+(W*0.69)+" "+(H*0.205)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Top penalty arc - exact arc outside the box, bulging into pitch */}
+        <path d={"M 57 66 A 33 33 0 0 1 103 66"} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom box */}
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.35} y={H-6-H*0.08} width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        {/* Bottom penalty arc - sits just outside the box, curves toward centre */}
-        <path d={"M "+(W*0.31)+" "+(H-6-H*0.205)+" A "+(H*0.11)+" "+(H*0.11)+" 0 0 1 "+(W*0.69)+" "+(H-6-H*0.205)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom penalty arc - exact arc outside the box, bulging into pitch */}
+        <path d={"M 57 234 A 33 33 0 0 0 103 234"} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Corners */}
         <path d="M 4 16 A 10 10 0 0 1 14 6" fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M "+(W-4)+" 16 A 10 10 0 0 0 "+(W-14)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
@@ -1870,7 +1870,7 @@ function PitchLineup({lineup, side, teamCol: tc}) {
         const yPct = 92 - ((rowNum - 1) / Math.max(maxRow - 1, 1)) * 84;
         const row = byRow[rowNum];
         return row.map((player, pi) => {
-          const xPct = row.length === 1 ? 50 : 8 + (pi / (row.length - 1)) * 84;
+          const xPct = row.length === 1 ? 50 : 15 + (pi / (row.length - 1)) * 70;
           return(
             <div key={player?.id||pi} style={{
               position:'absolute',
