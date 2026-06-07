@@ -128,11 +128,15 @@ app.get('/api/af/lookup', async (req, res) => {
     // Map short names to full names that API-Football uses
     const EXPAND = {
       'man utd': 'manchester united', 'man united': 'manchester united',
-      'man city': 'manchester city', 'spurs': 'tottenham',
-      'nottm forest': 'nottingham', 'nott': 'nottingham',
-      'wolves': 'wolverhampton', 'west ham': 'west ham',
-      'newcastle': 'newcastle', 'brighton': 'brighton',
+      'man city': 'manchester city', 
+      'spurs': 'tottenham hotspur', 'tottenham': 'tottenham hotspur',
+      'nottm forest': 'nottingham forest', 'nottingham': 'nottingham forest',
+      'wolves': 'wolverhampton wanderers', 'wolverhampton': 'wolverhampton wanderers',
+      'west ham': 'west ham united',
+      'newcastle': 'newcastle united',
+      'brighton': 'brighton hove albion',
       'bournemouth': 'bournemouth', 'brentford': 'brentford',
+      'leeds': 'leeds united', 'sunderland': 'sunderland',
     };
     const norm = s => {
       const low = (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
