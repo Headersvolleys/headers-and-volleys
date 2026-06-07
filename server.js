@@ -1848,17 +1848,15 @@ function PitchLineup({lineup, side, teamCol: tc}) {
         <rect x={W*0.35} y="6" width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        {/* Top penalty arc - circle centred on penalty spot, clipped to only show outside box */}
-        <clipPath id="topArc"><rect x="0" y={H*0.2+1} width={W} height={H*0.12}/></clipPath>
-        <circle cx={W/2} cy={H*0.14} r={H*0.11} fill="none" stroke={lc} strokeWidth="1.2" clipPath="url(#topArc)"/>
+        {/* Top penalty arc - manually calculated to sit just outside the box */}
+        <path d={"M "+(W*0.31)+" "+(H*0.205)+" A "+(H*0.11)+" "+(H*0.11)+" 0 0 0 "+(W*0.69)+" "+(H*0.205)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom box */}
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.35} y={H-6-H*0.08} width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        {/* Bottom penalty arc - circle centred on penalty spot, clipped to only show outside box */}
-        <clipPath id="botArc"><rect x="0" y={H-6-H*0.32} width={W} height={H*0.12}/></clipPath>
-        <circle cx={W/2} cy={H-H*0.14} r={H*0.11} fill="none" stroke={lc} strokeWidth="1.2" clipPath="url(#botArc)"/>
+        {/* Bottom penalty arc - sits just outside the box, curves toward centre */}
+        <path d={"M "+(W*0.31)+" "+(H-6-H*0.205)+" A "+(H*0.11)+" "+(H*0.11)+" 0 0 1 "+(W*0.69)+" "+(H-6-H*0.205)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Corners */}
         <path d="M 4 16 A 10 10 0 0 1 14 6" fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M "+(W-4)+" 16 A 10 10 0 0 0 "+(W-14)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
