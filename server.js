@@ -256,6 +256,28 @@ async function fetchUnderstat(url) {
   return results;
 }
 
+// Understat match xG by date - finds home/away xG for a specific match
+app.get('/api/xg/match', async (req, res) => {
+  try {
+    const {home, away} = req.query;
+    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const dates = d.dates || [];
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+    const hn = norm(home), an = norm(away);
+    const match = dates.find(m => {
+      const fh = norm(m.h?.title), fa = norm(m.a?.title);
+      return (fh.includes(hn.slice(0,5))||hn.includes(fh.slice(0,5))) &&
+             (fa.includes(an.slice(0,5))||an.includes(fa.slice(0,5)));
+    });
+    if (!match) return res.json({found:false});
+    res.json({
+      found: true,
+      home: { xg: parseFloat(parseFloat(match.xg||0).toFixed(2)), team: match.h?.title },
+      away: { xg: parseFloat(parseFloat(match.xga||0).toFixed(2)), team: match.a?.title },
+    });
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
 // xG player stats for EPL 2025
 app.get('/api/xg/players', async (req, res) => {
   const cacheKey = 'understat_players_2025';
@@ -1735,8 +1757,8 @@ function PitchLineup({lineup, side}) {
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         {/* Top penalty spot */}
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        {/* Top penalty arc */}
-        <path d={"M "+(W*0.27)+" "+(H*0.2)+" A 28 28 0 0 1 "+(W*0.73)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Top penalty arc - curves away from box (downward into pitch) */}
+        <path d={"M "+(W*0.27)+" "+(H*0.2)+" A 28 28 0 0 0 "+(W*0.73)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom penalty area */}
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom 6-yard box */}
@@ -1745,8 +1767,8 @@ function PitchLineup({lineup, side}) {
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         {/* Bottom penalty spot */}
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        {/* Bottom penalty arc */}
-        <path d={"M "+(W*0.27)+" "+(H-6-H*0.2)+" A 28 28 0 0 0 "+(W*0.73)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom penalty arc - curves away from box (upward into pitch) */}
+        <path d={"M "+(W*0.27)+" "+(H-6-H*0.2)+" A 28 28 0 0 1 "+(W*0.73)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Corner arcs */}
         <path d="M 4 16 A 12 12 0 0 1 16 6" fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M "+(W-4)+" 16 A 12 12 0 0 0 "+(W-16)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
@@ -1800,6 +1822,7 @@ function MatchModal({match, onClose}){
   const [aForm, setAForm] = useState(null);
   const [tab, setTab] = useState('stats');
   const [lineupView, setLineupView] = useState('pitch');
+  const [understatXG, setUnderstatXG] = useState(null);
 
   const hc = TCODE[match.homeTeam?.name]||'???';
   const ac = TCODE[match.awayTeam?.name]||'???';
@@ -1825,6 +1848,11 @@ function MatchModal({match, onClose}){
       }
       setAfLoading(false);
     }).catch(()=>setAfLoading(false));
+    // Fetch Understat xG for this match
+    const hn2 = TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'';
+    const an2 = TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'';
+    fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2))
+      .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
     // Also fetch fd.org h2h and form
     fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
     if(match.homeTeam?.id){
@@ -1874,6 +1902,7 @@ function MatchModal({match, onClose}){
     ['Shots on Goal','On Target'],
     ['Shots off Goal','Off Target'],
     ['Blocked Shots','Blocked'],
+    ['Big Chances','Big Chances'],
     ['Corner Kicks','Corners'],
     ['Fouls','Fouls'],
     ['Offsides','Offsides'],
@@ -1882,6 +1911,8 @@ function MatchModal({match, onClose}){
     ['Saves','Saves'],
     ['Total passes','Passes'],
     ['Passes accurate','Acc. Passes'],
+    ['Pass accuracy','Pass %'],
+    ['Goalkeeper Saves','GK Saves'],
   ];
 
   return(
@@ -1946,6 +1977,9 @@ function MatchModal({match, onClose}){
                       <Badge code={ac} size={20}/>
                     </div>
                   </div>
+                  {understatXG&&(
+                    <StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={C.teal} awayCol={C.orange}/>
+                  )}
                   {STAT_ROWS.map(([key,label])=>{
                     const hv = homeStats[key];
                     const av = awayStats[key];
