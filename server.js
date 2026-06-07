@@ -1701,59 +1701,86 @@ function PitchLineup({lineup, side}) {
   const formation = lineup.formation || '4-3-3';
   const startXI = (lineup.startXI || []).map(p => p.player);
   const lines = formation.split('-').map(Number);
-  // Build rows: GK first, then outfield lines
   const rows = [[startXI[0]], ...lines.map((n, i) => {
     const start = 1 + lines.slice(0, i).reduce((a,b)=>a+b, 0);
     return startXI.slice(start, start + n);
   })];
-  // For away team, reverse so GK is at top
   const displayRows = side === 'away' ? [...rows].reverse() : rows;
   const totalRows = displayRows.length;
-  const pitchH = 290;
-  const pitchW = 168;
+  const W = 160, H = 300;
   const col = side === 'home' ? C.teal : C.orange;
+  const lc = 'rgba(255,255,255,.25)';
   return(
-    <div style={{position:'relative',width:pitchW,height:pitchH,background:'#1a4a2a',borderRadius:6,border:'1px solid #2a6a3a',flexShrink:0,overflow:'hidden'}}>
-      {/* Pitch markings */}
-      <div style={{position:'absolute',top:'50%',left:6,right:6,height:1,background:'rgba(255,255,255,.15)'}}/>
-      <div style={{position:'absolute',top:'8%',left:'22%',right:'22%',height:'18%',border:'1px solid rgba(255,255,255,.15)',borderRadius:2}}/>
-      <div style={{position:'absolute',bottom:'8%',left:'22%',right:'22%',height:'18%',border:'1px solid rgba(255,255,255,.15)',borderRadius:2}}/>
-      <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:36,height:36,border:'1px solid rgba(255,255,255,.15)',borderRadius:'50%'}}/>
-      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,border:'1px solid rgba(255,255,255,.15)',borderRadius:6,pointerEvents:'none'}}/>
+    <div style={{position:'relative',width:W,height:H,flexShrink:0}}>
+      {/* SVG pitch */}
+      <svg width={W} height={H} viewBox={"0 0 "+W+" "+H} style={{position:'absolute',top:0,left:0}}>
+        {/* Pitch background with stripes */}
+        <rect width={W} height={H} fill="#1e6b3c" rx="4"/>
+        {[0,1,2,3,4,5,6].map(i=>(
+          <rect key={i} x={0} y={i*(H/7)} width={W} height={H/14} fill="rgba(0,0,0,.06)"/>
+        ))}
+        {/* Border */}
+        <rect x="4" y="6" width={W-8} height={H-12} fill="none" stroke={lc} strokeWidth="1.5" rx="2"/>
+        {/* Halfway line */}
+        <line x1="4" y1={H/2} x2={W-4} y2={H/2} stroke={lc} strokeWidth="1.2"/>
+        {/* Centre circle */}
+        <circle cx={W/2} cy={H/2} r="28" fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Centre spot */}
+        <circle cx={W/2} cy={H/2} r="2" fill={lc}/>
+        {/* Top penalty area */}
+        <rect x={W*0.2} y="6" width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Top 6-yard box */}
+        <rect x={W*0.35} y="6" width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Top goal */}
+        <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
+        {/* Top penalty spot */}
+        <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
+        {/* Top penalty arc */}
+        <path d={"M "+(W*0.27)+" "+(H*0.2)+" A 28 28 0 0 1 "+(W*0.73)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom penalty area */}
+        <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom 6-yard box */}
+        <rect x={W*0.35} y={H-6-H*0.08} width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom goal */}
+        <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
+        {/* Bottom penalty spot */}
+        <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
+        {/* Bottom penalty arc */}
+        <path d={"M "+(W*0.27)+" "+(H-6-H*0.2)+" A 28 28 0 0 0 "+(W*0.73)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Corner arcs */}
+        <path d="M 4 16 A 12 12 0 0 1 16 6" fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M "+(W-4)+" 16 A 12 12 0 0 0 "+(W-16)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M 4 "+(H-16)+" A 12 12 0 0 0 16 "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M "+(W-4)+" "+(H-16)+" A 12 12 0 0 1 "+(W-16)+" "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
+      </svg>
+
+      {/* Players */}
       {displayRows.map((row, ri) => {
-        // Evenly space rows with padding top and bottom
-        const yPct = 8 + (ri / (totalRows - 1)) * 84;
-        const rowLen = row.length;
+        const yPct = 6 + (ri / (totalRows - 1)) * 88;
         return row.map((player, pi) => {
-          // Center players in each row
-          const xPct = rowLen === 1 ? 50 : 10 + (pi / (rowLen - 1)) * 80;
+          const xPct = row.length === 1 ? 50 : 8 + (pi / (row.length - 1)) * 84;
           return(
             <div key={player?.id||pi} style={{
               position:'absolute',
-              left: xPct + '%',
-              top: yPct + '%',
+              left: xPct+'%', top: yPct+'%',
               transform:'translate(-50%,-50%)',
-              textAlign:'center',
-              zIndex:1,
+              textAlign:'center', zIndex:2,
             }}>
               <div style={{
-                width:24,height:24,borderRadius:'50%',
+                width:26,height:26,borderRadius:'50%',
                 background:col,
-                border:'2px solid rgba(255,255,255,.7)',
+                border:'2px solid rgba(255,255,255,.85)',
                 display:'flex',alignItems:'center',justifyContent:'center',
                 fontSize:9,fontWeight:700,color:C.dark,
-                margin:'0 auto',boxShadow:'0 1px 3px rgba(0,0,0,.4)',
+                margin:'0 auto',
+                boxShadow:'0 2px 4px rgba(0,0,0,.5)',
               }}>{player?.number||''}</div>
               <div style={{
                 fontSize:7,color:'#fff',marginTop:1,lineHeight:1.2,
-                whiteSpace:'nowrap',
-                textShadow:'0 1px 2px rgba(0,0,0,.8)',
-                maxWidth:40,
-                overflow:'hidden',textOverflow:'ellipsis',
-                marginLeft:-8,
-              }}>
-                {(player?.name||'').split(' ').pop()}
-              </div>
+                whiteSpace:'nowrap',textShadow:'0 1px 3px rgba(0,0,0,.9)',
+                maxWidth:44,overflow:'hidden',textOverflow:'ellipsis',
+                marginLeft:-9,
+              }}>{(player?.name||'').split(' ').pop()}</div>
             </div>
           );
         });
