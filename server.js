@@ -259,12 +259,15 @@ async function fetchUnderstat(url) {
 // Understat match xG by date - finds home/away xG for a specific match
 app.get('/api/xg/match', async (req, res) => {
   try {
-    const {home, away} = req.query;
+    const {home, away, date} = req.query;
     const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
     const dates = d.dates || [];
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const hn = norm(home), an = norm(away);
-    const match = dates.find(m => {
+    // Filter by date if provided (YYYY-MM-DD)
+    const candidates = date ? dates.filter(m => m.datetime && m.datetime.startsWith(date.replace(/-/g,'/'))) : dates;
+    const pool = candidates.length > 0 ? candidates : dates;
+    const match = pool.find(m => {
       const fh = norm(m.h?.title), fa = norm(m.a?.title);
       return (fh.includes(hn.slice(0,5))||hn.includes(fh.slice(0,5))) &&
              (fa.includes(an.slice(0,5))||an.includes(fa.slice(0,5)));
@@ -423,6 +426,23 @@ const TSHORT={
   'Wolverhampton Wanderers':'Wolves','Wolverhampton Wanderers FC':'Wolves',
 };
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
+
+function teamCol(code) {
+  const [bg, acc] = CC[code] || ['#333','#fff'];
+  return bg;
+}
+function contrastCol(code) {
+  const [bg, acc] = CC[code] || ['#333','#fff'];
+  return acc;
+}
+function safeTeamCols(hCode, aCode) {
+  let hc = teamCol(hCode), ac = teamCol(aCode);
+  // If too similar (both dark or both same hue), use fallbacks
+  const toRgb = hex => { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return [r,g,b]; };
+  const dist = (a,b) => { const [r1,g1,b1]=toRgb(a),[r2,g2,b2]=toRgb(b); return Math.abs(r1-r2)+Math.abs(g1-g2)+Math.abs(b1-b2); };
+  try { if(dist(hc,ac)<120) { ac='#FF8000'; } } catch(e) {}
+  return [hc, ac];
+}
 
 // Global crest cache
 const CRESTS = {};
@@ -693,36 +713,101 @@ function Table(){
 // -- STATS -------------------------------------------------
 function Stats(){
   const {data,loading,error}=useApi('/api/scorers',600000);
+  const {data:standData}=useApi('/api/standings',300000);
+  const [view,setView]=useState('scorers');
+  const [showFull,setShowFull]=useState(false);
+
   const scorers=data?.scorers||[];
+  const table=standData?.standings?.[0]?.table||[];
+
+  // Build assists list from scorers data sorted by assists
+  const assisters=[...scorers].filter(s=>s.assists>0).sort((a,b)=>b.assists-a.assists);
+
+  // Build clean sheets from standings - goalsAgainst approximation
+  // API-Football doesn't give clean sheets via fd.org - use standings goals against as proxy
+  const cleanSheets=[...table].sort((a,b)=>a.goalsAgainst-b.goalsAgainst).map(t=>({
+    team:t.team, code:TCODE[t.team?.name]||'???',
+    goalsAgainst:t.goalsAgainst, played:t.playedGames,
+  }));
+
+  const limit = showFull ? 50 : 10;
+
+  const tS={padding:'6px 12px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  function PlayerRow({p, i, stat, statCol, statLabel, stat2, stat2Col, stat2Label}){
+    const code=TCODE[p.team?.name]||'???';
+    const tc = teamCol(code);
+    return(
+      <div style={{display:'flex',alignItems:'center',gap:10,background:C.d2,borderRadius:9,padding:'10px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.muted,width:20,flexShrink:0}}>{i+1}</div>
+        <Badge code={code} size={24}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.team?.name}</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team?.name}</div>
+        </div>
+        <div style={{textAlign:'right',flexShrink:0}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:statCol||tc,lineHeight:1}}>{stat}</div>
+          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
+        </div>
+        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:6}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
+          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
+        </div>}
+      </div>
+    );
+  }
+
   if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
   if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
+
   return(
     <div style={{padding:16,paddingBottom:80}}>
       <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>TOP <span style={{color:C.teal}}>SCORERS</span></div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
         <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
       </div>
-      {scorers.map((s,i)=>{
-        const code=TCODE[s.team?.name]||'???';
-        return(
-          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:C.d2,borderRadius:9,padding:'11px 13px',marginBottom:6,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.muted,width:22,flexShrink:0}}>{i+1}</div>
-            <Badge code={code} size={26}/>
+      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+        <button onClick={()=>{setView('scorers');setShowFull(false);}} style={view==='scorers'?tA:tS}>Top Scorers</button>
+        <button onClick={()=>{setView('assists');setShowFull(false);}} style={view==='assists'?tA:tS}>Assists</button>
+        <button onClick={()=>{setView('cleansheets');setShowFull(false);}} style={view==='cleansheets'?tA:tS}>Clean Sheets</button>
+      </div>
+
+      {view==='scorers'&&<>
+        {scorers.slice(0,limit).map((s,i)=>(
+          <PlayerRow key={i} p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+        ))}
+        <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          {showFull?'Show Less':'View Full Top 50'}
+        </button>
+      </>}
+
+      {view==='assists'&&<>
+        {assisters.slice(0,limit).map((s,i)=>(
+          <PlayerRow key={i} p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+        ))}
+        <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          {showFull?'Show Less':'View Full Top 50'}
+        </button>
+      </>}
+
+      {view==='cleansheets'&&<>
+        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Ranked by fewest goals conceded (clean sheet data via standings)</div>
+        {cleanSheets.slice(0,limit).map((t,i)=>(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:C.d2,borderRadius:9,padding:'10px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.muted,width:20,flexShrink:0}}>{i+1}</div>
+            <Badge code={t.code} size={24}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.player?.name}</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:1}}>{TSHORT[s.team?.name]||s.team?.name}</div>
+              <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[t.team?.name]||t.team?.name}</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{t.played} games played</div>
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.teal,lineHeight:1}}>{s.goals}</div>
-              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.5}}>GOALS</div>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.green,lineHeight:1}}>{t.goalsAgainst}</div>
+              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CONCEDED</div>
             </div>
-            {s.assists!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:4}}>
-              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.orange,lineHeight:1}}>{s.assists}</div>
-              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.5}}>AST</div>
-            </div>}
           </div>
-        );
-      })}
+        ))}
+      </>}
     </div>
   );
 }
@@ -1718,7 +1803,7 @@ function StatBar({label, home, away, homeCol, awayCol}) {
   );
 }
 
-function PitchLineup({lineup, side}) {
+function PitchLineup({lineup, side, teamCol: tc}) {
   if (!lineup) return null;
   const formation = lineup.formation || '4-3-3';
   const startXI = (lineup.startXI || []).map(p => p.player);
@@ -1730,7 +1815,7 @@ function PitchLineup({lineup, side}) {
   const displayRows = side === 'away' ? [...rows].reverse() : rows;
   const totalRows = displayRows.length;
   const W = 160, H = 300;
-  const col = side === 'home' ? C.teal : C.orange;
+  const col = tc || (side === 'home' ? C.teal : C.orange);
   const lc = 'rgba(255,255,255,.25)';
   return(
     <div style={{position:'relative',width:W,height:H,flexShrink:0}}>
@@ -1757,8 +1842,8 @@ function PitchLineup({lineup, side}) {
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         {/* Top penalty spot */}
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        {/* Top penalty arc - curves away from box (downward into pitch) */}
-        <path d={"M "+(W*0.27)+" "+(H*0.2)+" A 28 28 0 0 0 "+(W*0.73)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Top penalty arc - shallow, curves into pitch away from box */}
+        <path d={"M "+(W*0.3)+" "+(H*0.2)+" Q "+(W*0.5)+" "+(H*0.28)+" "+(W*0.7)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom penalty area */}
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Bottom 6-yard box */}
@@ -1767,8 +1852,8 @@ function PitchLineup({lineup, side}) {
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         {/* Bottom penalty spot */}
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        {/* Bottom penalty arc - curves away from box (upward into pitch) */}
-        <path d={"M "+(W*0.27)+" "+(H-6-H*0.2)+" A 28 28 0 0 1 "+(W*0.73)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom penalty arc - shallow, curves into pitch away from box */}
+        <path d={"M "+(W*0.3)+" "+(H-6-H*0.2)+" Q "+(W*0.5)+" "+(H-6-H*0.28)+" "+(W*0.7)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
         {/* Corner arcs */}
         <path d="M 4 16 A 12 12 0 0 1 16 6" fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M "+(W-4)+" 16 A 12 12 0 0 0 "+(W-16)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
@@ -1829,6 +1914,9 @@ function MatchModal({match, onClose}){
   const hg = match.score?.fullTime?.home;
   const ag = match.score?.fullTime?.away;
   const finished = match.status==='FINISHED';
+  const [homeCol, awayCol] = safeTeamCols(hc, ac);
+  const homeTxt = contrastCol(hc);
+  const awayTxt = contrastCol(ac);
 
   // Find API-Football ID then fetch all data
   useEffect(()=>{
@@ -1851,7 +1939,8 @@ function MatchModal({match, onClose}){
     // Fetch Understat xG for this match
     const hn2 = TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'';
     const an2 = TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'';
-    fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2))
+    const matchDate = match.utcDate ? match.utcDate.split('T')[0] : '';
+    fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2)+'&date='+matchDate)
       .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
     // Also fetch fd.org h2h and form
     fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
@@ -1969,22 +2058,22 @@ function MatchModal({match, onClose}){
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
                       <Badge code={hc} size={20}/>
-                      <span style={{fontSize:12,fontWeight:700,color:C.teal}}>{TSHORT[match.homeTeam?.name]}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]}</span>
                     </div>
                     <span style={{fontSize:10,color:C.muted}}>STATS</span>
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{fontSize:12,fontWeight:700,color:C.orange}}>{TSHORT[match.awayTeam?.name]}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:awayCol}}>{TSHORT[match.awayTeam?.name]}</span>
                       <Badge code={ac} size={20}/>
                     </div>
                   </div>
                   {understatXG&&(
-                    <StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={C.teal} awayCol={C.orange}/>
+                    <StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={homeCol} awayCol={awayCol}/>
                   )}
                   {STAT_ROWS.map(([key,label])=>{
                     const hv = homeStats[key];
                     const av = awayStats[key];
                     if(hv==null&&av==null) return null;
-                    return <StatBar key={key} label={label} home={hv??0} away={av??0} homeCol={C.teal} awayCol={C.orange}/>;
+                    return <StatBar key={key} label={label} home={hv??0} away={av??0} homeCol={homeCol} awayCol={awayCol}/>;
                   })}
                 </div>
               )}
@@ -2010,12 +2099,12 @@ function MatchModal({match, onClose}){
                         <div style={{textAlign:'center'}}>
                           <div style={{fontSize:11,fontWeight:700,color:C.teal,marginBottom:4}}>{TSHORT[match.homeTeam?.name]}</div>
                           <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{homeLineup.formation}</div>
-                          <PitchLineup lineup={homeLineup} side="home"/>
+                          <PitchLineup lineup={homeLineup} side="home" teamCol={homeCol}/>
                         </div>
                         <div style={{textAlign:'center'}}>
                           <div style={{fontSize:11,fontWeight:700,color:C.orange,marginBottom:4}}>{TSHORT[match.awayTeam?.name]}</div>
                           <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{awayLineup.formation}</div>
-                          <PitchLineup lineup={awayLineup} side="away"/>
+                          <PitchLineup lineup={awayLineup} side="away" teamCol={awayCol}/>
                         </div>
                       </div>
                       {/* Subs */}
