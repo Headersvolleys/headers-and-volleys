@@ -125,36 +125,38 @@ app.get('/api/af/lookup', async (req, res) => {
     const {home, away, date} = req.query;
     const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
     const fixtures = data.response || [];
-    // Map short names to full names that API-Football uses
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
     const EXPAND = {
-      'man utd': 'manchester united', 'man united': 'manchester united',
-      'man city': 'manchester city', 
-      'spurs': 'tottenham hotspur', 'tottenham': 'tottenham hotspur',
-      'nottm forest': 'nottingham forest', 'nottingham': 'nottingham forest',
-      'wolves': 'wolverhampton wanderers', 'wolverhampton': 'wolverhampton wanderers',
-      'west ham': 'west ham united',
-      'newcastle': 'newcastle united',
-      'brighton': 'brighton hove albion',
-      'bournemouth': 'bournemouth', 'brentford': 'brentford',
-      'leeds': 'leeds united', 'sunderland': 'sunderland',
+      'man utd':'manchester united','man united':'manchester united',
+      'man city':'manchester city',
+      'spurs':'tottenham hotspur','tottenham':'tottenham hotspur',
+      'nottm forest':'nottingham forest','nottingham':'nottingham forest',
+      'wolves':'wolverhampton wanderers','wolverhampton':'wolverhampton wanderers',
+      'west ham':'west ham united',
+      'newcastle':'newcastle united',
+      'brighton':'brighton hove albion',
+      'leeds':'leeds united',
     };
-    const norm = s => {
-      const low = (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
-      return EXPAND[low] || low;
+    const expand = s => { const n=norm(s); return EXPAND[n]||n; };
+    const hn = expand(home), an = expand(away);
+    // Score each fixture by how well it matches
+    const score = (afName, ourName) => {
+      const fn = expand(afName);
+      if(fn===ourName) return 3;
+      if(fn.includes(ourName.slice(0,6))||ourName.includes(fn.slice(0,6))) return 2;
+      if(fn.includes(ourName.slice(0,4))||ourName.includes(fn.slice(0,4))) return 1;
+      return 0;
     };
-    const normShort = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-    const hn = norm(home), an = norm(away);
-    const hns = normShort(hn), ans = normShort(an);
-    const match = (afName, ourName, ourShort) => {
-      const fn = norm(afName), fs = normShort(fn);
-      return fn===ourName || fs===ourShort ||
-             fn.includes(ourName.slice(0,6)) || ourName.includes(fn.slice(0,6)) ||
-             fs.includes(ourShort.slice(0,5)) || ourShort.includes(fs.slice(0,5));
-    };
-    const found = fixtures.find(f =>
-      match(f.teams?.home?.name, hn, hns) && match(f.teams?.away?.name, an, ans)
-    );
-    res.json({ fixtureId: found?.fixture?.id || null });
+    const scored = fixtures.map(f=>({
+      f,
+      s: score(f.teams?.home?.name,hn) + score(f.teams?.away?.name,an)
+    })).filter(x=>x.s>=2).sort((a,b)=>b.s-a.s);
+    const found = scored[0]?.f || null;
+    // Return debug info so we can diagnose mismatches
+    res.json({
+      fixtureId: found?.fixture?.id || null,
+      debug: { home, away, hn, an, fixtures: fixtures.map(f=>f.teams?.home?.name+' v '+f.teams?.away?.name) }
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
