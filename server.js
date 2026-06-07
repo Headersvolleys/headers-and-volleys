@@ -1970,10 +1970,16 @@ function MatchModal({match, onClose}){
     (stats[1]?.statistics||[]).forEach(s => awayStats[s.type] = s.value);
   }
 
-  const hn2 = (TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'').toLowerCase();
-  const an2 = (TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'').toLowerCase();
+  const LEXPAND = {
+    'spurs':'tottenham','man utd':'manchester','man city':'manchester',
+    'nottm forest':'nottingham','wolves':'wolverhampton',
+    'west ham':'westham','newcastle':'newcastle',
+    'brighton':'brighton','aston villa':'astonvilla',
+  };
   const normL = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const hns2 = normL(hn2), ans2 = normL(an2);
+  const expandL = s => { const n=s.toLowerCase().trim(); return normL(LEXPAND[n]||n); };
+  const hns2 = expandL(TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'');
+  const ans2 = expandL(TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'');
   const lineupMatch = (lName, ourNorm) => {
     const fn = normL(lName||'');
     return fn.includes(ourNorm.slice(0,5)) || ourNorm.includes(fn.slice(0,5));
