@@ -1972,14 +1972,14 @@ function MatchModal({match, onClose}){
 
   const hn2 = (TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'').toLowerCase();
   const an2 = (TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'').toLowerCase();
-  const homeLineup = lineups.find(l => {
-    const ln = (l.team?.name||'').toLowerCase();
-    return ln.includes(hn2.split(' ')[0]) || hn2.includes(ln.split(' ')[0]);
-  }) || null;
-  const awayLineup = lineups.find(l => {
-    const ln = (l.team?.name||'').toLowerCase();
-    return ln.includes(an2.split(' ')[0]) || an2.includes(ln.split(' ')[0]);
-  }) || null;
+  const normL = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const hns2 = normL(hn2), ans2 = normL(an2);
+  const lineupMatch = (lName, ourNorm) => {
+    const fn = normL(lName||'');
+    return fn.includes(ourNorm.slice(0,5)) || ourNorm.includes(fn.slice(0,5));
+  };
+  const homeLineup = lineups.find(l => lineupMatch(l.team?.name, hns2)) || null;
+  const awayLineup = lineups.find(l => lineupMatch(l.team?.name, ans2)) || null;
 
   const goals = (events||[]).filter(e=>e.type==='Goal');
   const cards = (events||[]).filter(e=>e.type==='Card');
