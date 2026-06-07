@@ -1805,65 +1805,68 @@ function StatBar({label, home, away, homeCol, awayCol}) {
 
 function PitchLineup({lineup, side, teamCol: tc}) {
   if (!lineup) return null;
-  const formation = lineup.formation || '4-3-3';
-  const startXI = (lineup.startXI || []).map(p => p.player);
-  const lines = formation.split('-').map(Number);
-  const rows = [[startXI[0]], ...lines.map((n, i) => {
-    const start = 1 + lines.slice(0, i).reduce((a,b)=>a+b, 0);
-    return startXI.slice(start, start + n);
-  })];
-  const displayRows = side === 'away' ? [...rows].reverse() : rows;
-  const totalRows = displayRows.length;
   const W = 160, H = 300;
-  const col = tc || (side === 'home' ? C.teal : C.orange);
+  const col = tc || C.teal;
   const lc = 'rgba(255,255,255,.25)';
+
+  // Use API-Football grid positions: "row:col" e.g. "1:1" = GK, "2:1" = leftmost defender
+  // Row 1 = GK, higher rows = further up pitch
+  // We want GK at BOTTOM for both teams, so we invert: yPct = 1 - (row-1)/(maxRow-1)
+  const players = (lineup.startXI || []).map(p => {
+    const grid = p.player?.grid || '';
+    const [r, c] = grid.split(':').map(Number);
+    return { ...p.player, gridRow: r||1, gridCol: c||1 };
+  });
+
+  const maxRow = Math.max(...players.map(p => p.gridRow), 1);
+
+  // Group by row
+  const byRow = {};
+  players.forEach(p => {
+    if (!byRow[p.gridRow]) byRow[p.gridRow] = [];
+    byRow[p.gridRow].push(p);
+  });
+
+  // Sort each row by gridCol (left to right)
+  Object.values(byRow).forEach(row => row.sort((a,b) => a.gridCol - b.gridCol));
+
+  const rowNums = Object.keys(byRow).map(Number).sort((a,b) => a-b);
+
   return(
     <div style={{position:'relative',width:W,height:H,flexShrink:0}}>
-      {/* SVG pitch */}
       <svg width={W} height={H} viewBox={"0 0 "+W+" "+H} style={{position:'absolute',top:0,left:0}}>
-        {/* Pitch background with stripes */}
         <rect width={W} height={H} fill="#1e6b3c" rx="4"/>
         {[0,1,2,3,4,5,6].map(i=>(
           <rect key={i} x={0} y={i*(H/7)} width={W} height={H/14} fill="rgba(0,0,0,.06)"/>
         ))}
-        {/* Border */}
         <rect x="4" y="6" width={W-8} height={H-12} fill="none" stroke={lc} strokeWidth="1.5" rx="2"/>
-        {/* Halfway line */}
         <line x1="4" y1={H/2} x2={W-4} y2={H/2} stroke={lc} strokeWidth="1.2"/>
-        {/* Centre circle */}
         <circle cx={W/2} cy={H/2} r="28" fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Centre spot */}
         <circle cx={W/2} cy={H/2} r="2" fill={lc}/>
-        {/* Top penalty area */}
+        {/* Top box */}
         <rect x={W*0.2} y="6" width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Top 6-yard box */}
         <rect x={W*0.35} y="6" width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Top goal */}
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
-        {/* Top penalty spot */}
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        {/* Top penalty arc - shallow, curves into pitch away from box */}
-        <path d={"M "+(W*0.3)+" "+(H*0.2)+" Q "+(W*0.5)+" "+(H*0.28)+" "+(W*0.7)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Bottom penalty area */}
+        <path d={"M "+(W*0.3)+" "+(H*0.2)+" Q "+(W*0.5)+" "+(H*0.27)+" "+(W*0.7)+" "+(H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Bottom box */}
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Bottom 6-yard box */}
         <rect x={W*0.35} y={H-6-H*0.08} width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Bottom goal */}
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
-        {/* Bottom penalty spot */}
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        {/* Bottom penalty arc - shallow, curves into pitch away from box */}
-        <path d={"M "+(W*0.3)+" "+(H-6-H*0.2)+" Q "+(W*0.5)+" "+(H-6-H*0.28)+" "+(W*0.7)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
-        {/* Corner arcs */}
-        <path d="M 4 16 A 12 12 0 0 1 16 6" fill="none" stroke={lc} strokeWidth="1"/>
-        <path d={"M "+(W-4)+" 16 A 12 12 0 0 0 "+(W-16)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
-        <path d={"M 4 "+(H-16)+" A 12 12 0 0 0 16 "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
-        <path d={"M "+(W-4)+" "+(H-16)+" A 12 12 0 0 1 "+(W-16)+" "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M "+(W*0.3)+" "+(H-6-H*0.2)+" Q "+(W*0.5)+" "+(H-6-H*0.27)+" "+(W*0.7)+" "+(H-6-H*0.2)} fill="none" stroke={lc} strokeWidth="1.2"/>
+        {/* Corners */}
+        <path d="M 4 16 A 10 10 0 0 1 14 6" fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M "+(W-4)+" 16 A 10 10 0 0 0 "+(W-14)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M 4 "+(H-16)+" A 10 10 0 0 0 14 "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
+        <path d={"M "+(W-4)+" "+(H-16)+" A 10 10 0 0 1 "+(W-14)+" "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
       </svg>
 
-      {/* Players */}
-      {displayRows.map((row, ri) => {
-        const yPct = 6 + (ri / (totalRows - 1)) * 88;
+      {/* Players - GK at bottom (row 1 = highest yPct) */}
+      {rowNums.map(rowNum => {
+        // GK (row 1) at bottom = high yPct, attackers (maxRow) at top = low yPct
+        const yPct = 92 - ((rowNum - 1) / Math.max(maxRow - 1, 1)) * 84;
+        const row = byRow[rowNum];
         return row.map((player, pi) => {
           const xPct = row.length === 1 ? 50 : 8 + (pi / (row.length - 1)) * 84;
           return(
@@ -1878,7 +1881,7 @@ function PitchLineup({lineup, side, teamCol: tc}) {
                 background:col,
                 border:'2px solid rgba(255,255,255,.85)',
                 display:'flex',alignItems:'center',justifyContent:'center',
-                fontSize:9,fontWeight:700,color:C.dark,
+                fontSize:9,fontWeight:700,color:'#fff',
                 margin:'0 auto',
                 boxShadow:'0 2px 4px rgba(0,0,0,.5)',
               }}>{player?.number||''}</div>
