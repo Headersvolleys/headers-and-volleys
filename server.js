@@ -787,7 +787,7 @@ function GKCleanSheets(){
             <Badge code={code} size={22}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gk.name}</div>
-              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team} · {gk.gamesPlayed} apps</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team}  {gk.gamesPlayed} apps</div>
             </div>
             <div style={{textAlign:'right',flexShrink:0,marginRight:8}}>
               <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,lineHeight:1}}>{gk.cleanSheets}</div>
@@ -852,9 +852,7 @@ function Stats(){
     );
   }
 
-  function ViewBtn(f=>f){return null;}
-
-  const loading=sLoad||tLoad;
+    const loading=sLoad||tLoad;
   if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
   if(sErr)return<div style={{padding:24,color:C.red,fontSize:13}}>{sErr}</div>;
 
