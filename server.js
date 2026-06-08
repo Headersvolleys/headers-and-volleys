@@ -573,16 +573,6 @@ function useApi(url,interval=0){
 }
 
 // -- POINTS CALCULATION -------------------------------------
-function calcPoints(pred,actual){
-  if(!pred||actual.hg==null||actual.ag==null) return null;
-  const ph=parseInt(pred.h), pa=parseInt(pred.a);
-  if(isNaN(ph)||isNaN(pa)) return null;
-  if(ph===actual.hg && pa===actual.ag) return 3;
-  const po=ph>pa?'H':pa>ph?'A':'D';
-  const ao=actual.hg>actual.ag?'H':actual.ag>actual.hg?'A':'D';
-  if(po===ao) return 1;
-  return 0;
-}
 
 // -- MATCH DETAIL MODAL ------------------------------------
 function TeamModal({team,onClose}){
@@ -1245,408 +1235,6 @@ function Quiz(){
 }
 
 
-function GKCleanSheets(){
-  const {data,loading,error}=useApi('/api/gk-cleansheets',300000);
-  const gks=(data?.goalkeepers||[]).slice(0,20);
-  if(loading)return<div style={{textAlign:'center',padding:40}}><Spinner/></div>;
-  if(error)return<div style={{padding:12,color:C.red,fontSize:13}}>{error}</div>;
-  return(
-    <div>
-      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Golden Glove race 2025-26 (based on team clean sheets)</div>
-      {gks.map((gk,i)=>{
-        const code=TCODE[gk.team]||TCODE[Object.keys(TSHORT).find(k=>TSHORT[k]===gk.team||k===gk.team)||'']||'???';
-        const tc=teamCol(code);
-        return(
-          <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
-            <Badge code={code} size={22}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gk.name}</div>
-              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team}  {gk.gamesPlayed} apps</div>
-            </div>
-            <div style={{textAlign:'right',flexShrink:0,marginRight:8}}>
-              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,lineHeight:1}}>{gk.cleanSheets}</div>
-              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CLEAN SHEETS</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Stats(){
-  const {data:scorersData,loading:sLoad,error:sErr}=useApi('/api/scorers?limit=100',600000);
-  const {data:standData,loading:tLoad}=useApi('/api/standings',300000);
-  const {data:xgData,loading:xgLoad}=useApi('/api/xg/players',1800000);
-  const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
-  const [view,setView]=useState('scorers');
-  const [showFull,setShowFull]=useState(false);
-
-  const allScorers=scorersData?.scorers||[];
-  const table=standData?.standings?.[0]?.table||[];
-
-  // Top 50 scorers sorted by goals
-  const scorers=[...allScorers].sort((a,b)=>b.goals-a.goals).slice(0,50);
-  // Top 50 assisters - fetch all and sort by assists
-  const assisters=[...allScorers].filter(s=>s.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,50);
-
-  // Clean sheets - from standings goalsAgainst
-  const cleanSheets=[...table].sort((a,b)=>a.goalsAgainst-b.goalsAgainst).slice(0,20);
-
-  // xG players
-  const xgPlayers=(xgData?.players||[]).slice(0,showFull?50:20);
-  // xG teams
-  const xgTeamList=xgTeams?.teams||[];
-
-  const limit=showFull?50:20;
-
-  const tS={padding:'6px 10px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
-  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
-
-  function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
-    const code=TCODE[p.team?.name]||'???';
-    const tc=teamCol(code);
-    return(
-      <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
-        <Badge code={code} size={22}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
-          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
-        </div>
-        <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
-        </div>
-        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
-        </div>}
-      </div>
-    );
-  }
-
-    const loading=sLoad||tLoad;
-  if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
-  if(sErr)return<div style={{padding:24,color:C.red,fontSize:13}}>{sErr}</div>;
-
-  return(
-    <div style={{padding:16,paddingBottom:80}}>
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
-        <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
-      </div>
-      <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:4}}>
-        {[['scorers','Top Scorers'],['assists','Assists'],['xgtable','xG Table']].map(([id,label])=>(
-          <button key={id} onClick={()=>{setView(id);setShowFull(false);}} style={view===id?tA:tS}>{label}</button>
-        ))}
-      </div>
-
-      {/* TOP SCORERS */}
-      {view==='scorers'&&<>
-        {scorers.slice(0,limit).map((s,i)=>(
-          <PlayerRow key={i} p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
-        ))}
-        {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-          {showFull?'Show Less':'View Full Top 50'}
-        </button>}
-      </>}
-
-      {/* TOP ASSISTERS */}
-      {view==='assists'&&<>
-        {assisters.slice(0,limit).map((s,i)=>(
-          <PlayerRow key={i} p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
-        ))}
-        {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-          {showFull?'Show Less':'View Full Top 50'}
-        </button>}
-      </>}
-
-
-
-      {/* xG TABLE */}
-      {view==='xgtable'&&(
-        <div>
-          {xgLoad&&xgTLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
-          {/* Team xG */}
-          {!xgTLoad&&xgTeamList.length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team xG 2025-26</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
-              {['Team','xG','xGA','xGD','xPts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>)}
-            </div>
-            {xgTeamList.map((t,i)=>{
-              const xgd=+(t.xG-t.xGA).toFixed(1);
-              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(t.name)||normName(k)===normName(t.name))?.[0];
-              const tcode = code?TCODE[code]:null;
-              return(
-                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(xgd>0?C.teal:C.red),alignItems:'center'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-                    {tcode&&<Badge code={tcode} size={18}/>}
-                    <span style={{fontSize:12,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
-                  </div>
-                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
-                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
-                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:xgd>0?C.green:C.red}}>{xgd>0?'+':''}{xgd}</div>
-                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
-                </div>
-              );
-            })}
-          </>}
-          {/* Player xG */}
-          {!xgLoad&&xgPlayers.length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Player xG 2025-26</div>
-            <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,padding:'4px 10px',marginBottom:4}}>
-              {['#','','xG','G','xA','A'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
-            </div>
-            {xgPlayers.map((p,i)=>{
-              const overPerf=+(p.goals-p.xG).toFixed(1);
-              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(p.team)||normName(k).includes(normName(p.team).slice(0,5)))?.[0];
-              const tcode = code?TCODE[code]:null;
-              return(
-                <div key={i} style={{background:C.d2,borderRadius:8,marginBottom:3,padding:'8px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
-                  <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,alignItems:'center',marginBottom:4}}>
-                    <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.muted}}>{i+1}</div>
-                    <div style={{minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{p.team}</div>
-                    </div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{p.xG}</div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:overPerf>0?C.green:overPerf<0?C.red:C.white}}>{p.goals}</div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{p.xA}</div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white}}>{p.assists}</div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:5}}>
-                    <div style={{fontSize:8,color:C.teal,width:16}}>xG</div>
-                    <div style={{flex:1,height:3,background:C.d4,borderRadius:2,overflow:'hidden'}}>
-                      <div style={{width:Math.min(100,(p.xG/(xgPlayers[0]?.xG||1))*100)+'%',height:'100%',background:C.teal}}/>
-                    </div>
-                    <div style={{fontSize:8,color:overPerf>0?C.green:C.red,width:28,textAlign:'right'}}>{overPerf>0?'+':''}{overPerf}</div>
-                  </div>
-                </div>
-              );
-            })}
-            <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-              {showFull?'Show Less':'View Full Top 50'}
-            </button>
-          </>}
-          {!xgLoad&&!xgTLoad&&xgPlayers.length===0&&xgTeamList.length===0&&(
-            <div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>xG data unavailable</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function XGStats(){
-  const [view, setView] = useState('players');
-  const {data:pData, loading:pLoad, error:pErr} = useApi('/api/xg/players', 30*60000);
-  const {data:tData, loading:tLoad, error:tErr} = useApi('/api/xg/teams', 30*60000);
-  const players = pData?.players || [];
-  const teams = tData?.teams || [];
-  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
-  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
-
-  function Bar({val, max, col}){
-    const pct = max > 0 ? Math.min(100, (val/max)*100) : 0;
-    return(
-      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
-        <div style={{width:pct+'%',height:'100%',background:col,borderRadius:2,transition:'width .4s'}}/>
-      </div>
-    );
-  }
-
-  return(
-    <div style={{padding:16,paddingBottom:80}}>
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,lineHeight:1}}>
-          xG <span style={{color:C.teal}}>STATS</span>
-        </div>
-        <div style={{fontSize:11,color:C.muted,marginTop:2}}>Expected goals data via Understat</div>
-      </div>
-      <div style={{display:'flex',gap:6,marginBottom:14}}>
-        <button onClick={()=>setView('players')} style={view==='players'?tA:tS}>Players</button>
-        <button onClick={()=>setView('teams')} style={view==='teams'?tA:tS}>Teams</button>
-      </div>
-
-      {view==='players'&&(
-        <div>
-          {pLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
-          {pErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{pErr}</div>}
-          {!pLoad&&!pErr&&(
-            <>
-              {/* Header */}
-              <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
-                {['#','','xG','G','xA','A'].map((h,i)=>(
-                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>
-                ))}
-              </div>
-              {players.slice(0,30).map((p,i)=>{
-                const maxXG = players[0]?.xG || 1;
-                const overPerf = p.goals - p.xG;
-                return(
-                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'9px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
-                    <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,alignItems:'center',marginBottom:6}}>
-                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{i+1}</div>
-                      <div style={{minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
-                        <div style={{fontSize:10,color:C.muted}}>{p.team}  {p.position}</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.teal,lineHeight:1}}>{p.xG}</div>
-                        <div style={{fontSize:8,color:C.muted}}>xG</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:overPerf>0?C.green:overPerf<0?C.red:C.white,lineHeight:1}}>{p.goals}</div>
-                        <div style={{fontSize:8,color:C.muted}}>G</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.orange,lineHeight:1}}>{p.xA}</div>
-                        <div style={{fontSize:8,color:C.muted}}>xA</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,lineHeight:1}}>{p.assists}</div>
-                        <div style={{fontSize:8,color:C.muted}}>A</div>
-                      </div>
-                    </div>
-                    {/* xG vs Goals bar */}
-                    <div style={{display:'flex',alignItems:'center',gap:6}}>
-                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>xG</div>
-                      <Bar val={p.xG} max={maxXG} col={C.teal}/>
-                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>G</div>
-                      <Bar val={p.goals} max={maxXG} col={overPerf>0?C.green:overPerf<0?C.red:C.white}/>
-                      <div style={{fontSize:9,fontWeight:700,color:overPerf>0?C.green:overPerf<0?C.red:C.muted,flexShrink:0,minWidth:28,textAlign:'right'}}>
-                        {overPerf>0?'+':''}{overPerf.toFixed(1)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{fontSize:11,color:C.muted,textAlign:'center',padding:'12px 0'}}>
-                Green border = overperforming xG  Red = underperforming
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {view==='teams'&&(
-        <div>
-          {tLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
-          {tErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{tErr}</div>}
-          {!tLoad&&!tErr&&(
-            <>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,padding:'4px 10px',marginBottom:4}}>
-                {['Team','xG','xGA','npxG','PPDA','xPts'].map((h,i)=>(
-                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>
-                ))}
-              </div>
-              {teams.map((t,i)=>{
-                const code = Object.entries(TSHORT).find(([k,v])=>v===t.name||k.includes(t.name)||t.name.includes(v))?.[0];
-                const tcode = code ? TCODE[code] : null;
-                const xGD = +(t.xG - t.xGA).toFixed(2);
-                return(
-                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'10px 10px',
-                    borderLeft:'3px solid '+(xGD>0?C.teal:xGD<0?C.red:C.d4)}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,alignItems:'center',marginBottom:6}}>
-                      <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
-                        {tcode&&<Badge code={tcode} size={18}/>}
-                        <span style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
-                      </div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted}}>{t.npxG}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{t.ppda||'-'}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
-                    </div>
-                    {/* xG vs xGA bar */}
-                    <div style={{display:'flex',alignItems:'center',gap:4}}>
-                      <div style={{fontSize:8,color:C.teal,flexShrink:0,width:16}}>xG</div>
-                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
-                        <div style={{width:Math.min(100,(t.xG/80)*100)+'%',height:'100%',background:C.teal,borderRadius:2}}/>
-                      </div>
-                      <div style={{fontSize:8,color:C.red,flexShrink:0,width:24}}>xGA</div>
-                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
-                        <div style={{width:Math.min(100,(t.xGA/80)*100)+'%',height:'100%',background:C.red,borderRadius:2}}/>
-                      </div>
-                      <div style={{fontSize:9,fontWeight:700,color:xGD>0?C.teal:C.red,flexShrink:0,minWidth:32,textAlign:'right'}}>
-                        {xGD>0?'+':''}{xGD}
-                      </div>
-                    </div>
-                    <div style={{fontSize:9,color:C.muted,marginTop:3}}>xGD: {xGD>0?'+':''}{xGD}  PPDA: {t.ppda||'n/a'} (lower = more pressing)</div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// -- APP ---------------------------------------------------
-const TABS=[
-  {id:'live',label:'Live',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
-  {id:'predict',label:'Predict',path:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z'},
-  {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
-  {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
-  {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
-  {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'}
-];
-
-function App(){
-  const [tab,setTab]=useState('live');
-  useCrests();
-  return(
-    <div style={{minHeight:'100vh',background:C.dark}}>
-      <nav style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'0 16px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.white,letterSpacing:.5,lineHeight:1}}>
-          H<span style={{color:C.teal}}>&amp;</span>V
-          <div style={{fontSize:8,letterSpacing:3,color:C.teal,fontFamily:'DM Sans,sans-serif',fontWeight:700,marginTop:1,opacity:.8,textTransform:'uppercase'}}>HEADERS &amp; VOLLEYS</div>
-        </div>
-        <div style={{background:C.d3,border:'1px solid '+C.d4,borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600,color:C.muted}}>LIVE <span style={{color:C.green,marginLeft:4}}>*</span></div>
-      </nav>
-      <div style={{animation:'fadeIn .2s ease'}}>
-        {tab==='live'&&<Live/>}
-        {tab==='predict'&&<Predictions/>}
-        {tab==='fixtures'&&<Fixtures/>}
-        {tab==='table'&&<Table/>}
-        {tab==='stats'&&<Stats/>}
-        {tab==='quiz'&&<Quiz/>}
-      </div>
-      <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,background:'transparent',border:'none',cursor:'pointer',padding:'6px 2px',position:'relative'}}>
-            {tab===t.id&&<div style={{position:'absolute',top:0,left:'20%',right:'20%',height:2,borderRadius:'0 0 2px 2px',background:t.id==='live'?C.orange:C.teal}}/>}
-            <svg width={18} height={18} viewBox="0 0 24 24" fill={tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted}><path d={t.path}/></svg>
-            <span style={{fontSize:8,fontWeight:tab===t.id?700:500,color:tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted,letterSpacing:.3}}>{t.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
-
-
-//  MATCH DETAIL MODAL 
-// Finds API-Football fixture ID by matching date + team names
-async function findAFFixture(match) {
-  const dt = new Date(match.utcDate);
-  const date = dt.toISOString().split('T')[0];
-  const hn = TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '';
-  const an = TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '';
-  const r = await fetch('/api/af/lookup?date=' + date + '&home=' + encodeURIComponent(hn) + '&away=' + encodeURIComponent(an));
-  const d = await r.json();
-  return d.fixtureId || null;
-}
-
 function StatBar({label, home, away, homeCol, awayCol}) {
   const hv = parseFloat(home) || 0;
   const av = parseFloat(away) || 0;
@@ -1767,7 +1355,7 @@ function PitchLineup({lineup, side, teamCol: tc}) {
   );
 }
 
-function MatchModal({match, onClose}){
+function MatchModal({match, onClose}) {
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
   const [stats, setStats] = useState([]);
@@ -2162,6 +1750,413 @@ function MatchModal({match, onClose}){
       </div>
     </div>
   );
+}
+
+function GKCleanSheets(){
+  const {data,loading,error}=useApi('/api/gk-cleansheets',300000);
+  const gks=(data?.goalkeepers||[]).slice(0,20);
+  if(loading)return<div style={{textAlign:'center',padding:40}}><Spinner/></div>;
+  if(error)return<div style={{padding:12,color:C.red,fontSize:13}}>{error}</div>;
+  return(
+    <div>
+      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Golden Glove race 2025-26 (based on team clean sheets)</div>
+      {gks.map((gk,i)=>{
+        const code=TCODE[gk.team]||TCODE[Object.keys(TSHORT).find(k=>TSHORT[k]===gk.team||k===gk.team)||'']||'???';
+        const tc=teamCol(code);
+        return(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
+            <Badge code={code} size={22}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gk.name}</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team}  {gk.gamesPlayed} apps</div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0,marginRight:8}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,lineHeight:1}}>{gk.cleanSheets}</div>
+              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CLEAN SHEETS</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Stats(){
+  const {data:scorersData,loading:sLoad,error:sErr}=useApi('/api/scorers?limit=100',600000);
+  const {data:standData,loading:tLoad}=useApi('/api/standings',300000);
+  const {data:xgData,loading:xgLoad}=useApi('/api/xg/players',1800000);
+  const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
+  const [view,setView]=useState('scorers');
+  const [showFull,setShowFull]=useState(false);
+
+  const allScorers=scorersData?.scorers||[];
+  const table=standData?.standings?.[0]?.table||[];
+
+  // Top 50 scorers sorted by goals
+  const scorers=[...allScorers].sort((a,b)=>b.goals-a.goals).slice(0,50);
+  // Top 50 assisters - fetch all and sort by assists
+  const assisters=[...allScorers].filter(s=>s.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,50);
+
+  // Clean sheets - from standings goalsAgainst
+  const cleanSheets=[...table].sort((a,b)=>a.goalsAgainst-b.goalsAgainst).slice(0,20);
+
+  // xG players
+  const xgPlayers=(xgData?.players||[]).slice(0,showFull?50:20);
+  // xG teams
+  const xgTeamList=xgTeams?.teams||[];
+
+  const limit=showFull?50:20;
+
+  const tS={padding:'6px 10px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
+    const code=TCODE[p.team?.name]||'???';
+    const tc=teamCol(code);
+    return(
+      <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
+        <Badge code={code} size={22}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
+        </div>
+        <div style={{textAlign:'right',flexShrink:0}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
+          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
+        </div>
+        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
+          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
+        </div>}
+      </div>
+    );
+  }
+
+    const loading=sLoad||tLoad;
+  if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
+  if(sErr)return<div style={{padding:24,color:C.red,fontSize:13}}>{sErr}</div>;
+
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
+        <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
+      </div>
+      <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:4}}>
+        {[['scorers','Top Scorers'],['assists','Assists'],['xgtable','xG Table']].map(([id,label])=>(
+          <button key={id} onClick={()=>{setView(id);setShowFull(false);}} style={view===id?tA:tS}>{label}</button>
+        ))}
+      </div>
+
+      {/* TOP SCORERS */}
+      {view==='scorers'&&<>
+        {scorers.slice(0,limit).map((s,i)=>(
+          <PlayerRow key={i} p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+        ))}
+        {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          {showFull?'Show Less':'View Full Top 50'}
+        </button>}
+      </>}
+
+      {/* TOP ASSISTERS */}
+      {view==='assists'&&<>
+        {assisters.slice(0,limit).map((s,i)=>(
+          <PlayerRow key={i} p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+        ))}
+        {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          {showFull?'Show Less':'View Full Top 50'}
+        </button>}
+      </>}
+
+
+
+      {/* xG TABLE */}
+      {view==='xgtable'&&(
+        <div>
+          {xgLoad&&xgTLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {/* Team xG */}
+          {!xgTLoad&&xgTeamList.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team xG 2025-26</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
+              {['Team','xG','xGA','xGD','xPts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>)}
+            </div>
+            {xgTeamList.map((t,i)=>{
+              const xgd=+(t.xG-t.xGA).toFixed(1);
+              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(t.name)||normName(k)===normName(t.name))?.[0];
+              const tcode = code?TCODE[code]:null;
+              return(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(xgd>0?C.teal:C.red),alignItems:'center'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+                    {tcode&&<Badge code={tcode} size={18}/>}
+                    <span style={{fontSize:12,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
+                  </div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:xgd>0?C.green:C.red}}>{xgd>0?'+':''}{xgd}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
+                </div>
+              );
+            })}
+          </>}
+          {/* Player xG */}
+          {!xgLoad&&xgPlayers.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Player xG 2025-26</div>
+            <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,padding:'4px 10px',marginBottom:4}}>
+              {['#','','xG','G','xA','A'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
+            </div>
+            {xgPlayers.map((p,i)=>{
+              const overPerf=+(p.goals-p.xG).toFixed(1);
+              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(p.team)||normName(k).includes(normName(p.team).slice(0,5)))?.[0];
+              const tcode = code?TCODE[code]:null;
+              return(
+                <div key={i} style={{background:C.d2,borderRadius:8,marginBottom:3,padding:'8px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
+                  <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,alignItems:'center',marginBottom:4}}>
+                    <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.muted}}>{i+1}</div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{p.team}</div>
+                    </div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{p.xG}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:overPerf>0?C.green:overPerf<0?C.red:C.white}}>{p.goals}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{p.xA}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white}}>{p.assists}</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:5}}>
+                    <div style={{fontSize:8,color:C.teal,width:16}}>xG</div>
+                    <div style={{flex:1,height:3,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                      <div style={{width:Math.min(100,(p.xG/(xgPlayers[0]?.xG||1))*100)+'%',height:'100%',background:C.teal}}/>
+                    </div>
+                    <div style={{fontSize:8,color:overPerf>0?C.green:C.red,width:28,textAlign:'right'}}>{overPerf>0?'+':''}{overPerf}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+              {showFull?'Show Less':'View Full Top 50'}
+            </button>
+          </>}
+          {!xgLoad&&!xgTLoad&&xgPlayers.length===0&&xgTeamList.length===0&&(
+            <div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>xG data unavailable</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function XGStats(){
+  const [view, setView] = useState('players');
+  const {data:pData, loading:pLoad, error:pErr} = useApi('/api/xg/players', 30*60000);
+  const {data:tData, loading:tLoad, error:tErr} = useApi('/api/xg/teams', 30*60000);
+  const players = pData?.players || [];
+  const teams = tData?.teams || [];
+  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  function Bar({val, max, col}){
+    const pct = max > 0 ? Math.min(100, (val/max)*100) : 0;
+    return(
+      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+        <div style={{width:pct+'%',height:'100%',background:col,borderRadius:2,transition:'width .4s'}}/>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,lineHeight:1}}>
+          xG <span style={{color:C.teal}}>STATS</span>
+        </div>
+        <div style={{fontSize:11,color:C.muted,marginTop:2}}>Expected goals data via Understat</div>
+      </div>
+      <div style={{display:'flex',gap:6,marginBottom:14}}>
+        <button onClick={()=>setView('players')} style={view==='players'?tA:tS}>Players</button>
+        <button onClick={()=>setView('teams')} style={view==='teams'?tA:tS}>Teams</button>
+      </div>
+
+      {view==='players'&&(
+        <div>
+          {pLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {pErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{pErr}</div>}
+          {!pLoad&&!pErr&&(
+            <>
+              {/* Header */}
+              <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
+                {['#','','xG','G','xA','A'].map((h,i)=>(
+                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>
+                ))}
+              </div>
+              {players.slice(0,30).map((p,i)=>{
+                const maxXG = players[0]?.xG || 1;
+                const overPerf = p.goals - p.xG;
+                return(
+                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'9px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
+                    <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 44px 44px 44px',gap:4,alignItems:'center',marginBottom:6}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{i+1}</div>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{p.team}  {p.position}</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.teal,lineHeight:1}}>{p.xG}</div>
+                        <div style={{fontSize:8,color:C.muted}}>xG</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:overPerf>0?C.green:overPerf<0?C.red:C.white,lineHeight:1}}>{p.goals}</div>
+                        <div style={{fontSize:8,color:C.muted}}>G</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.orange,lineHeight:1}}>{p.xA}</div>
+                        <div style={{fontSize:8,color:C.muted}}>xA</div>
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,lineHeight:1}}>{p.assists}</div>
+                        <div style={{fontSize:8,color:C.muted}}>A</div>
+                      </div>
+                    </div>
+                    {/* xG vs Goals bar */}
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>xG</div>
+                      <Bar val={p.xG} max={maxXG} col={C.teal}/>
+                      <div style={{fontSize:9,color:C.muted,flexShrink:0,width:20}}>G</div>
+                      <Bar val={p.goals} max={maxXG} col={overPerf>0?C.green:overPerf<0?C.red:C.white}/>
+                      <div style={{fontSize:9,fontWeight:700,color:overPerf>0?C.green:overPerf<0?C.red:C.muted,flexShrink:0,minWidth:28,textAlign:'right'}}>
+                        {overPerf>0?'+':''}{overPerf.toFixed(1)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:11,color:C.muted,textAlign:'center',padding:'12px 0'}}>
+                Green border = overperforming xG  Red = underperforming
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {view==='teams'&&(
+        <div>
+          {tLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {tErr&&<div style={{color:C.red,fontSize:13,padding:16}}>{tErr}</div>}
+          {!tLoad&&!tErr&&(
+            <>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,padding:'4px 10px',marginBottom:4}}>
+                {['Team','xG','xGA','npxG','PPDA','xPts'].map((h,i)=>(
+                  <div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>
+                ))}
+              </div>
+              {teams.map((t,i)=>{
+                const code = Object.entries(TSHORT).find(([k,v])=>v===t.name||k.includes(t.name)||t.name.includes(v))?.[0];
+                const tcode = code ? TCODE[code] : null;
+                const xGD = +(t.xG - t.xGA).toFixed(2);
+                return(
+                  <div key={i} style={{background:C.d2,borderRadius:9,marginBottom:4,padding:'10px 10px',
+                    borderLeft:'3px solid '+(xGD>0?C.teal:xGD<0?C.red:C.d4)}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 50px 50px 50px 50px 50px',gap:4,alignItems:'center',marginBottom:6}}>
+                      <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
+                        {tcode&&<Badge code={tcode} size={18}/>}
+                        <span style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
+                      </div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted}}>{t.npxG}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{t.ppda||'-'}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
+                    </div>
+                    {/* xG vs xGA bar */}
+                    <div style={{display:'flex',alignItems:'center',gap:4}}>
+                      <div style={{fontSize:8,color:C.teal,flexShrink:0,width:16}}>xG</div>
+                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(t.xG/80)*100)+'%',height:'100%',background:C.teal,borderRadius:2}}/>
+                      </div>
+                      <div style={{fontSize:8,color:C.red,flexShrink:0,width:24}}>xGA</div>
+                      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(t.xGA/80)*100)+'%',height:'100%',background:C.red,borderRadius:2}}/>
+                      </div>
+                      <div style={{fontSize:9,fontWeight:700,color:xGD>0?C.teal:C.red,flexShrink:0,minWidth:32,textAlign:'right'}}>
+                        {xGD>0?'+':''}{xGD}
+                      </div>
+                    </div>
+                    <div style={{fontSize:9,color:C.muted,marginTop:3}}>xGD: {xGD>0?'+':''}{xGD}  PPDA: {t.ppda||'n/a'} (lower = more pressing)</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -- APP ---------------------------------------------------
+const TABS=[
+  {id:'live',label:'Live',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
+  {id:'predict',label:'Predict',path:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z'},
+  {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
+  {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
+  {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
+  {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'}
+];
+
+
+
+
+
+
+function App(){
+  const [tab,setTab]=useState('live');
+  useCrests();
+  return(
+    <div style={{minHeight:'100vh',background:C.dark}}>
+      <nav style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'0 16px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.white,letterSpacing:.5,lineHeight:1}}>
+          H<span style={{color:C.teal}}>&amp;</span>V
+          <div style={{fontSize:8,letterSpacing:3,color:C.teal,fontFamily:'DM Sans,sans-serif',fontWeight:700,marginTop:1,opacity:.8,textTransform:'uppercase'}}>HEADERS &amp; VOLLEYS</div>
+        </div>
+        <div style={{background:C.d3,border:'1px solid '+C.d4,borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600,color:C.muted}}>LIVE <span style={{color:C.green,marginLeft:4}}>*</span></div>
+      </nav>
+      <div style={{animation:'fadeIn .2s ease'}}>
+        {tab==='live'&&<Live/>}
+        {tab==='predict'&&<Predictions/>}
+        {tab==='fixtures'&&<Fixtures/>}
+        {tab==='table'&&<Table/>}
+        {tab==='stats'&&<Stats/>}
+        {tab==='quiz'&&<Quiz/>}
+      </div>
+      <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,background:'transparent',border:'none',cursor:'pointer',padding:'6px 2px',position:'relative'}}>
+            {tab===t.id&&<div style={{position:'absolute',top:0,left:'20%',right:'20%',height:2,borderRadius:'0 0 2px 2px',background:t.id==='live'?C.orange:C.teal}}/>}
+            <svg width={18} height={18} viewBox="0 0 24 24" fill={tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted}><path d={t.path}/></svg>
+            <span style={{fontSize:8,fontWeight:tab===t.id?700:500,color:tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted,letterSpacing:.3}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+
+
+//  MATCH DETAIL MODAL 
+// Finds API-Football fixture ID by matching date + team names
+async function findAFFixture(match) {
+  const dt = new Date(match.utcDate);
+  const date = dt.toISOString().split('T')[0];
+  const hn = TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '';
+  const an = TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '';
+  const r = await fetch('/api/af/lookup?date=' + date + '&home=' + encodeURIComponent(hn) + '&away=' + encodeURIComponent(an));
+  const d = await r.json();
+  return d.fixtureId || null;
 }
 </script>
 </body>
