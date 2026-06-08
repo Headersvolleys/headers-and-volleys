@@ -68,7 +68,11 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
       fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
     ]);
     const player = (teamData.squad||[]).find(p => String(p.id) === String(req.params.playerId));
-    const scorer = (scorersData.scorers||[]).find(s => String(s.player?.id) === String(req.params.playerId));
+    // Try to find scorer - the scorer player.id from football-data.org should match squad id
+    const scorer = (scorersData.scorers||[]).find(s => 
+      String(s.player?.id) === String(req.params.playerId) ||
+      String(s.player?.id) === String(player?.id)
+    );
     res.json({ player, scorer, team: {id: teamData.id, name: teamData.name, crest: teamData.crest} });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -624,7 +628,7 @@ function TeamModal({team,onClose}){
   const {data:fd2}=useApi('/api/team/'+team?.id+'/matches');
   const squad=td?.squad||[];
   const [pos,setPos]=useState('ALL');
-  const positions=['ALL','Goalkeeper','Defence','Midfield','Offence'];
+  const positions=['ALL','Goalkeeper','Defence','Midfield','Forward'];
   const filtered=pos==='ALL'?squad:squad.filter(p=>p.position===pos);
   const form=(fd2?.matches||[]).slice(-5).reverse().map(m=>{
     const ih=m.homeTeam?.id===team?.id, mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
@@ -657,7 +661,7 @@ function TeamModal({team,onClose}){
           </div>}
           {squad.length>0&&<>
             <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:4,marginBottom:10}}>
-              {positions.map(p=><button key={p} onClick={()=>setPos(p)} style={pos===p?tA:tS}>{p==='ALL'?'All':p==='Offence'?'Attack':p}</button>)}
+              {positions.map(p=><button key={p} onClick={()=>setPos(p)} style={pos===p?tA:tS}>{p==='ALL'?'All':p==='Forward'?'Attack':p}</button>)}
             </div>
             {filtered.map((p,i)=>(
               <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:C.d3,borderRadius:8,marginBottom:3}}>
@@ -706,7 +710,7 @@ function MatchRow({m,onClick,onTeamClick}){
 }
 
 // -- LIVE --------------------------------------------------
-function Live(){
+function Live({openPlayer, openClub}){
   const {data,loading}=useApi('/api/matches/today',60000);
   const {data:liveData}=useApi('/api/matches/live',30000);
   const [sel,setSel]=useState(null);
@@ -717,7 +721,7 @@ function Live(){
   const finished=matches.filter(m=>m.status==='FINISHED');
   return(
     <div style={{padding:16,paddingBottom:80}}>
-      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)}/>}
+      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
       <div style={{marginBottom:16}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>LIVE <span style={{color:C.orange}}>SCORES</span></div>
         <div style={{fontSize:11,color:C.muted}}>Tap a match for goals, cards, form and H2H</div>
@@ -749,7 +753,7 @@ function Fixtures({openClub}){
   if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
   return(
     <div style={{padding:16,paddingBottom:80}}>
-      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)}/>}
+      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>FIXTURES <span style={{color:C.teal}}>2025-26</span></div>
         <div style={{fontSize:11,color:C.muted}}>{matches.length} matches - tap any result for details</div>
@@ -1493,16 +1497,13 @@ function TypeAnswerQuiz({quiz,onFinish}){
   );
 }
 
-function Quiz(){
+function Quiz({openPlayer, openClub}){
   const [view,setView]=useState('list');
   const [activeQuiz,setActiveQuiz]=useState(null);
   const [format,setFormat]=useState('type');
   const [finalScore,setFinalScore]=useState(null);
 
-  function handleFinish(score,total){
-    setFinalScore({score,total});
-    setView('result');
-  }
+  const handleFinish=(score,total)=>{ setFinalScore({score,total}); setView('result'); };
 
   if(view==='format'&&activeQuiz){
     const formats=[
@@ -1597,10 +1598,11 @@ function ClubModal({team, onClose, openPlayer, openClub}){
 
   const squad = teamData?.squad || [];
   const positions = ['ALL','Goalkeeper','Defence','Midfield','Forward'];
-  const posMap = {'Offence':'Forward','Forward':'Forward'};
+  const posMap = {'Forward':'Forward','Forward':'Forward'};
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>{
     const pos = posMap[p.position]||p.position;
-    return pos===squadFilter;
+    const sqFilter = squadFilter==='Forward'?['Forward','Offence','Attack','Attacker']:null;
+    return sqFilter ? sqFilter.includes(pos)||sqFilter.includes(p.position) : pos===squadFilter;
   });
 
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
@@ -1731,7 +1733,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
           </div>
           {tLoad&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
           {filtered.map((p,i)=>{
-            const posDisplay = p.position==='Offence'?'Forward':p.position;
+            const posDisplay = p.position==='Forward'?'Forward':p.position;
             const flagUrl = flag(p.nationality);
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
@@ -2377,7 +2379,7 @@ async function findAFFixture(match) {
   return d.fixtureId || null;
 }
 
-function MatchModal({match, onClose}){
+function MatchModal({match, onClose, openPlayer, openClub}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
   const [stats, setStats] = useState([]);
@@ -2561,7 +2563,7 @@ function MatchModal({match, onClose}){
                         <div key={code} style={{flex:1}}>
                           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><Badge code={code} size={18}/><div><div style={{fontSize:11,fontWeight:700,color:col}}>{name}</div><div style={{fontSize:10,color:C.muted}}>{lineup.formation}</div></div></div>
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,marginBottom:4}}>STARTING XI</div>
-                          {(lineup.startXI||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff',flexShrink:0}}>{p.player?.number}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:11,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div><div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div></div></div>)}
+                          {(lineup.startXI||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff',flexShrink:0}}>{p.player?.number}</div><div style={{flex:1,minWidth:0}}><div onClick={()=>openPlayer&&p.player?.id&&openPlayer({id:p.player.id,name:p.player.name,position:p.player.pos},{id:match.homeTeam?.id,name:match.homeTeam?.name})} style={{fontSize:11,color:openPlayer?C.teal:C.white,cursor:openPlayer?'pointer':'default',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div><div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div></div></div>)}
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,margin:'8px 0 4px'}}>SUBS</div>
                           {(lineup.substitutes||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:C.d4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:C.muted,flexShrink:0}}>{p.player?.number}</div><div style={{fontSize:11,color:C.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div></div>)}
                         </div>
@@ -2700,7 +2702,7 @@ function App(){
         {tab==='fixtures'&&<Fixtures openClub={openClub}/>}
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
-        {tab==='quiz'&&<Quiz/>}
+        {tab==='quiz'&&<Quiz openPlayer={openPlayer} openClub={openClub}/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
