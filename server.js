@@ -63,42 +63,33 @@ app.get('/api/team/:id/matches', async (req, res) => {
 // Player profile
 app.get('/api/player/:teamId/:playerId', async (req, res) => {
   try {
-    const [teamData, scorersData] = await Promise.all([
-      fd('/teams/' + req.params.teamId, 60*MIN),
-      fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
-    ]);
+    const scorersData = await fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN);
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pid = String(req.params.playerId);
-    const squad = teamData.squad || [];
     const scorers = scorersData.scorers || [];
 
-    // Find squad player by id
-    let player = squad.find(p => String(p.id) === pid);
-
     // Find scorer by id
-    let scorer = scorers.find(s => String(s.player?.id) === pid);
+    const scorer = scorers.find(s => String(s.player?.id) === pid);
 
-    // If scorer found but no squad player, match by name
-    if (!player && scorer?.player?.name) {
-      const sn = norm(scorer.player.name);
-      player = squad.find(p => norm(p.name||'') === sn) ||
-               squad.find(p => { const pn=norm(p.name||''); return pn.length>4&&sn.length>4&&(pn.startsWith(sn.slice(0,5))||sn.startsWith(pn.slice(0,5))); });
-    }
+    // Build player object from scorer data
+    const player = scorer ? {
+      id: scorer.player.id,
+      name: scorer.player.name,
+      nationality: scorer.player.nationality,
+      dateOfBirth: scorer.player.dateOfBirth,
+      position: scorer.player.position,
+      shirtNumber: scorer.player.shirtNumber,
+    } : null;
 
-    // If squad player found but no scorer, match by name
-    if (!scorer && player?.name) {
-      const pn = norm(player.name);
-      scorer = scorers.find(s => norm(s.player?.name||'') === pn) ||
-               scorers.find(s => { const sn=norm(s.player?.name||''); return sn.length>4&&pn.length>4&&(sn.startsWith(pn.slice(0,5))||pn.startsWith(sn.slice(0,5))); });
-    }
+    const team = scorer ? {
+      id: scorer.team?.id,
+      name: scorer.team?.name,
+    } : null;
 
-    res.json({ 
-      player, 
-      scorer, 
-      team: {id: teamData.id, name: teamData.name, crest: teamData.crest},
-      debug: { pid, playerFound: !!player, scorerFound: !!scorer, playerName: player?.name, scorerName: scorer?.player?.name }
+    res.json({ player, scorer, team,
+      debug: { pid, scorerFound: !!scorer, scorerName: scorer?.player?.name }
     });
-  } catch(e) { res.status(500).json({ error: e.message, stack: e.stack?.split('\n')[0] }); }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // Understat xG by player name
@@ -1644,7 +1635,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
   const [squadFilter, setSquadFilter] = useState('ALL');
   const [view, setView] = useState('overview');
 
-  const squad = teamData?.squad || [];
+  const squad = teamData?.squad || [];  // Note: requires football-data.org Tier 2+
   const positions = ['ALL','Goalkeeper','Defence','Midfield','Forward'];
   const posMap = {'Forward':'Forward','Forward':'Forward'};
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>{
@@ -1896,7 +1887,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,position:s.position,teamName:s.team?.name},s.team?.id)}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.position||s.player?.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
           </div>
         ))}
@@ -1908,7 +1899,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP ASSISTERS */}
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,position:s.position,teamName:s.team?.name},s.team?.id)}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.position||s.player?.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
           </div>
         ))}
@@ -2232,9 +2223,13 @@ function PlayerModal({player, teamId, onClose, openClub}){
     }).catch(()=>setLoading(false));
   },[player?.id, teamId]);
 
+  // Use passed player prop as base - API call enriches with scorer stats
   const p = data?.player || player;
-  const s = data?.scorer;
+  const s = data?.scorer || (player?.goals!=null ? player : null);
+  // Team: use API response, fall back to passed teamName/teamId
   const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
+  // Position: normalize Offence -> Forward
+  const posDisplay = {'Offence':'Forward','Offense':'Forward','Attack':'Forward','Attacker':'Forward'}[p?.position]||p?.position;
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
@@ -2259,7 +2254,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
             <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
               {flagUrl&&<img src={flagUrl} style={{width:20,height:15,objectFit:'cover',borderRadius:2}} alt=""/>}
               <span style={{fontSize:12,color:C.muted}}>{p?.nationality}</span>
-              {p?.position&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{{Offence:'Forward',Offense:'Forward',Attack:'Forward'}[p.position]||p.position}</span>}
+              {posDisplay&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{posDisplay}</span>}
               {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted}}>#{p.shirtNumber}</span>}
             </div>
           </div>
@@ -2311,7 +2306,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           <div style={{background:C.d2,borderRadius:10,padding:'0 14px',marginBottom:16}}>
             <PlayerInfoRow label="Nationality" value={p?.nationality}/>
             {p?.dateOfBirth&&<PlayerInfoRow label="Date of Birth" value={new Date(p.dateOfBirth).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}/>}
-            <PlayerInfoRow label="Position" value={p?.position==='Offence'?'Forward':p?.position}/>
+            <PlayerInfoRow label="Position" value={posDisplay}/>
             {p?.shirtNumber&&<PlayerInfoRow label="Shirt Number" value={'#'+p.shirtNumber}/>}
             {xgData&&<PlayerInfoRow label="Minutes Played" value={xgData.mins?.toLocaleString()}/>}
           </div>
