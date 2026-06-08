@@ -2367,6 +2367,16 @@ function PitchLineup({lineup, side, teamCol: tc}){
   );
 }
 
+async function findAFFixture(match) {
+  const dt = new Date(match.utcDate);
+  const date = dt.toISOString().split('T')[0];
+  const hn = TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '';
+  const an = TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '';
+  const r = await fetch('/api/af/lookup?date=' + date + '&home=' + encodeURIComponent(hn) + '&away=' + encodeURIComponent(an));
+  const d = await r.json();
+  return d.fixtureId || null;
+}
+
 function MatchModal({match, onClose}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
@@ -2706,19 +2716,7 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
-
-
-//  MATCH DETAIL MODAL 
-// Finds API-Football fixture ID by matching date + team names
-async function findAFFixture(match) {
-  const dt = new Date(match.utcDate);
-  const date = dt.toISOString().split('T')[0];
-  const hn = TSHORT[match.homeTeam?.name] || match.homeTeam?.name || '';
-  const an = TSHORT[match.awayTeam?.name] || match.awayTeam?.name || '';
-  const r = await fetch('/api/af/lookup?date=' + date + '&home=' + encodeURIComponent(hn) + '&away=' + encodeURIComponent(an));
-  const d = await r.json();
-  return d.fixtureId || null;
-}
+</script>
 </body>
 </html>`);
 });
