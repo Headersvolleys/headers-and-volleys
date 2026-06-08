@@ -67,11 +67,17 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
       fd('/teams/' + req.params.teamId, 60*MIN),
       fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
     ]);
-    const player = (teamData.squad||[]).find(p => String(p.id) === String(req.params.playerId));
-    // Try to find scorer - the scorer player.id from football-data.org should match squad id
+    const norm2 = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+    const pid = req.params.playerId;
+    let player = (teamData.squad||[]).find(p => String(p.id) === String(pid));
+    // If not found by id, the player might have been passed with scorer id - try matching later
+    // Match scorer by player id OR by name (ids can differ between squad and scorers endpoints)
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const scorer = (scorersData.scorers||[]).find(s => 
       String(s.player?.id) === String(req.params.playerId) ||
-      String(s.player?.id) === String(player?.id)
+      String(s.player?.id) === String(player?.id) ||
+      (player?.name && norm(s.player?.name).includes(norm(player.name).slice(0,7))) ||
+      (player?.name && norm(player.name).includes(norm(s.player?.name||'').slice(0,7)))
     );
     res.json({ player, scorer, team: {id: teamData.id, name: teamData.name, crest: teamData.crest} });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1824,6 +1830,10 @@ function Stats({openPlayer, openClub}){
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
   const [selPlayer,setSelPlayer]=useState(null);
+  const handleOpenPlayer = (player, teamId) => {
+    if(openPlayer) openPlayer(player, teamId);
+    else setSelPlayer({player, teamId});
+  };
   const [selClub,setSelClub]=useState(null);
 
   const allScorers=scorersData?.scorers||[];
@@ -1868,7 +1878,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&setSelPlayer({player:{...s.player,position:s.position},teamId:s.team?.id})}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,position:s.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
           </div>
         ))}
@@ -1880,7 +1890,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP ASSISTERS */}
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&setSelPlayer({player:{...s.player,position:s.position},teamId:s.team?.id})}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,position:s.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
           </div>
         ))}
@@ -2206,7 +2216,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
 
   const p = data?.player || player;
   const s = data?.scorer;
-  const team = data?.team;
+  const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
@@ -2580,7 +2590,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                         <div key={code} style={{flex:1}}>
                           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><Badge code={code} size={18}/><div><div style={{fontSize:11,fontWeight:700,color:col}}>{name}</div><div style={{fontSize:10,color:C.muted}}>{lineup.formation}</div></div></div>
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,marginBottom:4}}>STARTING XI</div>
-                          {(lineup.startXI||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff',flexShrink:0}}>{p.player?.number}</div><div style={{flex:1,minWidth:0}}><div onClick={()=>openPlayer&&p.player?.id&&openPlayer({id:p.player.id,name:p.player.name,position:p.player.pos},{id:match.homeTeam?.id,name:match.homeTeam?.name})} style={{fontSize:11,color:openPlayer?C.teal:C.white,cursor:openPlayer?'pointer':'default',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div><div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div></div></div>)}
+                          {(lineup.startXI||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff',flexShrink:0}}>{p.player?.number}</div><div style={{flex:1,minWidth:0}}><div onClick={()=>openPlayer&&p.player?.id&&openPlayer({id:p.player.id,name:p.player.name,position:p.player.pos,teamName:code===hc?match.homeTeam?.name:match.awayTeam?.name},code===hc?match.homeTeam?.id:match.awayTeam?.id)} style={{fontSize:11,color:openPlayer?C.teal:C.white,cursor:openPlayer?'pointer':'default',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div><div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div></div></div>)}
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,margin:'8px 0 4px'}}>SUBS</div>
                           {(lineup.substitutes||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:C.d4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:C.muted,flexShrink:0}}>{p.player?.number}</div><div style={{fontSize:11,color:C.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div></div>)}
                         </div>
