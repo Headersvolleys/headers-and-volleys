@@ -67,18 +67,37 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
       fd('/teams/' + req.params.teamId, 60*MIN),
       fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
     ]);
-    const norm2 = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-    const pid = req.params.playerId;
-    let player = (teamData.squad||[]).find(p => String(p.id) === String(pid));
-    // If not found by id, the player might have been passed with scorer id - try matching later
-    // Match scorer by player id OR by name (ids can differ between squad and scorers endpoints)
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-    const scorer = (scorersData.scorers||[]).find(s => 
-      String(s.player?.id) === String(req.params.playerId) ||
-      String(s.player?.id) === String(player?.id) ||
-      (player?.name && norm(s.player?.name).includes(norm(player.name).slice(0,7))) ||
-      (player?.name && norm(player.name).includes(norm(s.player?.name||'').slice(0,7)))
-    );
+    const pid = String(req.params.playerId);
+    const squad = teamData.squad || [];
+    const scorers = scorersData.scorers || [];
+
+    // Try to find squad player by id
+    let player = squad.find(p => String(p.id) === pid);
+
+    // Try to find scorer by passed id
+    let scorer = scorers.find(s => String(s.player?.id) === pid);
+
+    // If scorer found but no squad player — match squad player by name
+    if (!player && scorer?.player?.name) {
+      const sn = norm(scorer.player.name);
+      player = squad.find(p => {
+        const pn = norm(p.name || '');
+        return pn === sn || pn.includes(sn.slice(0, 8)) || sn.includes(pn.slice(0, 8));
+      });
+    }
+
+    // If squad player found but no scorer — match scorer by name or squad id
+    if (!scorer && player) {
+      scorer = scorers.find(s =>
+        String(s.player?.id) === String(player.id) ||
+        (() => {
+          const sn = norm(s.player?.name || ''), pn = norm(player.name || '');
+          return sn.length > 3 && pn.length > 3 && (sn === pn || sn.includes(pn.slice(0, 8)) || pn.includes(sn.slice(0, 8)));
+        })()
+      );
+    }
+
     res.json({ player, scorer, team: {id: teamData.id, name: teamData.name, crest: teamData.crest} });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
