@@ -862,13 +862,13 @@ function Predictions(){
   const exactScores=Object.values(scored).filter(p=>p===3).length;
   const correctOutcomes=Object.values(scored).filter(p=>p===1).length;
 
-  function savePred(matchId,key,val){
+  const savePred=(matchId,key,val)=>{
     const next={...preds,[matchId]:{...preds[matchId],[key]:val}};
     setPreds(next);
     localStorage.setItem('hav_preds',JSON.stringify(next));
   }
 
-  function saveName(){
+  const saveName=()=>{
     if(nameInput.trim()){
       setName(nameInput.trim());
       localStorage.setItem('hav_name',nameInput.trim());
@@ -1372,7 +1372,7 @@ function MultipleChoiceQuiz({quiz,onFinish}){
     const pool=[...new Set(quiz.questions.filter((_,j)=>j!==i).map(x=>x.a[0]))];
     return [correct,...pool.filter(p=>p!==correct).sort(()=>Math.random()-0.5).slice(0,3)].sort(()=>Math.random()-0.5);
   }));
-  function pick(opt){
+  const pick=(opt)=>{
     if(chosen!==null) return;
     const q=quiz.questions[idx];
     const ok=matchAnswer(opt,q.a);
@@ -1423,7 +1423,7 @@ function QuickFireQuiz({quiz,onFinish}){
     const iv=setInterval(()=>setTimeLeft(t=>{if(t<=1){clearInterval(iv);go(true);return TIME;}return t-1;}),1000);
     return()=>clearInterval(iv);
   },[idx,frozen]);
-  function go(forceWrong){
+  const go=(forceWrong)=>{
     if(frozen) return;
     setFrozen(true);
     const q=quiz.questions[idx];
@@ -1467,7 +1467,7 @@ function TypeAnswerQuiz({quiz,onFinish}){
   const [results,setResults]=useState({});
   const [score,setScore]=useState(0);
   const q=quiz.questions[idx];
-  function check(){
+  const check=()=>{
     const ok=matchAnswer(draft,q.a);
     const ns=score+(ok?1:0);
     if(ok) setScore(ns);
@@ -1588,6 +1588,30 @@ function Quiz({openPlayer, openClub}){
 //  PLAYER PROFILE MODAL 
 
 //  CLUB PROFILE MODAL (full page)
+function FixRow({m}){
+  const isHome=m.homeTeam?.id===team?.id;
+  const opp=isHome?m.awayTeam:m.homeTeam;
+  const oppCode=TCODE[opp?.name]||'???';
+  const hg=m.score?.fullTime?.home, ag=m.score?.fullTime?.away;
+  const fin=m.status==='FINISHED';
+  const won=fin&&(isHome?hg>ag:ag>hg), drew=fin&&hg===ag;
+  const col=fin?(won?C.green:drew?C.yellow:C.red):C.d4;
+  const dt=new Date(m.utcDate);
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:4,borderLeft:'3px solid '+col}}>
+      <div style={{flexShrink:0,minWidth:60}}>
+        <div style={{fontSize:10,color:C.muted}}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+        <div style={{fontSize:9,color:fin?C.muted:C.teal,fontWeight:600}}>{fin?'FT':dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
+      <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{cursor:'pointer'}}><Badge code={oppCode} size={18}/></span>
+      <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{fontSize:12,flex:1,color:C.teal,cursor:'pointer',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
+      {fin&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>}
+      {fin&&<div style={{width:20,height:20,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{won?'W':drew?'D':'L'}</div>}
+    </div>
+  );
+}
+
 function ClubModal({team, onClose, openPlayer, openClub}){
   const code = TCODE[team?.name] || '???';
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
@@ -1601,7 +1625,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
   const posMap = {'Forward':'Forward','Forward':'Forward'};
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>{
     const pos = posMap[p.position]||p.position;
-    const sqFilter = squadFilter==='Forward'?['Forward','Offence','Attack','Attacker']:null;
+    const sqFilter = squadFilter==='Forward'?['Forward','Offence','Offense','Attack','Attacker']:null;
     return sqFilter ? sqFilter.includes(pos)||sqFilter.includes(p.position) : pos===squadFilter;
   });
 
@@ -1622,30 +1646,6 @@ function ClubModal({team, onClose, openPlayer, openClub}){
   const tc = teamCol(code);
   const tS={padding:'6px 12px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
-
-  function FixRow({m}){
-    const isHome=m.homeTeam?.id===team?.id;
-    const opp=isHome?m.awayTeam:m.homeTeam;
-    const oppCode=TCODE[opp?.name]||'???';
-    const hg=m.score?.fullTime?.home, ag=m.score?.fullTime?.away;
-    const fin=m.status==='FINISHED';
-    const won=fin&&(isHome?hg>ag:ag>hg), drew=fin&&hg===ag;
-    const col=fin?(won?C.green:drew?C.yellow:C.red):C.d4;
-    const dt=new Date(m.utcDate);
-    return(
-      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:4,borderLeft:'3px solid '+col}}>
-        <div style={{flexShrink:0,minWidth:60}}>
-          <div style={{fontSize:10,color:C.muted}}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
-          <div style={{fontSize:9,color:fin?C.muted:C.teal,fontWeight:600}}>{fin?'FT':dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
-        </div>
-        <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
-        <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{cursor:'pointer'}}><Badge code={oppCode} size={18}/></span>
-        <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{fontSize:12,flex:1,color:C.teal,cursor:'pointer',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
-        {fin&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>}
-        {fin&&<div style={{width:20,height:20,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{won?'W':drew?'D':'L'}</div>}
-      </div>
-    );
-  }
 
   return(
     <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -1793,6 +1793,29 @@ function GKCleanSheets(){
   );
 }
 
+function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
+  const code=TCODE[p.team?.name]||'???';
+  const tc=teamCol(code);
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
+      <Badge code={code} size={22}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
+        <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
+      </div>
+      <div style={{textAlign:'right',flexShrink:0}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
+      </div>
+      {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
+      </div>}
+    </div>
+  );
+}
+
 function Stats({openPlayer, openClub}){
   const {data:scorersData,loading:sLoad,error:sErr}=useApi('/api/scorers?limit=100',600000);
   const {data:standData,loading:tLoad}=useApi('/api/standings',300000);
@@ -1823,29 +1846,6 @@ function Stats({openPlayer, openClub}){
 
   const tS={padding:'6px 10px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
-
-  function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
-    const code=TCODE[p.team?.name]||'???';
-    const tc=teamCol(code);
-    return(
-      <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
-        <Badge code={code} size={22}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
-          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
-        </div>
-        <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
-        </div>
-        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
-        </div>}
-      </div>
-    );
-  }
 
     const loading=sLoad||tLoad;
   if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
@@ -1968,6 +1968,15 @@ function Stats({openPlayer, openClub}){
 }
 
 
+function Bar({val, max, col}){
+  const pct = max > 0 ? Math.min(100, (val/max)*100) : 0;
+  return(
+    <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+      <div style={{width:pct+'%',height:'100%',background:col,borderRadius:2,transition:'width .4s'}}/>
+    </div>
+  );
+}
+
 function XGStats(){
   const [view, setView] = useState('players');
   const {data:pData, loading:pLoad, error:pErr} = useApi('/api/xg/players', 30*60000);
@@ -1976,15 +1985,6 @@ function XGStats(){
   const teams = tData?.teams || [];
   const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
-
-  function Bar({val, max, col}){
-    const pct = max > 0 ? Math.min(100, (val/max)*100) : 0;
-    return(
-      <div style={{flex:1,height:4,background:C.d4,borderRadius:2,overflow:'hidden'}}>
-        <div style={{width:pct+'%',height:'100%',background:col,borderRadius:2,transition:'width .4s'}}/>
-      </div>
-    );
-  }
 
   return(
     <div style={{padding:16,paddingBottom:80}}>
@@ -2210,6 +2210,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
+  const {data:standData} = useApi('/api/standings', 300000);
+  const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
 
   return(
     <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -2281,10 +2283,25 @@ function PlayerModal({player, teamId, onClose, openClub}){
           <div style={{background:C.d2,borderRadius:10,padding:'0 14px',marginBottom:16}}>
             <PlayerInfoRow label="Nationality" value={p?.nationality}/>
             {p?.dateOfBirth&&<PlayerInfoRow label="Date of Birth" value={new Date(p.dateOfBirth).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}/>}
-            <PlayerInfoRow label="Position" value={p?.position}/>
+            <PlayerInfoRow label="Position" value={p?.position==='Offence'?'Forward':p?.position}/>
             {p?.shirtNumber&&<PlayerInfoRow label="Shirt Number" value={'#'+p.shirtNumber}/>}
             {xgData&&<PlayerInfoRow label="Minutes Played" value={xgData.mins?.toLocaleString()}/>}
           </div>
+
+          {/* Club section */}
+          {team&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Club</div>
+            <div onClick={()=>openClub&&openClub(team)} style={{background:C.d2,borderRadius:10,padding:'12px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+              <Badge code={TCODE[team?.name]||'???'} size={36}/>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15,color:C.teal}}>{TSHORT[team?.name]||team?.name}</div>
+                {tableRow&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                  {tableRow.position}{tableRow.position===1?'st':tableRow.position===2?'nd':tableRow.position===3?'rd':'th'} in the Premier League
+                </div>}
+              </div>
+              <div style={{color:C.muted,fontSize:18}}>{'>'}</div>
+            </div>
+          </>}
         </>}
       </div>
     </div>
@@ -2447,7 +2464,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const homeLineup=lineups.find(l=>lineupMatch(l.team?.name,hns2))||null;
   const awayLineup=lineups.find(l=>lineupMatch(l.team?.name,ans2))||null;
 
-  function getForm(fd2,tid){
+  const getForm=(fd2,tid)=>{
     return (fd2?.matches||[]).slice(-5).reverse().map(m=>{
       const ih=m.homeTeam?.id===tid, mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
       if(mh==null) return null;
@@ -2674,15 +2691,9 @@ function App(){
   const [page,setPage]=useState(null); // {type:'player',data:{...}} or {type:'club',data:{...}}
   useCrests();
 
-  function openPlayer(player, teamId){
-    if(!player||!teamId) return;
-    setPage({type:'player', player, teamId});
-  }
-  function openClub(team){
-    if(!team) return;
-    setPage({type:'club', team});
-  }
-  function goBack(){ setPage(null); }
+  const openPlayer=(player,teamId)=>{ if(!player||!teamId) return; setPage({type:'player',player,teamId}); };
+  const openClub=(team)=>{ if(!team) return; setPage({type:'club',team}); };
+  const goBack=()=>setPage(null);
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack}/>;
   if(page?.type==='club') return <ClubModal team={page.team} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
