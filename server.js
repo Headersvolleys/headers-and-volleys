@@ -217,7 +217,15 @@ app.get('/api/gk-cleansheets', async (req, res) => {
 // GK clean sheets endpoint alias
 
 async function fetchUnderstat(url) {
-  const r = await fetch(url, { headers: {'User-Agent':'Mozilla/5.0 (compatible; HaV/1.0)'} });
+  const r = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-GB,en;q=0.5',
+      'Referer': 'https://understat.com/',
+    }
+  });
+  if (!r.ok) throw new Error('Understat ' + r.status);
   const html = await r.text();
   const out = {};
   const scriptRe = /<script>([\s\S]*?)<\/script>/g;
@@ -233,10 +241,12 @@ async function fetchUnderstat(url) {
       const m = src.match(re);
       if (m) {
         try {
-          const decoded = m[1].replace(/\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h,16)))
-                               .replace(/\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h,16)));
-          out[key] = JSON.parse(decoded);
-        } catch(e) {}
+          const raw = m[1].replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h,16)))
+                          .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h,16)));
+          out[key] = JSON.parse(raw);
+        } catch(e) {
+          try { out[key] = JSON.parse(m[1]); } catch(e2) {}
+        }
       }
     }
   }
@@ -770,6 +780,471 @@ function Table(){
 }
 
 // -- STATS -------------------------------------------------
+// -- PREDICTIONS & QUIZ (inserted)
+
+//  PREDICTIONS 
+function calcPoints(pred,actual){
+  if(!pred||actual.hg==null||actual.ag==null) return null;
+  const ph=parseInt(pred.h), pa=parseInt(pred.a);
+  if(isNaN(ph)||isNaN(pa)) return null;
+  if(ph===actual.hg && pa===actual.ag) return 3;
+  const po=ph>pa?'H':pa>ph?'A':'D';
+  const ao=actual.hg>actual.ag?'H':actual.ag>actual.hg?'A':'D';
+  if(po===ao) return 1;
+  return 0;
+}
+
+function Predictions(){
+  const {data:allMatches,loading}=useApi('/api/matches',300000);
+  const [preds,setPreds]=useState(()=>{try{return JSON.parse(localStorage.getItem('hav_preds')||'{}')}catch(e){return {}}});
+  const [name,setName]=useState(()=>localStorage.getItem('hav_name')||'');
+  const [nameInput,setNameInput]=useState('');
+  const [view,setView]=useState('predict');
+  const [gw,setGw]=useState(null);
+
+  const matches=allMatches?.matches||[];
+  const upcoming=matches.filter(m=>m.status==='SCHEDULED'||m.status==='TIMED');
+  const finished=matches.filter(m=>m.status==='FINISHED');
+
+  const upcomingGWs=[...new Set(upcoming.map(m=>m.matchday))].sort((a,b)=>a-b);
+  const activeGW=gw||upcomingGWs[0]||null;
+  const gwMatches=activeGW?upcoming.filter(m=>m.matchday===activeGW):[];
+
+  const scored={};
+  finished.forEach(m=>{
+    const p=preds[m.id];
+    if(p){
+      const pts=calcPoints(p,{hg:m.score?.fullTime?.home,ag:m.score?.fullTime?.away});
+      if(pts!==null) scored[m.id]=pts;
+    }
+  });
+
+  const totalPoints=Object.values(scored).reduce((a,b)=>a+b,0);
+  const exactScores=Object.values(scored).filter(p=>p===3).length;
+  const correctOutcomes=Object.values(scored).filter(p=>p===1).length;
+
+  function savePred(matchId,key,val){
+    const next={...preds,[matchId]:{...preds[matchId],[key]:val}};
+    setPreds(next);
+    localStorage.setItem('hav_preds',JSON.stringify(next));
+  }
+
+  function saveName(){
+    if(nameInput.trim()){
+      setName(nameInput.trim());
+      localStorage.setItem('hav_name',nameInput.trim());
+    }
+  }
+
+  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  if(!name){
+    return(
+      <div style={{padding:24,paddingBottom:80}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,marginBottom:6}}>PREDICTIONS</div>
+        <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:20,marginTop:8}}>
+          <div style={{fontWeight:700,fontSize:15,color:C.white,marginBottom:8}}>Enter your name to start</div>
+          <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Your predictions are scored automatically when matches finish using live data from football-data.org.</div>
+          <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveName()} placeholder="Your name" style={{width:'100%',background:C.d3,border:'1px solid '+C.d4,borderRadius:9,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'11px 13px',outline:'none',boxSizing:'border-box',marginBottom:10}}/>
+          <button onClick={saveName} style={{width:'100%',padding:'12px 0',borderRadius:10,border:'none',background:nameInput.trim()?C.teal:C.d4,color:nameInput.trim()?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:nameInput.trim()?'pointer':'default'}}>Start Predicting</button>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14}}>
+        <div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,lineHeight:1}}>PREDICTIONS</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>Scored live from football-data.org</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{totalPoints}</div>
+          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.5}}>POINTS</div>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:6,marginBottom:14}}>
+        <button onClick={()=>setView('predict')} style={view==='predict'?tA:tS}>Predict</button>
+        <button onClick={()=>setView('league')} style={view==='league'?tA:tS}>League</button>
+        <button onClick={()=>setView('results')} style={view==='results'?tA:tS}>My Results</button>
+      </div>
+
+      {view==='predict'&&(
+        <div>
+          {loading&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {!loading&&gwMatches.length===0&&<div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>No upcoming fixtures to predict</div>}
+          {upcomingGWs.length>1&&(
+            <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:4,marginBottom:12}}>
+              {upcomingGWs.map(g=>(
+                <button key={g} onClick={()=>setGw(g)} style={{flexShrink:0,padding:'4px 10px',borderRadius:7,border:'1px solid '+(activeGW===g?C.teal:C.d4),background:activeGW===g?'rgba(10,191,184,.1)':C.d2,color:activeGW===g?C.teal:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>GW{g}</button>
+              ))}
+            </div>
+          )}
+          {gwMatches.map(m=>{
+            const hc=TCODE[m.homeTeam?.name]||'???', ac=TCODE[m.awayTeam?.name]||'???';
+            const p=preds[m.id]||{};
+            const saved=p.saved;
+            const dt=new Date(m.utcDate);
+            return(
+              <div key={m.id} style={{background:saved?'rgba(10,191,184,.04)':C.d2,border:'1px solid '+(saved?C.teal:C.d4),borderRadius:13,padding:'12px 14px',marginBottom:10}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>
+                  {dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})} {dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
+                  {saved&&<span style={{marginLeft:8,color:C.teal}}>Saved</span>}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{flex:1,textAlign:'center'}}>
+                    <div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={hc} size={28}/></div>
+                    <div style={{fontSize:12,fontWeight:700,color:C.white}}>{TSHORT[m.homeTeam?.name]||m.homeTeam?.name}</div>
+                  </div>
+                  <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
+                    <input type="number" min="0" max="20" value={p.h!=null?p.h:''} disabled={saved}
+                      onChange={e=>savePred(m.id,'h',e.target.value)}
+                      style={{width:46,height:46,background:C.d3,border:'2px solid '+(p.h!=null&&p.h!==''?C.teal:C.d4),borderRadius:9,textAlign:'center',fontSize:20,fontWeight:700,color:C.teal,fontFamily:'Bebas Neue,sans-serif',outline:'none'}}/>
+                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.d4}}>-</span>
+                    <input type="number" min="0" max="20" value={p.a!=null?p.a:''} disabled={saved}
+                      onChange={e=>savePred(m.id,'a',e.target.value)}
+                      style={{width:46,height:46,background:C.d3,border:'2px solid '+(p.a!=null&&p.a!==''?C.teal:C.d4),borderRadius:9,textAlign:'center',fontSize:20,fontWeight:700,color:C.teal,fontFamily:'Bebas Neue,sans-serif',outline:'none'}}/>
+                  </div>
+                  <div style={{flex:1,textAlign:'center'}}>
+                    <div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={ac} size={28}/></div>
+                    <div style={{fontSize:12,fontWeight:700,color:C.white}}>{TSHORT[m.awayTeam?.name]||m.awayTeam?.name}</div>
+                  </div>
+                </div>
+                {!saved&&(
+                  <button onClick={()=>{if(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')savePred(m.id,'saved',true);}}
+                    style={{width:'100%',marginTop:10,padding:'9px 0',borderRadius:9,border:'none',background:(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')?C.teal:C.d4,color:(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                    Save Prediction
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view==='league'&&(
+        <div>
+          <div style={{background:C.d3,borderRadius:12,padding:'14px 16px',marginBottom:14,textAlign:'center'}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:4}}>{name}</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:48,color:C.teal,lineHeight:1}}>{totalPoints}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:4}}>pts</div>
+            <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:12}}>
+              <div style={{textAlign:'center'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.gold,lineHeight:1}}>{exactScores}</div>
+                <div style={{fontSize:10,color:C.muted}}>Exact scores (3pts)</div>
+              </div>
+              <div style={{textAlign:'center'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.green,lineHeight:1}}>{correctOutcomes}</div>
+                <div style={{fontSize:10,color:C.muted}}>Correct results (1pt)</div>
+              </div>
+            </div>
+          </div>
+          <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'12px 14px',marginBottom:10}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8,fontWeight:700}}>Your name</div>
+            <div style={{display:'flex',gap:8}}>
+              <input value={nameInput||name} onChange={e=>setNameInput(e.target.value)} style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:8,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:13,padding:'8px 11px',outline:'none'}}/>
+              <button onClick={()=>{if(nameInput.trim()){setName(nameInput.trim());localStorage.setItem('hav_name',nameInput.trim());setNameInput('');}}} style={{padding:'8px 14px',borderRadius:8,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Save</button>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:C.muted,textAlign:'center',lineHeight:1.6}}>
+            Points awarded automatically when matches finish.<br/>3pts exact score - 1pt correct result - 0pts wrong
+          </div>
+        </div>
+      )}
+
+      {view==='results'&&(
+        <div>
+          {finished.filter(m=>preds[m.id]?.saved).length===0&&<div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>No scored predictions yet</div>}
+          {[...finished].filter(m=>preds[m.id]?.saved).reverse().map(m=>{
+            const p=preds[m.id];
+            const hg2=m.score?.fullTime?.home, ag2=m.score?.fullTime?.away;
+            const pts=calcPoints(p,{hg:hg2,ag:ag2});
+            const hc=TCODE[m.homeTeam?.name]||'???', ac=TCODE[m.awayTeam?.name]||'???';
+            const ptCol=pts===3?C.gold:pts===1?C.green:C.red;
+            return(
+              <div key={m.id} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:11,padding:'11px 13px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
+                <Badge code={hc} size={20}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.homeTeam?.name]} v {TSHORT[m.awayTeam?.name]}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                    Your pick: <span style={{color:C.text,fontWeight:700}}>{p.h}-{p.a}</span>
+                    {' '} Result: <span style={{color:C.teal,fontWeight:700}}>{hg2}-{ag2}</span>
+                  </div>
+                </div>
+                <Badge code={ac} size={20}/>
+                <div style={{textAlign:'center',flexShrink:0,minWidth:36}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:ptCol,lineHeight:1}}>{pts!=null?'+'+pts:'?'}</div>
+                  <div style={{fontSize:9,color:C.muted,fontWeight:700}}>PTS</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+//  QUIZ 
+function matchAnswer(typed, accepted) {
+  const t = typed.trim().toLowerCase();
+  const ALIASES = {
+    'manchester city':['man city','city'],
+    'manchester united':['man utd','man united','man u','united'],
+    'tottenham hotspur':['spurs','tottenham'],
+    'wolverhampton wanderers':['wolves','wolverhampton'],
+    'west ham united':['west ham','hammers'],
+    'nottingham forest':['nottm forest','forest'],
+    'newcastle united':['newcastle'],
+    'brighton & hove albion':['brighton'],
+    'leicester city':['leicester'],
+    'aston villa':['villa'],
+    'crystal palace':['palace'],
+    'leeds united':['leeds'],
+  };
+  const expand = (s) => {
+    const low = s.toLowerCase();
+    const extras = [];
+    Object.entries(ALIASES).forEach(([full, shorts]) => {
+      if (low === full || shorts.includes(low)) extras.push(full, ...shorts);
+    });
+    return [low, ...extras];
+  };
+  const tVariants = expand(t);
+  return accepted.some(a => {
+    const aVariants = expand(a);
+    return tVariants.some(tv => aVariants.some(av => tv === av || tv.includes(av) || av.includes(tv)));
+  });
+}
+
+function MultipleChoiceQuiz({quiz,onFinish}){
+  const [idx,setIdx]=useState(0);
+  const [answers,setAnswers]=useState({});
+  const [chosen,setChosen]=useState(null);
+  const [score,setScore]=useState(0);
+  const [opts]=useState(()=>quiz.questions.map((q,i)=>{
+    if(q.mc&&q.mc.length>=4) return [...q.mc].sort(()=>Math.random()-0.5);
+    const correct=q.a[0];
+    const pool=[...new Set(quiz.questions.filter((_,j)=>j!==i).map(x=>x.a[0]))];
+    return [correct,...pool.filter(p=>p!==correct).sort(()=>Math.random()-0.5).slice(0,3)].sort(()=>Math.random()-0.5);
+  }));
+  function pick(opt){
+    if(chosen!==null) return;
+    const q=quiz.questions[idx];
+    const ok=matchAnswer(opt,q.a);
+    const ns=score+(ok?1:0);
+    if(ok) setScore(ns);
+    setChosen(opt);
+    setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));
+    setTimeout(()=>{setChosen(null);if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},900);
+  }
+  const q=quiz.questions[idx];
+  return(
+    <div style={{padding:16,paddingBottom:60}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
+        <div style={{fontSize:13,fontWeight:700,color:C.teal}}>{score}/{idx}</div>
+      </div>
+      <div style={{height:4,background:C.d4,borderRadius:2,overflow:'hidden',marginBottom:18}}>
+        <div style={{width:Math.round(idx/quiz.questions.length*100)+'%',height:'100%',background:C.teal,transition:'width .3s'}}/>
+      </div>
+      <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:14}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
+        <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {opts[idx].map((opt,i)=>{
+          let bg=C.d3,border=C.d4,col=C.text;
+          if(chosen!==null){if(matchAnswer(opt,q.a)){bg='rgba(0,230,118,.12)';border=C.green;col=C.green;}else if(opt===chosen){bg='rgba(255,61,61,.1)';border=C.red;col=C.red;}}
+          return<button key={i} onClick={()=>pick(opt)} style={{padding:'13px 16px',borderRadius:10,border:'2px solid '+border,background:bg,color:col,fontFamily:'DM Sans,sans-serif',fontSize:14,fontWeight:600,cursor:chosen?'default':'pointer',textAlign:'left',transition:'all .2s'}}><span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.muted,marginRight:10}}>{['A','B','C','D'][i]}</span>{opt}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QuickFireQuiz({quiz,onFinish}){
+  const TIME=8;
+  const [idx,setIdx]=useState(0);
+  const [timeLeft,setTimeLeft]=useState(TIME);
+  const [draft,setDraft]=useState('');
+  const [answers,setAnswers]=useState({});
+  const [flash,setFlash]=useState(null);
+  const [score,setScore]=useState(0);
+  const [frozen,setFrozen]=useState(false);
+  const inputRef=useRef(null);
+  useEffect(()=>{if(inputRef.current)inputRef.current.focus();setTimeLeft(TIME);setDraft('');},[idx]);
+  useEffect(()=>{
+    if(frozen) return;
+    const iv=setInterval(()=>setTimeLeft(t=>{if(t<=1){clearInterval(iv);go(true);return TIME;}return t-1;}),1000);
+    return()=>clearInterval(iv);
+  },[idx,frozen]);
+  function go(forceWrong){
+    if(frozen) return;
+    setFrozen(true);
+    const q=quiz.questions[idx];
+    const ok=!forceWrong&&matchAnswer(draft,q.a);
+    setScore(s=>{
+      const ns=s+(ok?1:0);
+      setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));
+      setFlash(ok?'correct':'wrong');
+      setTimeout(()=>{setFlash(null);setFrozen(false);setDraft('');if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},600);
+      return ns;
+    });
+  }
+  const q=quiz.questions[idx];
+  const tc=timeLeft<=3?C.red:timeLeft<=5?C.yellow:C.green;
+  return(
+    <div style={{padding:16,paddingBottom:60}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:tc,animation:timeLeft<=3?'blink 1s infinite':undefined}}>{timeLeft}</div>
+      </div>
+      <div style={{height:5,background:C.d4,borderRadius:3,overflow:'hidden',marginBottom:14}}>
+        <div style={{width:(timeLeft/TIME*100)+'%',height:'100%',background:tc,transition:'width 1s linear'}}/>
+      </div>
+      {flash&&<div style={{position:'fixed',inset:0,background:flash==='correct'?'rgba(0,230,118,.2)':'rgba(255,61,61,.2)',zIndex:500,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:80,color:flash==='correct'?C.green:C.red,fontWeight:700}}>{flash==='correct'?'OK':'X'}</div></div>}
+      <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:12}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
+        <div style={{fontSize:17,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
+      </div>
+      <div style={{display:'flex',gap:8}}>
+        <input ref={inputRef} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&draft.trim()&&!frozen)go(false);}} placeholder="Quick! Type your answer..." style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'12px 13px',outline:'none'}} autoFocus/>
+        <button onClick={()=>draft.trim()&&!frozen&&go(false)} style={{padding:'0 16px',borderRadius:10,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Go</button>
+      </div>
+    </div>
+  );
+}
+
+function TypeAnswerQuiz({quiz,onFinish}){
+  const [idx,setIdx]=useState(0);
+  const [draft,setDraft]=useState('');
+  const [revealed,setRevealed]=useState({});
+  const [results,setResults]=useState({});
+  const [score,setScore]=useState(0);
+  const q=quiz.questions[idx];
+  function check(){
+    const ok=matchAnswer(draft,q.a);
+    const ns=score+(ok?1:0);
+    if(ok) setScore(ns);
+    setRevealed(r=>({...r,[idx]:true}));
+    setResults(r=>({...r,[idx]:ok?'correct':'wrong'}));
+    setTimeout(()=>{setDraft('');if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},800);
+  }
+  return(
+    <div style={{padding:16,paddingBottom:60}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
+        <div style={{fontSize:13,fontWeight:700,color:C.teal}}>{score}/{idx}</div>
+      </div>
+      <div style={{height:4,background:C.d4,borderRadius:2,overflow:'hidden',marginBottom:18}}>
+        <div style={{width:Math.round(idx/quiz.questions.length*100)+'%',height:'100%',background:C.teal,transition:'width .3s'}}/>
+      </div>
+      <div style={{background:C.d2,border:'1px solid '+(revealed[idx]?results[idx]==='correct'?C.green:C.red:C.d4),borderRadius:14,padding:'18px 16px',marginBottom:14,transition:'border-color .3s'}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
+        <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
+        {revealed[idx]&&results[idx]==='wrong'&&<div style={{fontSize:12,color:C.red,marginTop:8,fontWeight:700}}>Answer: {q.a[0]}</div>}
+      </div>
+      <div style={{display:'flex',gap:8}}>
+        <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&draft.trim())check();}} placeholder="Type your answer..." style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'12px 13px',outline:'none'}} autoFocus/>
+        <button onClick={check} disabled={!draft.trim()} style={{padding:'0 16px',borderRadius:10,border:'none',background:draft.trim()?C.teal:C.d4,color:draft.trim()?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:draft.trim()?'pointer':'default',flexShrink:0}}>Check</button>
+      </div>
+    </div>
+  );
+}
+
+function Quiz(){
+  const [view,setView]=useState('list');
+  const [activeQuiz,setActiveQuiz]=useState(null);
+  const [format,setFormat]=useState('type');
+  const [finalScore,setFinalScore]=useState(null);
+
+  function handleFinish(score,total){
+    setFinalScore({score,total});
+    setView('result');
+  }
+
+  if(view==='format'&&activeQuiz){
+    const formats=[
+      {id:'type',label:'Type Answer',sub:'Type your answer, partial matches count'},
+      {id:'mc',label:'Multiple Choice',sub:'4 options - pick the right one'},
+      {id:'qf',label:'Quick Fire',sub:'8 seconds per question - beat the clock'},
+    ];
+    return(
+      <div style={{padding:16,paddingBottom:80}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+          <button onClick={()=>setView('list')} style={{background:'transparent',border:'none',color:C.muted,fontSize:18,cursor:'pointer'}}>{'<'}</button>
+          <div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:1}}>{activeQuiz.title}</div>
+            <div style={{fontSize:12,color:C.muted}}>{activeQuiz.questions.length} questions</div>
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {formats.map(f=>(
+            <div key={f.id} onClick={()=>{setFormat(f.id);setView('playing');}} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15,color:C.white,marginBottom:2}}>{f.label}</div>
+                <div style={{fontSize:12,color:C.muted}}>{f.sub}</div>
+              </div>
+              <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if(view==='playing'&&activeQuiz){
+    if(format==='mc') return <MultipleChoiceQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
+    if(format==='qf') return <QuickFireQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
+    return <TypeAnswerQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
+  }
+
+  if(view==='result'&&finalScore){
+    const pct=Math.round(finalScore.score/finalScore.total*100);
+    const grade=pct>=90?'S':pct>=70?'A':pct>=50?'B':pct>=30?'C':'D';
+    const gradeCol=pct>=70?C.green:pct>=50?C.yellow:C.red;
+    return(
+      <div style={{padding:24,paddingBottom:80,textAlign:'center'}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:80,color:gradeCol,lineHeight:1,marginBottom:8}}>{grade}</div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:32,color:C.white,marginBottom:4}}>{finalScore.score}/{finalScore.total}</div>
+        <div style={{fontSize:14,color:C.muted,marginBottom:24}}>{pct}% correct</div>
+        <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+          <button onClick={()=>{setView('playing');setFinalScore(null);}} style={{padding:'10px 20px',borderRadius:9,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>Play Again</button>
+          <button onClick={()=>{setView('list');setActiveQuiz(null);setFinalScore(null);}} style={{padding:'10px 20px',borderRadius:9,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>All Quizzes</button>
+        </div>
+      </div>
+    );
+  }
+
+  const cats=[...new Set(QUIZZES.map(q=>q.cat))];
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
+        <div style={{fontSize:11,color:C.muted}}>{QUIZZES.length} quizzes - test your football knowledge</div>
+      </div>
+      {cats.map(cat=>(
+        <div key={cat} style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>{cat}</div>
+          {QUIZZES.filter(q=>q.cat===cat).map(q=>(
+            <div key={q.id} onClick={()=>{setActiveQuiz(q);setView('format');}} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 16px',marginBottom:6,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.white,marginBottom:1}}>{q.title}</div>
+                <div style={{fontSize:11,color:C.muted}}>{q.questions.length} questions</div>
+              </div>
+              <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 function GKCleanSheets(){
   const {data,loading,error}=useApi('/api/gk-cleansheets',300000);
   const gks=(data?.goalkeepers||[]).slice(0,20);
@@ -863,7 +1338,7 @@ function Stats(){
         <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
       </div>
       <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:4}}>
-        {[['scorers','Top Scorers'],['assists','Assists'],['cleansheets','Clean Sheets'],['xgtable','xG Table']].map(([id,label])=>(
+        {[['scorers','Top Scorers'],['assists','Assists'],['xgtable','xG Table']].map(([id,label])=>(
           <button key={id} onClick={()=>{setView(id);setShowFull(false);}} style={view===id?tA:tS}>{label}</button>
         ))}
       </div>
@@ -888,8 +1363,7 @@ function Stats(){
         </button>}
       </>}
 
-      {/* CLEAN SHEETS - Golden Glove race by GK */}
-      {view==='cleansheets'&&<GKCleanSheets/>}
+
 
       {/* xG TABLE */}
       {view==='xgtable'&&(
