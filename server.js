@@ -736,7 +736,7 @@ function Live({openPlayer, openClub}){
 }
 
 // -- FIXTURES ----------------------------------------------
-function Fixtures({openClub}){
+function Fixtures({openPlayer, openClub}){
   const {data,loading,error}=useApi('/api/matches',300000);
   const [selClub,setSelClub]=useState(null);
   const [filter,setFilter]=useState('ALL');
@@ -1853,7 +1853,7 @@ function Stats({openPlayer, openClub}){
 
   return(
     <div style={{padding:16,paddingBottom:80}}>
-      {selPlayer&&<PlayerModal player={selPlayer.player} teamId={selPlayer.teamId} onClose={()=>setSelPlayer(null)}/>}
+      {selPlayer&&<PlayerModal player={selPlayer.player} teamId={selPlayer.teamId} onClose={()=>setSelPlayer(null)} openClub={openClub}/>}
       {selClub&&<ClubModal team={selClub} onClose={()=>setSelClub(null)}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
@@ -2231,7 +2231,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
             <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
               {flagUrl&&<img src={flagUrl} style={{width:20,height:15,objectFit:'cover',borderRadius:2}} alt=""/>}
               <span style={{fontSize:12,color:C.muted}}>{p?.nationality}</span>
-              {p?.position&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{p.position}</span>}
+              {p?.position&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{{Offence:'Forward',Offense:'Forward',Attack:'Forward'}[p.position]||p.position}</span>}
               {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted}}>#{p.shirtNumber}</span>}
             </div>
           </div>
@@ -2695,7 +2695,7 @@ function App(){
   const openClub=(team)=>{ if(!team) return; setPage({type:'club',team}); };
   const goBack=()=>setPage(null);
 
-  if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack}/>;
+  if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
   if(page?.type==='club') return <ClubModal team={page.team} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
 
   return(
@@ -2710,7 +2710,7 @@ function App(){
       <div style={{animation:'fadeIn .2s ease'}}>
         {tab==='live'&&<Live openClub={openClub}/>}
         {tab==='predict'&&<Predictions/>}
-        {tab==='fixtures'&&<Fixtures openClub={openClub}/>}
+        {tab==='fixtures'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='quiz'&&<Quiz openPlayer={openPlayer} openClub={openClub}/>}
