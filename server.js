@@ -67,52 +67,38 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
       fd('/teams/' + req.params.teamId, 60*MIN),
       fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
     ]);
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'').slice(0,10);
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pid = String(req.params.playerId);
     const squad = teamData.squad || [];
     const scorers = scorersData.scorers || [];
 
-    // Step 1: find squad player by id
+    // Find squad player by id
     let player = squad.find(p => String(p.id) === pid);
 
-    // Step 2: find scorer by same id
+    // Find scorer by id
     let scorer = scorers.find(s => String(s.player?.id) === pid);
 
-    // Step 3: if scorer found but no squad player, find squad player by name
+    // If scorer found but no squad player, match by name
     if (!player && scorer?.player?.name) {
       const sn = norm(scorer.player.name);
       player = squad.find(p => norm(p.name||'') === sn) ||
-               squad.find(p => norm(p.name||'').includes(sn.slice(0,6)) || sn.includes(norm(p.name||'').slice(0,6)));
+               squad.find(p => { const pn=norm(p.name||''); return pn.length>4&&sn.length>4&&(pn.startsWith(sn.slice(0,5))||sn.startsWith(pn.slice(0,5))); });
     }
 
-    // Step 4: if squad player found but no scorer, find scorer by name
+    // If squad player found but no scorer, match by name
     if (!scorer && player?.name) {
       const pn = norm(player.name);
       scorer = scorers.find(s => norm(s.player?.name||'') === pn) ||
-               scorers.find(s => { 
-                 const sn = norm(s.player?.name||'');
-                 return sn.length > 4 && (sn.includes(pn.slice(0,6)) || pn.includes(sn.slice(0,6)));
-               });
-    }
-
-    // Step 5: last resort - search ALL scorers for a name match with passed id as name hint
-    // The id passed may actually be a scorer id not squad id
-    if (!scorer) {
-      scorer = scorers.find(s => String(s.player?.id) === pid);
-      if (scorer && !player) {
-        const sn = norm(scorer.player?.name||'');
-        player = squad.find(p => norm(p.name||'') === sn) ||
-                 squad.find(p => norm(p.name||'').includes(sn.slice(0,6)));
-      }
+               scorers.find(s => { const sn=norm(s.player?.name||''); return sn.length>4&&pn.length>4&&(sn.startsWith(pn.slice(0,5))||pn.startsWith(sn.slice(0,5))); });
     }
 
     res.json({ 
       player, 
       scorer, 
       team: {id: teamData.id, name: teamData.name, crest: teamData.crest},
-      debug: { pid, playerFound: !!player, scorerFound: !!scorer, squadSize: squad.length }
+      debug: { pid, playerFound: !!player, scorerFound: !!scorer, playerName: player?.name, scorerName: scorer?.player?.name }
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: e.message, stack: e.stack?.split('\n')[0] }); }
 });
 
 // Understat xG by player name
