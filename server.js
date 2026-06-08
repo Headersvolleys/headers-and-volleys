@@ -40,8 +40,10 @@ app.get('/api/standings', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/scorers', async (req, res) => {
-  try { res.json(await fd('/competitions/PL/scorers?season=2025&limit=20', 10*MIN)); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const limit = req.query.limit || 50;
+    res.json(await fd('/competitions/PL/scorers?season=2025&limit='+limit, 10*MIN));
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 // Single match with goals, cards, lineups
 app.get('/api/match/:id', async (req, res) => {
@@ -168,7 +170,52 @@ app.get('/api/af/fixtures', async (req, res) => {
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
-// Understat - fetch and parse JSON embedded in page HTML
+// GK clean sheets - calculated from match results + team squads
+app.get('/api/gk-cleansheets', async (req, res) => {
+  try {
+    const [matchesData, teamsData] = await Promise.all([
+      fd('/competitions/PL/matches?season=2025&status=FINISHED', 5*MIN),
+      fd('/competitions/PL/teams?season=2025', 60*MIN),
+    ]);
+    const matches = matchesData.matches || [];
+    const teams = teamsData.teams || [];
+
+    // Count clean sheets per team
+    const teamCS = {};
+    const teamGames = {};
+    matches.forEach(m => {
+      const hId = m.homeTeam?.id, aId = m.awayTeam?.id;
+      const hg = m.score?.fullTime?.home, ag = m.score?.fullTime?.away;
+      if (hg == null || ag == null) return;
+      if (!teamCS[hId]) { teamCS[hId] = 0; teamGames[hId] = 0; }
+      if (!teamCS[aId]) { teamCS[aId] = 0; teamGames[aId] = 0; }
+      teamGames[hId]++; teamGames[aId]++;
+      if (ag === 0) teamCS[hId]++;
+      if (hg === 0) teamCS[aId]++;
+    });
+
+    // Get starting GK from squad for each team
+    const gkList = [];
+    teams.forEach(team => {
+      const gk = (team.squad || []).find(p => p.position === 'Goalkeeper');
+      if (gk && teamCS[team.id] != null) {
+        gkList.push({
+          name: gk.name,
+          team: team.name,
+          teamId: team.id,
+          cleanSheets: teamCS[team.id] || 0,
+          gamesPlayed: teamGames[team.id] || 0,
+        });
+      }
+    });
+
+    gkList.sort((a, b) => b.cleanSheets - a.cleanSheets);
+    res.json({ goalkeepers: gkList });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GK clean sheets endpoint alias
+
 async function fetchUnderstat(url) {
   const r = await fetch(url, { headers: {'User-Agent':'Mozilla/5.0 (compatible; HaV/1.0)'} });
   const html = await r.text();
@@ -723,55 +770,93 @@ function Table(){
 }
 
 // -- STATS -------------------------------------------------
+function GKCleanSheets(){
+  const {data,loading,error}=useApi('/api/gk-cleansheets',300000);
+  const gks=(data?.goalkeepers||[]).slice(0,20);
+  if(loading)return<div style={{textAlign:'center',padding:40}}><Spinner/></div>;
+  if(error)return<div style={{padding:12,color:C.red,fontSize:13}}>{error}</div>;
+  return(
+    <div>
+      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Golden Glove race 2025-26 (based on team clean sheets)</div>
+      {gks.map((gk,i)=>{
+        const code=TCODE[gk.team]||TCODE[Object.keys(TSHORT).find(k=>TSHORT[k]===gk.team||k===gk.team)||'']||'???';
+        const tc=teamCol(code);
+        return(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
+            <Badge code={code} size={22}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gk.name}</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team} · {gk.gamesPlayed} apps</div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0,marginRight:8}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,lineHeight:1}}>{gk.cleanSheets}</div>
+              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CLEAN SHEETS</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Stats(){
-  const {data,loading,error}=useApi('/api/scorers',600000);
-  const {data:standData}=useApi('/api/standings',300000);
+  const {data:scorersData,loading:sLoad,error:sErr}=useApi('/api/scorers?limit=100',600000);
+  const {data:standData,loading:tLoad}=useApi('/api/standings',300000);
+  const {data:xgData,loading:xgLoad}=useApi('/api/xg/players',1800000);
+  const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
 
-  const scorers=data?.scorers||[];
+  const allScorers=scorersData?.scorers||[];
   const table=standData?.standings?.[0]?.table||[];
 
-  // Build assists list from scorers data sorted by assists
-  const assisters=[...scorers].filter(s=>s.assists>0).sort((a,b)=>b.assists-a.assists);
+  // Top 50 scorers sorted by goals
+  const scorers=[...allScorers].sort((a,b)=>b.goals-a.goals).slice(0,50);
+  // Top 50 assisters - fetch all and sort by assists
+  const assisters=[...allScorers].filter(s=>s.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,50);
 
-  // Build clean sheets from standings - goalsAgainst approximation
-  // API-Football doesn't give clean sheets via fd.org - use standings goals against as proxy
-  const cleanSheets=[...table].sort((a,b)=>a.goalsAgainst-b.goalsAgainst).map(t=>({
-    team:t.team, code:TCODE[t.team?.name]||'???',
-    goalsAgainst:t.goalsAgainst, played:t.playedGames,
-  }));
+  // Clean sheets - from standings goalsAgainst
+  const cleanSheets=[...table].sort((a,b)=>a.goalsAgainst-b.goalsAgainst).slice(0,20);
 
-  const limit = showFull ? 50 : 10;
+  // xG players
+  const xgPlayers=(xgData?.players||[]).slice(0,showFull?50:20);
+  // xG teams
+  const xgTeamList=xgTeams?.teams||[];
 
-  const tS={padding:'6px 12px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'};
+  const limit=showFull?50:20;
+
+  const tS={padding:'6px 10px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
 
-  function PlayerRow({p, i, stat, statCol, statLabel, stat2, stat2Col, stat2Label}){
+  function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
     const code=TCODE[p.team?.name]||'???';
-    const tc = teamCol(code);
+    const tc=teamCol(code);
     return(
-      <div style={{display:'flex',alignItems:'center',gap:10,background:C.d2,borderRadius:9,padding:'10px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.muted,width:20,flexShrink:0}}>{i+1}</div>
-        <Badge code={code} size={24}/>
+      <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
+        <Badge code={code} size={22}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.team?.name}</div>
-          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team?.name}</div>
+          <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
         </div>
         <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:statCol||tc,lineHeight:1}}>{stat}</div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
           <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
         </div>
-        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:6}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
+        {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:stat2Col||C.muted,lineHeight:1}}>{stat2}</div>
           <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{stat2Label}</div>
         </div>}
       </div>
     );
   }
 
+  function ViewBtn(f=>f){return null;}
+
+  const loading=sLoad||tLoad;
   if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
-  if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
+  if(sErr)return<div style={{padding:24,color:C.red,fontSize:13}}>{sErr}</div>;
 
   return(
     <div style={{padding:16,paddingBottom:80}}>
@@ -779,814 +864,112 @@ function Stats(){
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
         <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
       </div>
-      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        <button onClick={()=>{setView('scorers');setShowFull(false);}} style={view==='scorers'?tA:tS}>Top Scorers</button>
-        <button onClick={()=>{setView('assists');setShowFull(false);}} style={view==='assists'?tA:tS}>Assists</button>
-        <button onClick={()=>{setView('cleansheets');setShowFull(false);}} style={view==='cleansheets'?tA:tS}>Clean Sheets</button>
+      <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:4}}>
+        {[['scorers','Top Scorers'],['assists','Assists'],['cleansheets','Clean Sheets'],['xgtable','xG Table']].map(([id,label])=>(
+          <button key={id} onClick={()=>{setView(id);setShowFull(false);}} style={view===id?tA:tS}>{label}</button>
+        ))}
       </div>
 
+      {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
           <PlayerRow key={i} p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
         ))}
-        <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+        {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           {showFull?'Show Less':'View Full Top 50'}
-        </button>
+        </button>}
       </>}
 
+      {/* TOP ASSISTERS */}
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
           <PlayerRow key={i} p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
         ))}
-        <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+        {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           {showFull?'Show Less':'View Full Top 50'}
-        </button>
+        </button>}
       </>}
 
-      {view==='cleansheets'&&<>
-        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Ranked by fewest goals conceded (clean sheet data via standings)</div>
-        {cleanSheets.slice(0,limit).map((t,i)=>(
-          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:C.d2,borderRadius:9,padding:'10px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.muted,width:20,flexShrink:0}}>{i+1}</div>
-            <Badge code={t.code} size={24}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[t.team?.name]||t.team?.name}</div>
-              <div style={{fontSize:10,color:C.muted,marginTop:1}}>{t.played} games played</div>
-            </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.green,lineHeight:1}}>{t.goalsAgainst}</div>
-              <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CONCEDED</div>
-            </div>
-          </div>
-        ))}
-      </>}
-    </div>
-  );
-}
+      {/* CLEAN SHEETS - Golden Glove race by GK */}
+      {view==='cleansheets'&&<GKCleanSheets/>}
 
-// -- PREDICTIONS + LEAGUE ----------------------------------
-function Predictions(){
-  const {data:allMatches,loading}=useApi('/api/matches',300000);
-  const [preds,setPreds]=useState(()=>{try{return JSON.parse(localStorage.getItem('hav_preds')||'{}')}catch(e){return{}}});
-  const [name,setName]=useState(()=>localStorage.getItem('hav_name')||'');
-  const [nameInput,setNameInput]=useState('');
-  const [view,setView]=useState('predict'); // predict | league
-  const [gw,setGw]=useState(null);
-
-  // Get upcoming + recent matches
-  const matches=allMatches?.matches||[];
-  // Find current/next matchday with unpredicted or upcoming fixtures
-  const upcoming=matches.filter(m=>m.status==='SCHEDULED'||m.status==='TIMED');
-  const finished=matches.filter(m=>m.status==='FINISHED');
-
-  // Group upcoming by matchday
-  const upcomingGWs=[...new Set(upcoming.map(m=>m.matchday))].sort((a,b)=>a-b);
-  const activeGW=gw||upcomingGWs[0]||null;
-  const gwMatches=activeGW?upcoming.filter(m=>m.matchday===activeGW):[];
-
-  // Auto-score predictions against real results from football-data.org
-  const scored={};
-  finished.forEach(m=>{
-    const p=preds[m.id];
-    if(p){
-      const pts=calcPoints(p,{hg:m.score?.fullTime?.home,ag:m.score?.fullTime?.away});
-      if(pts!==null) scored[m.id]=pts;
-    }
-  });
-
-  const totalPoints=Object.values(scored).reduce((a,b)=>a+b,0);
-  const exactScores=Object.values(scored).filter(p=>p===3).length;
-  const correctOutcomes=Object.values(scored).filter(p=>p===1).length;
-
-  function savePred(matchId,key,val){
-    const next={...preds,[matchId]:{...preds[matchId],[key]:val}};
-    setPreds(next);
-    localStorage.setItem('hav_preds',JSON.stringify(next));
-  }
-
-  function saveName(){
-    if(nameInput.trim()){
-      setName(nameInput.trim());
-      localStorage.setItem('hav_name',nameInput.trim());
-    }
-  }
-
-  // League - build leaderboard from all users stored predictions
-  // In a real multi-user app this would be server-side; here we show personal stats
-  const leagueData=[
-    {name:name||'You',pts:totalPoints,exact:exactScores,correct:correctOutcomes,you:true},
-  ];
-
-  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
-  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(0,255,212,.08)'};
-
-  if(!name){
-    return(
-      <div style={{padding:24,paddingBottom:80}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,marginBottom:6}}>PREDICTIONS</div>
-        <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:20,marginTop:8}}>
-          <div style={{fontWeight:700,fontSize:15,color:C.white,marginBottom:8}}>Enter your name to start</div>
-          <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Your predictions are scored automatically when matches finish using live data from football-data.org.</div>
-          <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveName()} placeholder="Your name" style={{width:'100%',background:C.d3,border:'1px solid '+C.d4,borderRadius:9,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'11px 13px',outline:'none',boxSizing:'border-box',marginBottom:10}}/>
-          <button onClick={saveName} style={{width:'100%',padding:'12px 0',borderRadius:10,border:'none',background:nameInput.trim()?C.teal:C.d4,color:nameInput.trim()?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:nameInput.trim()?'pointer':'default'}}>Start Predicting</button>
-        </div>
-      </div>
-    );
-  }
-
-  return(
-    <div style={{padding:16,paddingBottom:80}}>
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14}}>
+      {/* xG TABLE */}
+      {view==='xgtable'&&(
         <div>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5,lineHeight:1}}>PREDICTIONS</div>
-          <div style={{fontSize:11,color:C.muted,marginTop:2}}>Scored live from football-data.org</div>
-        </div>
-        <div style={{textAlign:'right'}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{totalPoints}</div>
-          <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.5}}>POINTS</div>
-        </div>
-      </div>
-
-      {/* Sub nav */}
-      <div style={{display:'flex',gap:6,marginBottom:14}}>
-        <button onClick={()=>setView('predict')} style={view==='predict'?tA:tS}>Predict</button>
-        <button onClick={()=>setView('league')} style={view==='league'?tA:tS}>League</button>
-        <button onClick={()=>setView('results')} style={view==='results'?tA:tS}>My Results</button>
-      </div>
-
-      {/* PREDICT VIEW */}
-      {view==='predict'&&(
-        <div>
-          {loading&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
-          {!loading&&gwMatches.length===0&&<div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>No upcoming fixtures to predict</div>}
-          {/* GW selector */}
-          {upcomingGWs.length>1&&(
-            <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:4,marginBottom:12}}>
-              {upcomingGWs.map(g=>(
-                <button key={g} onClick={()=>setGw(g)} style={{flexShrink:0,padding:'4px 10px',borderRadius:7,border:'1px solid '+(activeGW===g?C.teal:C.d4),background:activeGW===g?'rgba(0,255,212,.1)':C.d2,color:activeGW===g?C.teal:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>GW{g}</button>
-              ))}
+          {xgLoad&&xgTLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
+          {/* Team xG */}
+          {!xgTLoad&&xgTeamList.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team xG 2025-26</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
+              {['Team','xG','xGA','xGD','xPts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>)}
             </div>
+            {xgTeamList.map((t,i)=>{
+              const xgd=+(t.xG-t.xGA).toFixed(1);
+              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(t.name)||normName(k)===normName(t.name))?.[0];
+              const tcode = code?TCODE[code]:null;
+              return(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(xgd>0?C.teal:C.red),alignItems:'center'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+                    {tcode&&<Badge code={tcode} size={18}/>}
+                    <span style={{fontSize:12,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</span>
+                  </div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{t.xG}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.red}}>{t.xGA}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:xgd>0?C.green:C.red}}>{xgd>0?'+':''}{xgd}</div>
+                  <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.yellow}}>{t.xPts}</div>
+                </div>
+              );
+            })}
+          </>}
+          {/* Player xG */}
+          {!xgLoad&&xgPlayers.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Player xG 2025-26</div>
+            <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,padding:'4px 10px',marginBottom:4}}>
+              {['#','','xG','G','xA','A'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
+            </div>
+            {xgPlayers.map((p,i)=>{
+              const overPerf=+(p.goals-p.xG).toFixed(1);
+              const normName = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+              const code = Object.entries(TSHORT).find(([k,v])=>normName(v)===normName(p.team)||normName(k).includes(normName(p.team).slice(0,5)))?.[0];
+              const tcode = code?TCODE[code]:null;
+              return(
+                <div key={i} style={{background:C.d2,borderRadius:8,marginBottom:3,padding:'8px 10px',borderLeft:'3px solid '+(overPerf>2?C.green:overPerf<-2?C.red:C.d4)}}>
+                  <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,alignItems:'center',marginBottom:4}}>
+                    <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.muted}}>{i+1}</div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:12,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{p.team}</div>
+                    </div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.teal}}>{p.xG}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:overPerf>0?C.green:overPerf<0?C.red:C.white}}>{p.goals}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.orange}}>{p.xA}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white}}>{p.assists}</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:5}}>
+                    <div style={{fontSize:8,color:C.teal,width:16}}>xG</div>
+                    <div style={{flex:1,height:3,background:C.d4,borderRadius:2,overflow:'hidden'}}>
+                      <div style={{width:Math.min(100,(p.xG/(xgPlayers[0]?.xG||1))*100)+'%',height:'100%',background:C.teal}}/>
+                    </div>
+                    <div style={{fontSize:8,color:overPerf>0?C.green:C.red,width:28,textAlign:'right'}}>{overPerf>0?'+':''}{overPerf}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+              {showFull?'Show Less':'View Full Top 50'}
+            </button>
+          </>}
+          {!xgLoad&&!xgTLoad&&xgPlayers.length===0&&xgTeamList.length===0&&(
+            <div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>xG data unavailable</div>
           )}
-          {gwMatches.map(m=>{
-            const hc=TCODE[m.homeTeam?.name]||'???', ac=TCODE[m.awayTeam?.name]||'???';
-            const p=preds[m.id]||{};
-            const saved=p.saved;
-            return(
-              <div key={m.id} style={{background:saved?'rgba(0,255,212,.04)':C.d2,border:'1px solid '+(saved?C.teal:C.d4),borderRadius:13,padding:'12px 14px',marginBottom:10}}>
-                <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>
-                  {new Date(m.utcDate).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})} - {new Date(m.utcDate).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
-                  {saved&&<span style={{marginLeft:8,color:C.teal}}>OK Saved</span>}
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <div style={{flex:1,textAlign:'center'}}>
-                    <div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={hc} size={28}/></div>
-                    <div style={{fontSize:12,fontWeight:700,color:C.white}}>{TSHORT[m.homeTeam?.name]||m.homeTeam?.name}</div>
-                  </div>
-                  <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
-                    <input type="number" min="0" max="20" value={p.h!=null?p.h:''} disabled={saved}
-                      onChange={e=>savePred(m.id,'h',e.target.value)}
-                      style={{width:46,height:46,background:C.d3,border:'2px solid '+(p.h!=null&&p.h!==''?C.teal:C.d4),borderRadius:9,textAlign:'center',fontSize:20,fontWeight:700,color:C.teal,fontFamily:'Bebas Neue,sans-serif',outline:'none'}}/>
-                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.d4}}>-</span>
-                    <input type="number" min="0" max="20" value={p.a!=null?p.a:''} disabled={saved}
-                      onChange={e=>savePred(m.id,'a',e.target.value)}
-                      style={{width:46,height:46,background:C.d3,border:'2px solid '+(p.a!=null&&p.a!==''?C.teal:C.d4),borderRadius:9,textAlign:'center',fontSize:20,fontWeight:700,color:C.teal,fontFamily:'Bebas Neue,sans-serif',outline:'none'}}/>
-                  </div>
-                  <div style={{flex:1,textAlign:'center'}}>
-                    <div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={ac} size={28}/></div>
-                    <div style={{fontSize:12,fontWeight:700,color:C.white}}>{TSHORT[m.awayTeam?.name]||m.awayTeam?.name}</div>
-                  </div>
-                </div>
-                {!saved&&(
-                  <button onClick={()=>{if(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')savePred(m.id,'saved',true);}}
-                    style={{width:'100%',marginTop:10,padding:'9px 0',borderRadius:9,border:'none',background:(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')?C.teal:C.d4,color:(p.h!=null&&p.h!==''&&p.a!=null&&p.a!=='')?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>
-                    Save Prediction
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* LEAGUE VIEW */}
-      {view==='league'&&(
-        <div>
-          <div style={{background:C.d3,borderRadius:12,padding:'14px 16px',marginBottom:14,textAlign:'center'}}>
-            <div style={{fontSize:12,color:C.muted,marginBottom:4}}>Your total score</div>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:48,color:C.teal,lineHeight:1}}>{totalPoints}</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4}}>pts</div>
-            <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:12}}>
-              <div style={{textAlign:'center'}}>
-                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.gold,lineHeight:1}}>{exactScores}</div>
-                <div style={{fontSize:10,color:C.muted}}>Exact scores (3pts)</div>
-              </div>
-              <div style={{textAlign:'center'}}>
-                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.green,lineHeight:1}}>{correctOutcomes}</div>
-                <div style={{fontSize:10,color:C.muted}}>Correct results (1pt)</div>
-              </div>
-            </div>
-          </div>
-          <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'12px 14px',marginBottom:10}}>
-            <div style={{fontSize:12,color:C.muted,marginBottom:8,fontWeight:700}}>Your name</div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={nameInput||name} onChange={e=>setNameInput(e.target.value)} style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:8,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:13,padding:'8px 11px',outline:'none'}}/>
-              <button onClick={()=>{if(nameInput.trim()){setName(nameInput.trim());localStorage.setItem('hav_name',nameInput.trim());setNameInput('');}}} style={{padding:'8px 14px',borderRadius:8,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Save</button>
-            </div>
-          </div>
-          <div style={{fontSize:11,color:C.muted,textAlign:'center',lineHeight:1.6}}>
-            Points are awarded automatically when matches finish using live data from football-data.org.
-            <br/>3pts = exact score - 1pt = correct result - 0pts = wrong
-          </div>
-        </div>
-      )}
-
-      {/* RESULTS VIEW */}
-      {view==='results'&&(
-        <div>
-          {finished.filter(m=>preds[m.id]?.saved).length===0&&<div style={{textAlign:'center',padding:32,color:C.muted,fontSize:13}}>No scored predictions yet</div>}
-          {finished.filter(m=>preds[m.id]?.saved).reverse().map(m=>{
-            const p=preds[m.id];
-            const hg2=m.score?.fullTime?.home, ag2=m.score?.fullTime?.away;
-            const pts=calcPoints(p,{hg:hg2,ag:ag2});
-            const hc=TCODE[m.homeTeam?.name]||'???', ac=TCODE[m.awayTeam?.name]||'???';
-            const ptCol=pts===3?C.gold:pts===1?C.green:C.red;
-            return(
-              <div key={m.id} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:11,padding:'11px 13px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-                <Badge code={hc} size={20}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.homeTeam?.name]} v {TSHORT[m.awayTeam?.name]}</div>
-                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                    Your pick: <span style={{color:C.text,fontWeight:700}}>{p.h}-{p.a}</span>
-                    {' '}- Result: <span style={{color:C.teal,fontWeight:700}}>{hg2}-{ag2}</span>
-                  </div>
-                </div>
-                <Badge code={ac} size={20}/>
-                <div style={{textAlign:'center',flexShrink:0,minWidth:36}}>
-                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:ptCol,lineHeight:1}}>{pts!=null?'+'+pts:'?'}</div>
-                  <div style={{fontSize:9,color:C.muted,fontWeight:700}}>PTS</div>
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
     </div>
   );
 }
 
-// -- QUIZ --------------------------------------------------
-// Answer matching - accepts abbreviations and common alternatives
-function matchAnswer(typed, accepted) {
-  const t = typed.trim().toLowerCase();
-  const ALIASES = {
-    'manchester city':['man city','city','man c'],
-    'manchester united':['man utd','man united','man u','united'],
-    'tottenham hotspur':['spurs','tottenham','thfc'],
-    'wolverhampton wanderers':['wolves','wolverhampton'],
-    'west ham united':['west ham','hammers'],
-    'nottingham forest':['nottm forest','forest'],
-    'newcastle united':['newcastle','newcastle utd','the toon'],
-    'brighton & hove albion':['brighton','bhafc'],
-    'leicester city':['leicester'],
-    'aston villa':['villa'],
-    'crystal palace':['palace'],
-    'leeds united':['leeds'],
-  };
-  const expand = (s) => {
-    const low = s.toLowerCase();
-    const extras = [];
-    Object.entries(ALIASES).forEach(([full, shorts]) => {
-      if (low === full || shorts.includes(low)) extras.push(full, ...shorts);
-    });
-    return [low, ...extras];
-  };
-  const tVariants = expand(t);
-  return accepted.some(a => {
-    const aVariants = expand(a);
-    return tVariants.some(tv => aVariants.some(av => tv === av || tv.includes(av) || av.includes(tv)));
-  });
-}
 
-const QUIZZES=[
-  // 1
-  {id:'champions',title:'PL Champions',cat:'Premier League',questions:[
-    {q:'Who won the Premier League in 2023-24?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Arsenal','Chelsea']},
-    {q:'Which club has won the most PL titles?',a:['Manchester United','Man Utd'],mc:['Manchester United','Manchester City','Arsenal','Liverpool']},
-    {q:'Who was PL top scorer in 2024-25?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Erling Haaland','Cole Palmer','Alexander Isak']},
-    {q:'Which team won the 2015-16 title as 5000-1 outsiders?',a:['Leicester','Leicester City'],mc:['Leicester City','Burnley','Watford','Crystal Palace']},
-    {q:'Who has scored the most PL goals in history?',a:['Alan Shearer','Shearer'],mc:['Alan Shearer','Wayne Rooney','Andrew Cole','Frank Lampard']},
-    {q:'Which club won the first ever Premier League in 1992-93?',a:['Manchester United','Man Utd'],mc:['Manchester United','Blackburn Rovers','Arsenal','Leeds United']},
-    {q:'Who won back-to-back titles in 2018-19 and 2019-20?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Chelsea','Arsenal']},
-    {q:'Which team went unbeaten for the entire 2003-04 season?',a:['Arsenal'],mc:['Arsenal','Chelsea','Manchester United','Liverpool']},
-    {q:'Who won the PL title in 2021-22?',a:['Manchester City','Man City'],mc:['Manchester City','Liverpool','Chelsea','Tottenham']},
-    {q:'Who scored the most PL goals in a single season?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Harry Kane','Andy Cole']},
-    {q:'Which manager has won the most PL titles?',a:['Alex Ferguson','Ferguson'],mc:['Alex Ferguson','Pep Guardiola','Jose Mourinho','Arsene Wenger']},
-    {q:'Who was the first foreign player to win PL Player of the Season?',a:['Gianfranco Zola','Zola'],mc:['Gianfranco Zola','Eric Cantona','Dennis Bergkamp','Thierry Henry']},
-  ]},
-  // 2
-  {id:'records',title:'PL Records',cat:'Premier League',questions:[
-    {q:'What is the highest ever PL points tally in a season?',a:['100'],mc:['100','97','95','93']},
-    {q:'What is the record PL winning scoreline?',a:['9-0','9'],mc:['9-0','8-0','7-0','10-0']},
-    {q:'Who scored the fastest ever PL goal?',a:['Shane Long','Long'],mc:['Shane Long','Ledley King','Alan Shearer','Christian Eriksen']},
-    {q:'Who has made the most PL appearances ever?',a:['Gareth Barry','Barry'],mc:['Gareth Barry','Ryan Giggs','David James','Frank Lampard']},
-    {q:'Who scored the fastest PL hat-trick?',a:['Sadio Mane','Mane'],mc:['Sadio Mane','Robbie Fowler','Michael Owen','Alan Shearer']},
-    {q:'Which goalkeeper has the most PL clean sheets?',a:['Petr Cech','Cech'],mc:['Petr Cech','David James','David Seaman','Edwin van der Sar']},
-    {q:'Who has the most PL assists ever?',a:['Ryan Giggs','Giggs'],mc:['Ryan Giggs','Cesc Fabregas','Kevin De Bruyne','Dennis Bergkamp']},
-    {q:'What is the highest scoring PL match ever?',a:['9-7'],mc:['9-7','8-5','7-5','6-6']},
-    {q:'Who holds the record for most PL assists in a season?',a:['Kevin De Bruyne','De Bruyne'],mc:['Kevin De Bruyne','Thierry Henry','Ryan Giggs','Cesc Fabregas']},
-    {q:'Which player has the most PL red cards ever?',a:['Richard Dunne','Dunne'],mc:['Richard Dunne','Patrick Vieira','Roy Keane','Duncan Ferguson']},
-    {q:'Who scored the most PL goals in a calendar year?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Harry Kane','Cristiano Ronaldo']},
-    {q:'Which player scored in the most consecutive PL games?',a:['Jamie Vardy','Vardy'],mc:['Jamie Vardy','Ruud van Nistelrooy','Daniel Sturridge','Thierry Henry']},
-  ]},
-  // 3
-  {id:'managers',title:'PL Managers',cat:'Premier League',questions:[
-    {q:'Who manages Arsenal in 2025-26?',a:['Mikel Arteta','Arteta'],mc:['Mikel Arteta','Unai Emery','Thomas Tuchel','Mauricio Pochettino']},
-    {q:'Who manages Manchester City in 2025-26?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Jurgen Klopp','Jose Mourinho','Carlo Ancelotti']},
-    {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot'],mc:['Arne Slot','Jurgen Klopp','Brendan Rodgers','Rafael Benitez']},
-    {q:'Who manages Chelsea in 2025-26?',a:['Enzo Maresca','Maresca'],mc:['Enzo Maresca','Thomas Tuchel','Graham Potter','Frank Lampard']},
-    {q:'Which manager is known as The Special One?',a:['Jose Mourinho','Mourinho'],mc:['Jose Mourinho','Pep Guardiola','Alex Ferguson','Arsene Wenger']},
-    {q:'Who managed Blackburn to the PL title in 1994-95?',a:['Kenny Dalglish','Dalglish'],mc:['Kenny Dalglish','Ray Harford','Brian Kidd','Joe Royle']},
-    {q:'Which manager took Leicester to the 2015-16 title?',a:['Claudio Ranieri','Ranieri'],mc:['Claudio Ranieri','Nigel Pearson','Craig Shakespeare','Brendan Rodgers']},
-    {q:'Who replaced Jurgen Klopp at Liverpool?',a:['Arne Slot','Slot'],mc:['Arne Slot','Graham Potter','Roberto De Zerbi','Ruben Amorim']},
-    {q:'Who managed the Invincibles Arsenal side in 2003-04?',a:['Arsene Wenger','Wenger'],mc:['Arsene Wenger','George Graham','Bruce Rioch','Terry Neill']},
-    {q:'Which manager won the PL with Chelsea twice in his first spell?',a:['Jose Mourinho','Mourinho'],mc:['Jose Mourinho','Carlo Ancelotti','Claudio Ranieri','Avram Grant']},
-    {q:'Who was the first manager to win the PL in its inaugural season?',a:['Alex Ferguson','Ferguson'],mc:['Alex Ferguson','Howard Wilkinson','George Graham','Kenny Dalglish']},
-    {q:'Who manages Spurs in 2025-26?',a:['Ange Postecoglou','Postecoglou'],mc:['Ange Postecoglou','Jose Mourinho','Nuno Espirito Santo','Antonio Conte']},
-  ]},
-  // 4
-  {id:'clubs',title:'Club Knowledge',cat:'Premier League',questions:[
-    {q:'Which PL club plays at the Amex Stadium?',a:['Brighton','Brighton & Hove Albion'],mc:['Brighton','Crystal Palace','Brentford','Luton Town']},
-    {q:'Which club has the nickname The Toffees?',a:['Everton'],mc:['Everton','Burnley','Leicester City','Watford']},
-    {q:'Which PL club plays at Selhurst Park?',a:['Crystal Palace','Palace'],mc:['Crystal Palace','Charlton Athletic','Millwall','Wimbledon']},
-    {q:'Which club plays at the London Stadium?',a:['West Ham','West Ham United'],mc:['West Ham United','Leyton Orient','Charlton','Millwall']},
-    {q:'What colour shirts do Wolves wear?',a:['Gold','Yellow','Old Gold'],mc:['Gold and Black','Red and White','Blue and White','Green and Yellow']},
-    {q:'Which club plays at Craven Cottage?',a:['Fulham'],mc:['Fulham','QPR','Brentford','Chelsea']},
-    {q:'Which PL club is nicknamed The Cherries?',a:['Bournemouth','AFC Bournemouth'],mc:['Bournemouth','Watford','Bristol City','Luton']},
-    {q:'At which ground do Arsenal play?',a:['Emirates','Emirates Stadium'],mc:['Emirates Stadium','Highbury','Wembley','White Hart Lane']},
-    {q:'Which club plays at Goodison Park?',a:['Everton'],mc:['Everton','Liverpool','Tranmere Rovers','Blackburn']},
-    {q:'What is the nickname of Newcastle United?',a:['Magpies','The Magpies'],mc:['The Magpies','The Toon','The Geordies','Black and Whites']},
-    {q:'Which PL club plays at Villa Park?',a:['Aston Villa','Villa'],mc:['Aston Villa','Birmingham City','West Bromwich Albion','Coventry City']},
-    {q:'Which club has the nickname The Hornets?',a:['Watford'],mc:['Watford','Norwich City','Oxford United','Burton Albion']},
-  ]},
-  // 5
-  {id:'players',title:'PL Players',cat:'Premier League',questions:[
-    {q:'Which player scored 44 PL goals in 2023-24?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Ollie Watkins','Cole Palmer']},
-    {q:'Who won PL Young Player of the Season in 2023-24?',a:['Cole Palmer','Palmer'],mc:['Cole Palmer','Bukayo Saka','Phil Foden','Kobbie Mainoo']},
-    {q:'Who scored the famous bicycle kick for Man Utd vs Man City in 2011?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Cristiano Ronaldo','Robin van Persie','Carlos Tevez']},
-    {q:'Which Liverpool player scored 32 PL goals in 2017-18?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Roberto Firmino','Sadio Mane','Philippe Coutinho']},
-    {q:'Who is the only player to win the PL with 3 different clubs?',a:['Nicolas Anelka','Anelka'],mc:['Nicolas Anelka','Ashley Cole','Sol Campbell','Robbie Keane']},
-    {q:'Who scored 30 goals in 2022-23 for Tottenham?',a:['Harry Kane','Kane'],mc:['Harry Kane','Son Heung-min','Richarlison','Dejan Kulusevski']},
-    {q:'Which player won PL Player of the Season in 2021-22?',a:['Kevin De Bruyne','De Bruyne'],mc:['Kevin De Bruyne','Mohamed Salah','Virgil van Dijk','Harry Kane']},
-    {q:'Who was the first teenager to score in a PL north west derby?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Phil Foden','Marcus Rashford','Ryan Giggs']},
-    {q:'Which player has started the most PL games ever?',a:['Gareth Barry','Barry'],mc:['Gareth Barry','Ryan Giggs','Frank Lampard','David James']},
-    {q:'Who scored the most PL goals for Arsenal?',a:['Thierry Henry','Henry'],mc:['Thierry Henry','Ian Wright','Robin van Persie','Olivier Giroud']},
-    {q:'Which player scored 5 goals in a single PL game in 2022?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Mohamed Salah','Jermain Defoe','Andy Cole']},
-    {q:'Who wore the number 7 shirt for Man Utd before Cristiano Ronaldo?',a:['David Beckham','Beckham'],mc:['David Beckham','Eric Cantona','Bryan Robson','George Best']},
-  ]},
-  // 6
-  {id:'ballon_dor_winners',title:'Ballon dOr Winners',cat:'World Football',questions:[
-    {q:'Who won the Ballon dOr in 2023?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Erling Haaland','Kylian Mbappe','Vinicius Junior']},
-    {q:'Who won the Ballon dOr in 2022?',a:['Karim Benzema','Benzema'],mc:['Karim Benzema','Kylian Mbappe','Luka Modric','Sadio Mane']},
-    {q:'Who won the Ballon dOr in 2018?',a:['Luka Modric','Modric'],mc:['Luka Modric','Cristiano Ronaldo','Lionel Messi','Kylian Mbappe']},
-    {q:'How many Ballons dOr has Lionel Messi won?',a:['8'],mc:['8','7','6','9']},
-    {q:'How many Ballons dOr has Cristiano Ronaldo won?',a:['5'],mc:['5','4','6','7']},
-    {q:'Who was the first player to win the Ballon dOr?',a:['Stanley Matthews','Matthews'],mc:['Stanley Matthews','Alfredo di Stefano','Raymond Kopa','Johan Cruyff']},
-    {q:'Who won the Ballon dOr in 2024?',a:['Rodri'],mc:['Rodri','Vinicius Junior','Kylian Mbappe','Erling Haaland']},
-    {q:'Which player won the Ballon dOr 3 times in a row from 2019-2021?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Luka Modric','Robert Lewandowski']},
-    {q:'Who won the Ballon dOr in 2004 and 2005?',a:['Ronaldinho'],mc:['Ronaldinho','Ronaldo','Thierry Henry','Zinedine Zidane']},
-    {q:'Who was the first non-European to win the Ballon dOr?',a:['George Weah','Weah'],mc:['George Weah','Ronaldo','Rivaldo','Ronaldinho']},
-    {q:'Who won the Ballon dOr in 1998?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Ronaldo','Roberto Baggio','Davor Suker']},
-    {q:'Who won back-to-back Ballons dOr in 2007 and 2008?',a:['Kaka','Ricardo Kaka'],mc:['Kaka','Cristiano Ronaldo','Lionel Messi','Ronaldinho']},
-  ]},
-  // 7
-  {id:'ballon_dor_nominees',title:'Ballon dOr Nominees',cat:'World Football',questions:[
-    {q:'Who finished 2nd in the 2023 Ballon dOr?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Kylian Mbappe','Vinicius Junior','Kevin De Bruyne']},
-    {q:'Who finished 2nd in the 2022 Ballon dOr?',a:['Sadio Mane','Mane'],mc:['Sadio Mane','Kylian Mbappe','Mohamed Salah','Robert Lewandowski']},
-    {q:'Which player finished 2nd to Luka Modric in 2018?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Kylian Mbappe','Antoine Griezmann']},
-    {q:'Who was controversially left off the 2021 Ballon dOr shortlist?',a:['Robert Lewandowski','Lewandowski'],mc:['Robert Lewandowski','Sergio Ramos','Harry Kane','Romelu Lukaku']},
-    {q:'Which goalkeeper has been nominated for Ballon dOr most recently?',a:['Gianluigi Buffon','Buffon'],mc:['Gianluigi Buffon','Manuel Neuer','Iker Casillas','Thibaut Courtois']},
-    {q:'Who finished 3rd in the 2023 Ballon dOr?',a:['Kylian Mbappe','Mbappe'],mc:['Kylian Mbappe','Vinicius Junior','Kevin De Bruyne','Rodri']},
-    {q:'Which defender won the Ballon dOr in 2006?',a:['Fabio Cannavaro','Cannavaro'],mc:['Fabio Cannavaro','Rio Ferdinand','John Terry','Roberto Ayala']},
-    {q:'Who was the youngest ever Ballon dOr nominee?',a:['Cesc Fabregas','Fabregas'],mc:['Cesc Fabregas','Kylian Mbappe','Wayne Rooney','Lionel Messi']},
-    {q:'Which Brazilian won the Ballon dOr in 1997?',a:['Ronaldo'],mc:['Ronaldo','Rivaldo','Ronaldinho','Roberto Carlos']},
-    {q:'Who finished 2nd in the 2024 Ballon dOr?',a:['Vinicius Junior','Vinicius'],mc:['Vinicius Junior','Kylian Mbappe','Erling Haaland','Lamine Yamal']},
-    {q:'Which player has finished 2nd in the Ballon dOr the most times?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Luka Modric','Thierry Henry']},
-    {q:'Who won the 2020 Ballon dOr (not awarded due to COVID)?',a:['Robert Lewandowski','Lewandowski'],mc:['Robert Lewandowski','Lionel Messi','Cristiano Ronaldo','Neymar']},
-  ]},
-  // 8
-  {id:'ucl_managers',title:'Champions League Managers',cat:'World Football',questions:[
-    {q:'Who managed Real Madrid to 3 consecutive UCL titles from 2016-2018?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Carlo Ancelotti','Jose Mourinho','Rafael Benitez']},
-    {q:'Who managed Liverpool to the 2018-19 UCL title?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Brendan Rodgers','Rafael Benitez','Roy Evans']},
-    {q:'Who managed Chelsea to the 2020-21 UCL title?',a:['Thomas Tuchel','Tuchel'],mc:['Thomas Tuchel','Frank Lampard','Jose Mourinho','Roberto Di Matteo']},
-    {q:'Who managed Man City to their first UCL title in 2023?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Roberto Mancini','Mark Hughes','Brian Kidd']},
-    {q:'Who managed Bayern Munich to the 2019-20 UCL title?',a:['Hansi Flick','Flick'],mc:['Hansi Flick','Niko Kovac','Jupp Heynckes','Carlo Ancelotti']},
-    {q:'Who managed Real Madrid to the 2021-22 UCL title?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Zinedine Zidane','Jose Mourinho','Julen Lopetegui']},
-    {q:'Who is the only manager to win the UCL with 3 different clubs?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Jose Mourinho','Pep Guardiola','Alex Ferguson']},
-    {q:'Who managed Barcelona to the treble in 2008-09?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Frank Rijkaard','Johan Cruyff','Louis van Gaal']},
-    {q:'Who managed Chelsea to the 2011-12 UCL title?',a:['Roberto Di Matteo','Di Matteo'],mc:['Roberto Di Matteo','Jose Mourinho','Andre Villas-Boas','Guus Hiddink']},
-    {q:'Who managed Borussia Dortmund to the 2012-13 UCL final?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Thomas Tuchel','Peter Bosz','Lucien Favre']},
-    {q:'Who managed Ajax to the 2018-19 UCL semi-final as underdogs?',a:['Erik ten Hag','ten Hag'],mc:['Erik ten Hag','Peter Bosz','Frank de Boer','Ronald Koeman']},
-    {q:'Who managed Real Madrid to their record 14th UCL title in 2022?',a:['Carlo Ancelotti','Ancelotti'],mc:['Carlo Ancelotti','Zinedine Zidane','Fabio Capello','Vicente del Bosque']},
-  ]},
-  // 9
-  {id:'world_cup',title:'World Cup General',cat:'World Football',questions:[
-    {q:'Which country has won the most World Cups?',a:['Brazil'],mc:['Brazil','Germany','Italy','Argentina']},
-    {q:'Who won the 2022 World Cup?',a:['Argentina'],mc:['Argentina','France','Croatia','Morocco']},
-    {q:'Who is the all-time top scorer at World Cups?',a:['Miroslav Klose','Klose'],mc:['Miroslav Klose','Ronaldo','Gerd Muller','Just Fontaine']},
-    {q:'Which country hosted the 2022 World Cup?',a:['Qatar'],mc:['Qatar','Russia','Brazil','South Africa']},
-    {q:'Who scored the winning penalty in the 2022 World Cup final?',a:['Gonzalo Montiel','Montiel'],mc:['Gonzalo Montiel','Lionel Messi','Kylian Mbappe','Angel Di Maria']},
-    {q:'Who won the 2018 World Cup?',a:['France'],mc:['France','Croatia','Belgium','England']},
-    {q:'Which player has appeared in the most World Cup matches?',a:['Lothar Matthaus','Matthaus'],mc:['Lothar Matthaus','Lionel Messi','Cristiano Ronaldo','Paolo Maldini']},
-    {q:'Who scored a hat-trick in the 2022 World Cup final?',a:['Kylian Mbappe','Mbappe'],mc:['Kylian Mbappe','Lionel Messi','Olivier Giroud','Antoine Griezmann']},
-    {q:'Which country won the first ever World Cup in 1930?',a:['Uruguay'],mc:['Uruguay','Argentina','Brazil','Italy']},
-    {q:'Who won the 2014 World Cup?',a:['Germany'],mc:['Germany','Argentina','Brazil','Netherlands']},
-    {q:'How many World Cup goals did Just Fontaine score in one tournament?',a:['13'],mc:['13','11','9','10']},
-    {q:'Which country has hosted the World Cup the most times?',a:['Brazil','Mexico'],mc:['Brazil','Italy','Germany','Mexico']},
-  ]},
-  // 10
-  {id:'messi_ronaldo',title:'Messi vs Ronaldo',cat:'World Football',questions:[
-    {q:'How many Ballons dOr has Messi won?',a:['8'],mc:['8','7','6','9']},
-    {q:'How many Ballons dOr has Ronaldo won?',a:['5'],mc:['5','4','6','7']},
-    {q:'Who scored more PL goals - Messi or Ronaldo?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Neither - Messi never played in PL']},
-    {q:'Who has more Champions League titles?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Both never won it']},
-    {q:'Who won the 2022 World Cup?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Neither','Both']},
-    {q:'Who scored more goals for their country?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Messi by one goal']},
-    {q:'Who has more La Liga titles?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Neither - equal','Ronaldo by 2']},
-    {q:'Who won the 2010 Ballon dOr?',a:['Messi','Lionel Messi'],mc:['Lionel Messi','Cristiano Ronaldo','Xavi','Andres Iniesta']},
-    {q:'At which club did Ronaldo win his first Champions League?',a:['Manchester United','Man Utd'],mc:['Manchester United','Real Madrid','Juventus','Sporting CP']},
-    {q:'Which club did Messi leave Barcelona for in 2021?',a:['PSG','Paris Saint-Germain','Paris SG'],mc:['PSG','Manchester City','Inter Miami','Bayern Munich']},
-    {q:'Who has more Serie A goals?',a:['Ronaldo','Cristiano Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Neither - equal','Messi never played in Serie A']},
-    {q:'Who scored a hat-trick against the other in El Clasico?',a:['Both','Messi and Ronaldo','Neither - both'],mc:['Both have done it','Only Messi','Only Ronaldo','Neither has done it']},
-  ]},
-  // 11
-  {id:'transfers',title:'Transfer Fees',cat:'World Football',questions:[
-    {q:'Who is the most expensive player transfer of all time?',a:['Neymar'],mc:['Neymar','Kylian Mbappe','Cristiano Ronaldo','Gareth Bale']},
-    {q:'How much did PSG pay for Neymar in 2017?',a:['222 million','222'],mc:['222 million euros','150 million euros','180 million euros','200 million euros']},
-    {q:'Who became the most expensive British player ever when joining Man City?',a:['Jack Grealish','Grealish'],mc:['Jack Grealish','Raheem Sterling','John Stones','Kyle Walker']},
-    {q:'Which club paid a record fee for Kylian Mbappe in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Bayern Munich']},
-    {q:'How much did Man Utd pay for Paul Pogba in 2016?',a:['89 million','89'],mc:['89 million','75 million','100 million','65 million']},
-    {q:'Which player cost Chelsea 115 million euros in 2023?',a:['Moises Caicedo','Caicedo'],mc:['Moises Caicedo','Enzo Fernandez','Mykhailo Mudryk','Romeo Lavia']},
-    {q:'How much did Real Madrid pay for Gareth Bale in 2013?',a:['100 million','100'],mc:['100 million','85 million','91 million','95 million']},
-    {q:'Which player did Arsenal buy for a then club-record 72 million in 2023?',a:['Declan Rice','Rice'],mc:['Declan Rice','Kai Havertz','Leandro Trossard','Thomas Partey']},
-    {q:'Who did Liverpool sign for 75 million in 2018 as a goalkeeper?',a:['Alisson','Alisson Becker'],mc:['Alisson','Jordan Pickford','Ederson','David De Gea']},
-    {q:'Which player joined Chelsea for a British record fee of 97 million in 2023?',a:['Enzo Fernandez','Fernandez'],mc:['Enzo Fernandez','Moises Caicedo','Mykhailo Mudryk','Wesley Fofana']},
-    {q:'How much did Man City pay for Erling Haaland in 2022?',a:['51 million','51'],mc:['51 million','75 million','100 million','60 million']},
-    {q:'Which club signed Cristiano Ronaldo from Sporting CP in 2003?',a:['Manchester United','Man Utd'],mc:['Manchester United','Real Madrid','Arsenal','Liverpool']},
-  ]},
-  // 12
-  {id:'arsenal',title:'Arsenal Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who is Arsenals all-time top scorer?',a:['Thierry Henry','Henry'],mc:['Thierry Henry','Ian Wright','Robin van Persie','Olivier Giroud']},
-    {q:'In what year did Arsenal move to the Emirates Stadium?',a:['2006'],mc:['2006','2004','2008','2002']},
-    {q:'Who managed Arsenal to the 2003-04 Invincibles season?',a:['Arsene Wenger','Wenger'],mc:['Arsene Wenger','George Graham','Bruce Rioch','Terry Neill']},
-    {q:'What is Arsenals nickname?',a:['The Gunners','Gunners'],mc:['The Gunners','The Cannon','The Reds','The North Londoners']},
-    {q:'How many goals did Thierry Henry score for Arsenal?',a:['228'],mc:['228','208','175','250']},
-    {q:'Which Arsenal player won the PL Golden Boot in 2022-23?',a:['Bukayo Saka','Saka'],mc:['Bukayo Saka','Martin Odegaard','Gabriel Martinelli','Leandro Trossard']},
-    {q:'Who did Arsenal sign from Brighton for 65 million in 2022?',a:['Ben White','White'],mc:['Ben White','Oleksandr Zinchenko','Gabriel Magalhaes','Takehiro Tomiyasu']},
-    {q:'What year did Arsenal last win the Premier League?',a:['2004'],mc:['2004','2002','1998','2005']},
-    {q:'Who scored Arsenals famous last-minute title winning goal in 1989?',a:['Michael Thomas','Thomas'],mc:['Michael Thomas','Alan Smith','Paul Merson','David Rocastle']},
-    {q:'Which country is Arsenal captain Martin Odegaard from?',a:['Norway'],mc:['Norway','Sweden','Denmark','Netherlands']},
-    {q:'Who is Arsenals current manager in 2025-26?',a:['Mikel Arteta','Arteta'],mc:['Mikel Arteta','Unai Emery','Patrick Vieira','Freddie Ljungberg']},
-    {q:'What squad number does Bukayo Saka wear at Arsenal?',a:['7'],mc:['7','11','29','14']},
-  ]},
-  // 13
-  {id:'liverpool',title:'Liverpool Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who is Liverpools all-time top scorer?',a:['Ian Rush','Rush'],mc:['Ian Rush','Mohamed Salah','Steven Gerrard','Robbie Fowler']},
-    {q:'How many European Cups/Champions Leagues has Liverpool won?',a:['6'],mc:['6','5','7','4']},
-    {q:'Who scored the famous goal in the 2005 UCL final comeback?',a:['Steven Gerrard','Gerrard'],mc:['Steven Gerrard','Djibril Cisse','Vladimir Smicer','Xabi Alonso']},
-    {q:'In which year did Liverpool win the Champions League in Istanbul?',a:['2005'],mc:['2005','2007','2001','2003']},
-    {q:'Who manages Liverpool in 2025-26?',a:['Arne Slot','Slot'],mc:['Arne Slot','Jurgen Klopp','Brendan Rodgers','Roy Hodgson']},
-    {q:'What is Anfields famous standing section called?',a:['The Kop','Kop'],mc:['The Kop','The Reds End','The Shankly Stand','The Hillsborough End']},
-    {q:'Who signed Mohamed Salah for Liverpool?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Brendan Rodgers','Rafael Benitez','Roy Evans']},
-    {q:'Which player scored 32 goals in Liverpools 2017-18 PL season?',a:['Mohamed Salah','Salah'],mc:['Mohamed Salah','Roberto Firmino','Sadio Mane','Philippe Coutinho']},
-    {q:'How many league titles has Liverpool won in total?',a:['19'],mc:['19','18','20','17']},
-    {q:'Who scored a hat-trick for Liverpool against Leeds on his debut in 2021?',a:['Diogo Jota','Jota'],mc:['Diogo Jota','Roberto Firmino','Mohamed Salah','Sadio Mane']},
-    {q:'Which legendary manager said This is Anfield?',a:['Bill Shankly','Shankly'],mc:['Bill Shankly','Bob Paisley','Kenny Dalglish','Joe Fagan']},
-    {q:'In what year did Liverpool win their first Premier League title?',a:['2020'],mc:['2020','2019','2018','2022']},
-  ]},
-  // 14
-  {id:'man_utd',title:'Manchester United Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who is Manchester Uniteds all-time top scorer?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Bobby Charlton','Denis Law','George Best']},
-    {q:'How many Premier League titles has Man Utd won?',a:['13'],mc:['13','11','14','10']},
-    {q:'Which year did Man Utd win the treble?',a:['1999'],mc:['1999','1997','2001','2003']},
-    {q:'Who scored the winning goal in the 1999 UCL final?',a:['Ole Gunnar Solskjaer','Solskjaer'],mc:['Ole Gunnar Solskjaer','Teddy Sheringham','Andy Cole','Peter Schmeichel']},
-    {q:'What is Old Traffords nickname?',a:['Theatre of Dreams'],mc:['Theatre of Dreams','Red Cathedral','The Fortress','Pride of Manchester']},
-    {q:'Which number shirt did Cristiano Ronaldo wear at Man Utd?',a:['7'],mc:['7','11','10','9']},
-    {q:'Who was Man Utd manager when they last won the PL in 2012-13?',a:['Alex Ferguson','Ferguson','Sir Alex Ferguson'],mc:['Alex Ferguson','David Moyes','Jose Mourinho','Louis van Gaal']},
-    {q:'Which player made the most PL appearances for Man Utd?',a:['Ryan Giggs','Giggs'],mc:['Ryan Giggs','Paul Scholes','Gary Neville','Roy Keane']},
-    {q:'Who did Man Utd beat in the 1999 UCL final?',a:['Bayern Munich','Bayern'],mc:['Bayern Munich','Juventus','Real Madrid','Arsenal']},
-    {q:'Which Man Utd player won the 2003 Ballon dOr?',a:['Pavel Nedved','Nedved'],mc:['Pavel Nedved','Thierry Henry','Zinedine Zidane','Ronaldinho']},
-    {q:'Who scored Man Utds famous injury time winner vs Sheffield Wednesday in 1993?',a:['Steve Bruce','Bruce'],mc:['Steve Bruce','Mark Hughes','Eric Cantona','Brian McClair']},
-    {q:'In which year was Manchester United founded?',a:['1878'],mc:['1878','1902','1885','1892']},
-  ]},
-  // 15
-  {id:'man_city',title:'Manchester City Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who has managed Man City the longest?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Roberto Mancini','Manuel Pellegrini','Brian Horton']},
-    {q:'What is Man Citys nickname?',a:['The Citizens','Citizens','Blues'],mc:['The Citizens','The Blue Moons','The Sky Blues','City Blues']},
-    {q:'Who scored the famous 93:20 title-winning goal in 2012?',a:['Sergio Aguero','Aguero'],mc:['Sergio Aguero','Mario Balotelli','Edin Dzeko','Carlos Tevez']},
-    {q:'How many consecutive PL titles did Man City win from 2020-2024?',a:['4'],mc:['4','3','5','2']},
-    {q:'Who is Man Citys all-time top scorer?',a:['Sergio Aguero','Aguero'],mc:['Sergio Aguero','Colin Bell','Tommy Johnson','Erling Haaland']},
-    {q:'What year did Man City win their first Champions League?',a:['2023'],mc:['2023','2019','2021','2022']},
-    {q:'Who scored the winning goal in the 2023 UCL final?',a:['Rodri'],mc:['Rodri','Kevin De Bruyne','Bernardo Silva','Phil Foden']},
-    {q:'Which stadium do Man City play at?',a:['Etihad','Etihad Stadium'],mc:['Etihad Stadium','City of Manchester Stadium','Maine Road','Wembley']},
-    {q:'Who did Man City sign from Borussia Dortmund in 2022 for 51 million?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Jadon Sancho','Jude Bellingham','Julian Brandt']},
-    {q:'Who scored 36 PL goals for Man City in 2022-23?',a:['Erling Haaland','Haaland'],mc:['Erling Haaland','Phil Foden','Kevin De Bruyne','Riyad Mahrez']},
-    {q:'Which country does Kevin De Bruyne play for?',a:['Belgium'],mc:['Belgium','Netherlands','Germany','France']},
-    {q:'Who did Man City sign from Atletico Madrid in 2023?',a:['Matheus Nunes','Nunes'],mc:['Matheus Nunes','Joao Felix','Julian Alvarez','Rodri']},
-  ]},
-  // 16
-  {id:'chelsea',title:'Chelsea Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who is Chelseas all-time top scorer?',a:['Frank Lampard','Lampard'],mc:['Frank Lampard','Bobby Tambling','Kerry Dixon','Didier Drogba']},
-    {q:'How many UCL titles has Chelsea won?',a:['2'],mc:['2','1','3','4']},
-    {q:'Which owner transformed Chelsea into a superclub from 2003?',a:['Roman Abramovich','Abramovich'],mc:['Roman Abramovich','Todd Boehly','Ken Bates','Bruce Buck']},
-    {q:'Who scored Chelseas winning penalty in the 2012 UCL final?',a:['Didier Drogba','Drogba'],mc:['Didier Drogba','Juan Mata','Frank Lampard','Ashley Cole']},
-    {q:'What is Chelseas nickname?',a:['The Blues','Blues'],mc:['The Blues','The Pensioners','The Lions','The Stamford Boys']},
-    {q:'Who managed Chelsea to the 2020-21 UCL title?',a:['Thomas Tuchel','Tuchel'],mc:['Thomas Tuchel','Frank Lampard','Jose Mourinho','Antonio Conte']},
-    {q:'How many PL titles has Chelsea won?',a:['6'],mc:['6','5','4','7']},
-    {q:'Who scored the most goals for Chelsea in a single season?',a:['Jimmy Greaves','Greaves'],mc:['Jimmy Greaves','Frank Lampard','Didier Drogba','Kerry Dixon']},
-    {q:'Which player did Chelsea sign from Brighton for 115 million in 2023?',a:['Moises Caicedo','Caicedo'],mc:['Moises Caicedo','Enzo Fernandez','Mykhailo Mudryk','Wesley Fofana']},
-    {q:'Who is Chelseas current manager in 2025-26?',a:['Enzo Maresca','Maresca'],mc:['Enzo Maresca','Mauricio Pochettino','Frank Lampard','Graham Potter']},
-    {q:'In which year was Chelsea Football Club founded?',a:['1905'],mc:['1905','1892','1899','1910']},
-    {q:'Who scored the famous header in the 2021 UCL final?',a:['Kai Havertz','Havertz'],mc:['Kai Havertz','Timo Werner','Christian Pulisic','Mason Mount']},
-  ]},
-  // 17
-  {id:'real_madrid',title:'Real Madrid Quiz',cat:'Club Quizzes',questions:[
-    {q:'How many Champions Leagues has Real Madrid won?',a:['15'],mc:['15','14','13','12']},
-    {q:'Who is Real Madrids all-time top scorer?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Raul','Karim Benzema','Alfredo di Stefano']},
-    {q:'What is Real Madrids stadium called?',a:['Santiago Bernabeu','Bernabeu'],mc:['Santiago Bernabeu','Estadio Metropolitano','Nou Camp','Ramon Sanchez Pizjuan']},
-    {q:'Who managed Real Madrid to 3 consecutive UCL titles 2016-2018?',a:['Zinedine Zidane','Zidane'],mc:['Zinedine Zidane','Carlo Ancelotti','Jose Mourinho','Rafael Benitez']},
-    {q:'For how much did Real Madrid sign Gareth Bale in 2013?',a:['100 million','100'],mc:['100 million','91 million','85 million','75 million']},
-    {q:'Who scored the winning goal in the 2022 UCL final?',a:['Vinicius Junior','Vinicius'],mc:['Vinicius Junior','Karim Benzema','Federico Valverde','Luka Modric']},
-    {q:'Who did Kylian Mbappe join from PSG in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Bayern Munich']},
-    {q:'What colour shirts does Real Madrid traditionally wear?',a:['White'],mc:['White','Yellow','Red','Blue']},
-    {q:'Who won the Ballon dOr while at Real Madrid in 2022?',a:['Karim Benzema','Benzema'],mc:['Karim Benzema','Luka Modric','Vinicius Junior','Toni Kroos']},
-    {q:'How many La Liga titles did Cristiano Ronaldo win with Real Madrid?',a:['2'],mc:['2','3','4','1']},
-    {q:'Who is Real Madrids captain in 2025-26?',a:['Luka Modric','Modric'],mc:['Luka Modric','Sergio Ramos','Karim Benzema','Dani Carvajal']},
-    {q:'Who scored in 5 consecutive UCL finals?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Karim Benzema','Gareth Bale','Raul']},
-  ]},
-  // 18
-  {id:'barcelona',title:'Barcelona Quiz',cat:'Club Quizzes',questions:[
-    {q:'Who is Barcelonas all-time top scorer?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Ronaldo','Samuel Etoo','Johan Cruyff']},
-    {q:'How many Champions Leagues has Barcelona won?',a:['5'],mc:['5','6','4','7']},
-    {q:'What is Barcelonas stadium called?',a:['Camp Nou','Nou Camp'],mc:['Camp Nou','Wanda Metropolitano','El Bernabeu','Estadio Olimpic']},
-    {q:'Who managed Barcelona to 2 UCL titles in 2006 and 2009?',a:['Pep Guardiola','Guardiola'],mc:['Pep Guardiola','Frank Rijkaard','Johan Cruyff','Tito Vilanova']},
-    {q:'Which year did Barcelona complete the treble under Guardiola?',a:['2009'],mc:['2009','2011','2006','2013']},
-    {q:'Who scored the winning goal in the 2009 UCL final?',a:['Samuel Etoo','Etoo'],mc:['Samuel Etoo','Lionel Messi','Thierry Henry','Xavi']},
-    {q:'Which player did Barcelona sign from Neymars fee money in 2017?',a:['Philippe Coutinho','Coutinho'],mc:['Philippe Coutinho','Ousmane Dembele','Nelson Semedo','Paulinho']},
-    {q:'Who left Barcelona for PSG in 2021 due to financial problems?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Antoine Griezmann','Luis Suarez','Sergio Busquets']},
-    {q:'Who is Barcelonas president in 2025-26?',a:['Joan Laporta','Laporta'],mc:['Joan Laporta','Josep Maria Bartomeu','Sandro Rosell','Enric Masip']},
-    {q:'What is Barcelonas famous youth academy called?',a:['La Masia'],mc:['La Masia','La Cantera','El Barca','La Academia']},
-    {q:'Which player scored the iconic goal against Getafe in 2007?',a:['Lionel Messi','Messi'],mc:['Lionel Messi','Ronaldinho','Samuel Etoo','Thierry Henry']},
-    {q:'Who did Barcelona beat in the 2015 UCL final?',a:['Juventus'],mc:['Juventus','Real Madrid','Bayern Munich','Chelsea']},
-  ]},
-  // 19
-  {id:'ucl_general',title:'Champions League General',cat:'World Football',questions:[
-    {q:'Which club has won the most Champions Leagues?',a:['Real Madrid'],mc:['Real Madrid','AC Milan','Bayern Munich','Liverpool']},
-    {q:'Who is the all-time top scorer in UCL history?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Raul','Karim Benzema']},
-    {q:'Which city hosted the 2023 UCL final?',a:['Istanbul'],mc:['Istanbul','London','Paris','Madrid']},
-    {q:'Who scored the fastest UCL goal?',a:['Roy Makaay','Makaay'],mc:['Roy Makaay','Sergio Aguero','Ryan Giggs','Raul']},
-    {q:'Which club won the first ever Champions League in 1956?',a:['Real Madrid'],mc:['Real Madrid','AC Milan','Benfica','Barcelona']},
-    {q:'Who scored for Man Utd in the 2008 UCL final?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Wayne Rooney','Carlos Tevez','Paul Scholes']},
-    {q:'Which team did Liverpool beat 4-0 in a UCL semi-final comeback in 2019?',a:['Barcelona'],mc:['Barcelona','PSG','Bayern Munich','Roma']},
-    {q:'Who scored the bicycle kick winner in the 2018 UCL final?',a:['Gareth Bale','Bale'],mc:['Gareth Bale','Karim Benzema','Cristiano Ronaldo','Marcelo']},
-    {q:'How many times has an English club won the UCL?',a:['15'],mc:['15','12','10','18']},
-    {q:'Which player has won the UCL the most times?',a:['Paco Gento','Gento'],mc:['Paco Gento','Cristiano Ronaldo','Clarence Seedorf','Karim Benzema']},
-    {q:'Who managed Liverpool to the 2019 UCL title?',a:['Jurgen Klopp','Klopp'],mc:['Jurgen Klopp','Rafael Benitez','Brendan Rodgers','Bob Paisley']},
-    {q:'Which club lost 3 consecutive UCL finals from 2013-2015?',a:['Atletico Madrid','Atletico'],mc:['Atletico Madrid','PSG','Borussia Dortmund','Bayer Leverkusen']},
-  ]},
-  // 20
-  {id:'world_football',title:'World Football General',cat:'World Football',questions:[
-    {q:'Which country won Euro 2024?',a:['Spain'],mc:['Spain','England','France','Germany']},
-    {q:'Who is the all-time top scorer for England?',a:['Wayne Rooney','Rooney'],mc:['Wayne Rooney','Bobby Charlton','Gary Lineker','Harry Kane']},
-    {q:'Which club did Zinedine Zidane retire from as a player?',a:['Real Madrid'],mc:['Real Madrid','Juventus','Bordeaux','Marseille']},
-    {q:'Who won the 2016 European Championship?',a:['Portugal'],mc:['Portugal','France','Wales','Germany']},
-    {q:'Which country does Erling Haaland play for?',a:['Norway'],mc:['Norway','Denmark','Sweden','Iceland']},
-    {q:'Who won the Copa America 2024?',a:['Argentina'],mc:['Argentina','Colombia','Uruguay','Brazil']},
-    {q:'Which club did Kylian Mbappe join in 2024?',a:['Real Madrid'],mc:['Real Madrid','Manchester City','Liverpool','Arsenal']},
-    {q:'Who is the most capped international player of all time?',a:['Cristiano Ronaldo','Ronaldo'],mc:['Cristiano Ronaldo','Lionel Messi','Luka Modric','Sergio Ramos']},
-    {q:'Which country won the first ever European Championship in 1960?',a:['Soviet Union','USSR'],mc:['Soviet Union','Yugoslavia','France','Spain']},
-    {q:'Who scored the fastest international goal ever?',a:['Hakan Sukur','Sukur'],mc:['Hakan Sukur','Clint Dempsey','Robbie Fowler','Marc Wilmots']},
-    {q:'Which country has appeared in the most World Cup finals?',a:['Germany','West Germany'],mc:['Germany','Brazil','Argentina','Italy']},
-    {q:'Who won the 2021 Copa America?',a:['Argentina'],mc:['Argentina','Brazil','Colombia','Chile']},
-  ]},
-];
-
-
-function MultipleChoiceQuiz({quiz,onFinish}){
-  const [idx,setIdx]=useState(0);
-  const [answers,setAnswers]=useState({});
-  const [chosen,setChosen]=useState(null);
-  const [score,setScore]=useState(0);
-  const [opts]=useState(()=>quiz.questions.map((q,i)=>{
-    // Use curated mc options if available, otherwise generate from other answers
-    if(q.mc&&q.mc.length>=4){
-      return [...q.mc].sort(()=>Math.random()-0.5);
-    }
-    const correct=q.a[0];
-    const pool=[...new Set(quiz.questions.filter((_,j)=>j!==i).map(x=>x.a[0]))];
-    const unique=[correct,...pool.filter(p=>p!==correct).sort(()=>Math.random()-0.5).slice(0,3)];
-    return unique.sort(()=>Math.random()-0.5);
-  }));
-  function pick(opt){
-    if(chosen!==null) return;
-    const q=quiz.questions[idx], ok=opt===q.a[0], ns=score+(ok?1:0);
-    if(ok) setScore(ns);
-    setChosen(opt); setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));
-    setTimeout(()=>{setChosen(null);if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},900);
-  }
-  const q=quiz.questions[idx];
-  return(
-    <div style={{padding:16,paddingBottom:60}}>
-      <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
-        <div style={{fontSize:13,fontWeight:700,color:C.teal}}>{score}/{idx}</div>
-      </div>
-      <div style={{height:4,background:C.d4,borderRadius:2,overflow:'hidden',marginBottom:18}}>
-        <div style={{width:Math.round(idx/quiz.questions.length*100)+'%',height:'100%',background:C.teal,transition:'width .3s'}}/>
-      </div>
-      <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:14}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
-        <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-      </div>
-      <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {opts[idx].map((opt,i)=>{
-          let bg=C.d3,border=C.d4,col=C.text;
-          if(chosen!==null){if(opt===q.a[0]){bg='rgba(0,230,118,.12)';border=C.green;col=C.green;}else if(opt===chosen){bg='rgba(255,61,61,.1)';border=C.red;col=C.red;}}
-          return<button key={i} onClick={()=>pick(opt)} style={{padding:'13px 16px',borderRadius:10,border:'2px solid '+border,background:bg,color:col,fontFamily:'DM Sans,sans-serif',fontSize:14,fontWeight:600,cursor:chosen?'default':'pointer',textAlign:'left',transition:'all .2s'}}><span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:C.muted,marginRight:10}}>{['A','B','C','D'][i]}</span>{opt}</button>;
-        })}
-      </div>
-    </div>
-  );
-}
-
-function QuickFireQuiz({quiz,onFinish}){
-  const TIME=8;
-  const [idx,setIdx]=useState(0);
-  const [timeLeft,setTimeLeft]=useState(TIME);
-  const [draft,setDraft]=useState('');
-  const [answers,setAnswers]=useState({});
-  const [flash,setFlash]=useState(null);
-  const [score,setScore]=useState(0);
-  const [frozen,setFrozen]=useState(false);
-  const inputRef=useRef(null);
-  useEffect(()=>{if(inputRef.current)inputRef.current.focus();setTimeLeft(TIME);setDraft('');},[idx]);
-  useEffect(()=>{
-    if(frozen) return;
-    const iv=setInterval(()=>setTimeLeft(t=>{if(t<=1){clearInterval(iv);go(true);return TIME;}return t-1;}),1000);
-    return()=>clearInterval(iv);
-  },[idx,frozen]);
-  function go(forceWrong){
-    if(frozen) return;
-    setFrozen(true);
-    const q=quiz.questions[idx], typed=draft.trim().toLowerCase();
-    const ok=!forceWrong&&matchAnswer(draft,q.a);
-    setScore(s=>{const ns=s+(ok?1:0);setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));setFlash(ok?'correct':'wrong');setTimeout(()=>{setFlash(null);setFrozen(false);setDraft('');if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},600);return ns;});
-  }
-  const q=quiz.questions[idx], tc=timeLeft<=3?C.red:timeLeft<=5?C.yellow:C.green;
-  return(
-    <div style={{padding:16,paddingBottom:60}}>
-      <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:tc,animation:timeLeft<=3?'blink 1s infinite':undefined}}>{timeLeft}</div>
-      </div>
-      <div style={{height:5,background:C.d4,borderRadius:3,overflow:'hidden',marginBottom:14}}>
-        <div style={{width:(timeLeft/TIME*100)+'%',height:'100%',background:tc,transition:'width 1s linear'}}/>
-      </div>
-      {flash&&<div style={{position:'fixed',inset:0,background:flash==='correct'?'rgba(0,230,118,.2)':'rgba(255,61,61,.2)',zIndex:500,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:80,color:flash==='correct'?C.green:C.red}}>{flash==='correct'?'OK':'X'}</div></div>}
-      <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:14,padding:'18px 16px',marginBottom:12}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
-        <div style={{fontSize:17,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-      </div>
-      <div style={{display:'flex',gap:8}}>
-        <input ref={inputRef} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&draft.trim()&&!frozen)go(false);}} placeholder="Quick! Type your answer..." style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'12px 13px',outline:'none'}} autoFocus/>
-        <button onClick={()=>draft.trim()&&!frozen&&go(false)} style={{padding:'0 16px',borderRadius:10,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Go</button>
-      </div>
-    </div>
-  );
-}
-
-function TypeAnswerQuiz({quiz,onFinish}){
-  const [idx,setIdx]=useState(0);
-  const [draft,setDraft]=useState('');
-  const [answers,setAnswers]=useState({});
-  const [revealed,setRevealed]=useState({});
-  const [score,setScore]=useState(0);
-  const q=quiz.questions[idx];
-  function check(){
-    const typed=draft.trim().toLowerCase();
-    const ok=matchAnswer(draft,q.a);
-    const ns=score+(ok?1:0);
-    if(ok) setScore(ns);
-    setAnswers(a=>({...a,[idx]:ok?'correct':'wrong'}));
-    setRevealed(r=>({...r,[idx]:true}));
-    setTimeout(()=>{setDraft('');if(idx<quiz.questions.length-1)setIdx(i=>i+1);else onFinish(ns,quiz.questions.length);},800);
-  }
-  return(
-    <div style={{padding:16,paddingBottom:60}}>
-      <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
-        <div style={{fontSize:13,fontWeight:700,color:C.teal}}>{score}/{idx}</div>
-      </div>
-      <div style={{height:4,background:C.d4,borderRadius:2,overflow:'hidden',marginBottom:18}}>
-        <div style={{width:Math.round(idx/quiz.questions.length*100)+'%',height:'100%',background:C.teal,transition:'width .3s'}}/>
-      </div>
-      <div style={{background:C.d2,border:'1px solid '+(revealed[idx]?answers[idx]==='correct'?C.green:C.red:C.d4),borderRadius:14,padding:'18px 16px',marginBottom:14,transition:'border-color .3s'}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>Q{idx+1} of {quiz.questions.length}</div>
-        <div style={{fontSize:16,fontWeight:700,color:C.white,lineHeight:1.5}}>{q.q}</div>
-        {revealed[idx]&&answers[idx]==='wrong'&&<div style={{fontSize:12,color:C.red,marginTop:8,fontWeight:700}}>Answer: {q.a[0]}</div>}
-      </div>
-      <div style={{display:'flex',gap:8}}>
-        <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&draft.trim())check();}} placeholder="Type your answer..." style={{flex:1,background:C.d3,border:'1px solid '+C.d4,borderRadius:10,color:C.text,fontFamily:'DM Sans,sans-serif',fontSize:14,padding:'12px 13px',outline:'none'}} autoFocus/>
-        <button onClick={check} disabled={!draft.trim()} style={{padding:'0 16px',borderRadius:10,border:'none',background:draft.trim()?C.teal:C.d4,color:draft.trim()?C.dark:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:draft.trim()?'pointer':'default',flexShrink:0}}>Check</button>
-      </div>
-    </div>
-  );
-}
-
-function Quiz(){
-  const [view,setView]=useState('list');
-  const [activeQuiz,setActiveQuiz]=useState(null);
-  const [format,setFormat]=useState('type');
-  const [finalScore,setFinalScore]=useState(null);
-
-  function handleFinish(score,total){
-    setFinalScore({score,total});
-    setView('result');
-  }
-
-  if(view==='format'&&activeQuiz){
-    const formats=[
-      {id:'type',label:'Type Answer',sub:'Type your answer, partial matches count'},
-      {id:'mc',label:'Multiple Choice',sub:'4 options - pick the right one'},
-      {id:'qf',label:'Quick Fire',sub:'8 seconds per question - beat the clock'},
-    ];
-    return(
-      <div style={{padding:16,paddingBottom:80}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
-          <button onClick={()=>setView('list')} style={{background:'transparent',border:'none',color:C.muted,fontSize:18,cursor:'pointer'}}>{'<'}</button>
-          <div>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:1}}>{activeQuiz.title}</div>
-            <div style={{fontSize:12,color:C.muted}}>{activeQuiz.questions.length} questions</div>
-          </div>
-        </div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {formats.map(f=>(
-            <div key={f.id} onClick={()=>{setFormat(f.id);setView('playing');}} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:12,cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.teal} onMouseLeave={e=>e.currentTarget.style.borderColor=C.d4}>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:15,color:C.white,marginBottom:2}}>{f.label}</div>
-                <div style={{fontSize:12,color:C.muted}}>{f.sub}</div>
-              </div>
-              <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if(view==='playing'&&activeQuiz){
-    if(format==='mc') return <MultipleChoiceQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
-    if(format==='qf') return <QuickFireQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
-    return <TypeAnswerQuiz quiz={activeQuiz} onFinish={handleFinish}/>;
-  }
-
-  if(view==='result'&&finalScore){
-    const pct=Math.round(finalScore.score/finalScore.total*100);
-    const grade=pct>=90?'S':pct>=70?'A':pct>=50?'B':pct>=30?'C':'D';
-    const gradeCol=pct>=70?C.green:pct>=50?C.yellow:C.red;
-    return(
-      <div style={{padding:24,paddingBottom:80,textAlign:'center'}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:80,color:gradeCol,lineHeight:1,marginBottom:8}}>{grade}</div>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:32,color:C.white,marginBottom:4}}>{finalScore.score}/{finalScore.total}</div>
-        <div style={{fontSize:14,color:C.muted,marginBottom:24}}>{pct}% correct</div>
-        <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-          <button onClick={()=>{setView('playing');setFinalScore(null);}} style={{padding:'10px 20px',borderRadius:9,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>Play Again</button>
-          <button onClick={()=>{setView('list');setActiveQuiz(null);setFinalScore(null);}} style={{padding:'10px 20px',borderRadius:9,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>All Quizzes</button>
-        </div>
-      </div>
-    );
-  }
-
-  return(
-    <div style={{padding:16,paddingBottom:80}}>
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
-        <div style={{fontSize:11,color:C.muted}}>Test your football knowledge</div>
-      </div>
-      {QUIZZES.map(q=>(
-        <div key={q.id} onClick={()=>{setActiveQuiz(q);setView('format');}} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'14px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.teal} onMouseLeave={e=>e.currentTarget.style.borderColor=C.d4}>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:15,color:C.white,marginBottom:2}}>{q.title}</div>
-            <div style={{fontSize:11,color:C.muted}}>{q.questions.length} questions - {q.cat}</div>
-          </div>
-          <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// -- XG STATS --------------------------------------------
 function XGStats(){
   const [view, setView] = useState('players');
   const {data:pData, loading:pLoad, error:pErr} = useApi('/api/xg/players', 30*60000);
@@ -1741,8 +1124,7 @@ const TABS=[
   {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
-  {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'},
-  {id:'xg',label:'xG',path:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z'},
+  {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'}
 ];
 
 function App(){
@@ -1764,7 +1146,6 @@ function App(){
         {tab==='table'&&<Table/>}
         {tab==='stats'&&<Stats/>}
         {tab==='quiz'&&<Quiz/>}
-        {tab==='xg'&&<XGStats/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
