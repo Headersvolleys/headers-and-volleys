@@ -60,6 +60,49 @@ app.get('/api/team/:id/matches', async (req, res) => {
   try { res.json(await fd(`/teams/${req.params.id}/matches?competitions=PL&season=2025&status=FINISHED&limit=5`, 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
+// Player profile
+app.get('/api/player/:teamId/:playerId', async (req, res) => {
+  try {
+    const [teamData, scorersData] = await Promise.all([
+      fd('/teams/' + req.params.teamId, 60*MIN),
+      fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN),
+    ]);
+    const player = (teamData.squad||[]).find(p => String(p.id) === String(req.params.playerId));
+    const scorer = (scorersData.scorers||[]).find(s => String(s.player?.id) === String(req.params.playerId));
+    res.json({ player, scorer, team: {id: teamData.id, name: teamData.name, crest: teamData.crest} });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Understat xG by player name
+app.get('/api/xg/player-search', async (req, res) => {
+  const cKey = 'us_players';
+  const now = Date.now();
+  try {
+    let players;
+    if (cache[cKey] && now - cache[cKey].ts < 30*MIN) {
+      players = cache[cKey].data.players;
+    } else {
+      const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+      players = (d.players||[]).map(p => ({
+        id: p.id, name: p.player_name, team: p.team_title,
+        games: +p.games, mins: +p.time, goals: +p.goals,
+        assists: +p.assists, shots: +p.shots,
+        xG: +parseFloat(p.xG).toFixed(2), xA: +parseFloat(p.xA).toFixed(2),
+        npxG: +parseFloat(p.npxG).toFixed(2),
+        xGChain: +parseFloat(p.xGChain).toFixed(2),
+        keyPasses: +p.key_passes, position: p.position,
+      }));
+      cache[cKey] = { data: {players}, ts: now };
+    }
+    const name = (req.query.name||'').toLowerCase().replace(/[^a-z ]/g,'');
+    const found = players.filter(p => {
+      const pn = p.name.toLowerCase().replace(/[^a-z ]/g,'');
+      return pn.includes(name) || name.split(' ').some(w => w.length>2 && pn.includes(w));
+    }).slice(0,3);
+    res.json({ players: found });
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
 // Head to head
 app.get('/api/h2h/:id', async (req, res) => {
   try { res.json(await fd(`/matches/${req.params.id}/head2head?limit=5`, 30*MIN)); }
@@ -633,7 +676,7 @@ function TeamModal({team,onClose}){
   );
 }
 
-function MatchRow({m,onClick}){
+function MatchRow({m,onClick,onTeamClick}){
   const hc=TCODE[m.homeTeam?.name]||'???', ac=TCODE[m.awayTeam?.name]||'???';
   const hs=TSHORT[m.homeTeam?.name]||m.homeTeam?.name||'';
   const as2=TSHORT[m.awayTeam?.name]||m.awayTeam?.name||'';
@@ -691,6 +734,7 @@ function Live(){
 // -- FIXTURES ----------------------------------------------
 function Fixtures(){
   const {data,loading,error}=useApi('/api/matches',300000);
+  const [selClub,setSelClub]=useState(null);
   const [filter,setFilter]=useState('ALL');
   const [openGW,setOpenGW]=useState(null);
   const [sel,setSel]=useState(null);
@@ -730,6 +774,7 @@ function Fixtures(){
 // -- TABLE -------------------------------------------------
 function Table(){
   const {data,loading,error}=useApi('/api/standings',300000);
+  const [selClub,setSelClub]=useState(null);
   const [selTeam,setSelTeam]=useState(null);
   const table=data?.standings?.[0]?.table||[];
   const ZC={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red};
@@ -1515,6 +1560,7 @@ function Quiz(){
   const cats=[...new Set(QUIZZES.map(q=>q.cat))];
   return(
     <div style={{padding:16,paddingBottom:80}}>
+      {selClub&&<ClubModal team={selClub} onClose={()=>setSelClub(null)}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
         <div style={{fontSize:11,color:C.muted}}>{QUIZZES.length} quizzes - test your football knowledge</div>
@@ -1533,6 +1579,334 @@ function Quiz(){
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+
+//  PLAYER PROFILE MODAL 
+function PlayerModal({player, teamId, onClose}){
+  const [data, setData] = useState(null);
+  const [xgData, setXgData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    if(!player?.id || !teamId) return;
+    Promise.all([
+      fetch('/api/player/'+teamId+'/'+player.id).then(r=>r.json()),
+      fetch('/api/xg/player-search?name='+encodeURIComponent(player.name||'')).then(r=>r.json()),
+    ]).then(([pd, xg])=>{
+      setData(pd);
+      // Find best xG match
+      const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+      const pn = norm(player.name);
+      const match = (xg.players||[]).find(p => {
+        const n = norm(p.name);
+        return n.includes(pn.slice(0,6)) || pn.includes(n.slice(0,6));
+      });
+      setXgData(match||null);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[player?.id, teamId]);
+
+  const p = data?.player || player;
+  const s = data?.scorer;
+  const code = TCODE[data?.team?.name] || '???';
+  const tc = teamCol(code);
+
+  function StatBox({label, value, col}){
+    return(
+      <div style={{background:C.d3,borderRadius:8,padding:'10px 8px',textAlign:'center',flex:1}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:col||tc,lineHeight:1}}>{value??'-'}</div>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4,marginTop:2}}>{label}</div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:600,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:C.d2,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:520,maxHeight:'88vh',overflowY:'auto',animation:'slideUp .25s ease'}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4,position:'sticky',top:0,background:C.d2,zIndex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:4}}>
+            <Badge code={code} size={40}/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.white,letterSpacing:.5,lineHeight:1}}>{p?.name}</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:3}}>{TSHORT[data?.team?.name]||data?.team?.name||''} {p?.position&&' '+p.position} {p?.shirtNumber&&' #'+p.shirtNumber}</div>
+            </div>
+            <button onClick={onClose} style={{background:'transparent',border:'1px solid '+C.d4,color:C.muted,borderRadius:7,padding:'5px 10px',fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Close</button>
+          </div>
+          {p?.nationality&&<div style={{fontSize:11,color:C.muted}}>{p.nationality}{p?.dateOfBirth&&'  Born '+new Date(p.dateOfBirth).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>}
+        </div>
+
+        <div style={{padding:16}}>
+          {loading&&<div style={{textAlign:'center',padding:30}}><Spinner size={24}/></div>}
+
+          {!loading&&(
+            <>
+              {/* Season stats */}
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>2025-26 Season</div>
+              <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+                <StatBox label="GOALS" value={s?.goals??0} col={tc}/>
+                <StatBox label="ASSISTS" value={s?.assists??0} col={C.orange}/>
+                <StatBox label="APPS" value={s?.playedMatches??'-'} col={C.muted}/>
+                {xgData&&<StatBox label="xG" value={xgData.xG} col={C.teal}/>}
+                {xgData&&<StatBox label="xA" value={xgData.xA} col={C.orange}/>}
+              </div>
+
+              {/* xG stats from Understat */}
+              {xgData&&(
+                <>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>xG Stats (Understat)</div>
+                  <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+                    <StatBox label="npxG" value={xgData.npxG} col={C.teal}/>
+                    <StatBox label="SHOTS" value={xgData.shots} col={C.muted}/>
+                    <StatBox label="KEY PASS" value={xgData.keyPasses} col={C.orange}/>
+                    <StatBox label="MINS" value={xgData.mins} col={C.muted}/>
+                    <StatBox label="GAMES" value={xgData.games} col={C.muted}/>
+                  </div>
+                  {/* xG vs Goals bar */}
+                  <div style={{background:C.d3,borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                      <span style={{fontSize:11,color:C.muted}}>xG</span>
+                      <span style={{fontSize:11,color:C.muted}}>Actual Goals</span>
+                    </div>
+                    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                      <div style={{flex:1,height:6,background:C.d4,borderRadius:3,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(xgData.xG/Math.max(xgData.xG,xgData.goals,1))*100)+'%',height:'100%',background:C.teal,borderRadius:3}}/>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,color:C.teal,width:28,textAlign:'center'}}>{xgData.xG}</span>
+                    </div>
+                    <div style={{display:'flex',gap:6,alignItems:'center',marginTop:4}}>
+                      <div style={{flex:1,height:6,background:C.d4,borderRadius:3,overflow:'hidden'}}>
+                        <div style={{width:Math.min(100,(xgData.goals/Math.max(xgData.xG,xgData.goals,1))*100)+'%',height:'100%',background:xgData.goals>xgData.xG?C.green:C.red,borderRadius:3}}/>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,color:xgData.goals>xgData.xG?C.green:C.red,width:28,textAlign:'center'}}>{xgData.goals}</span>
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:6,textAlign:'right'}}>
+                      {xgData.goals>xgData.xG?'+':''}{ (xgData.goals-xgData.xG).toFixed(1)} vs xG
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Player info */}
+              {(p?.nationality||p?.dateOfBirth||p?.contractUntil)&&(
+                <>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Player Info</div>
+                  <div style={{background:C.d3,borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+                    {p.nationality&&<div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}><span style={{fontSize:12,color:C.muted}}>Nationality</span><span style={{fontSize:12,color:C.text,fontWeight:600}}>{p.nationality}</span></div>}
+                    {p.dateOfBirth&&<div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}><span style={{fontSize:12,color:C.muted}}>Date of Birth</span><span style={{fontSize:12,color:C.text,fontWeight:600}}>{new Date(p.dateOfBirth).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</span></div>}
+                    {p.position&&<div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}><span style={{fontSize:12,color:C.muted}}>Position</span><span style={{fontSize:12,color:C.text,fontWeight:600}}>{p.position}</span></div>}
+                    {p.shirtNumber&&<div style={{display:'flex',justifyContent:'space-between',padding:'5px 0'}}><span style={{fontSize:12,color:C.muted}}>Shirt Number</span><span style={{fontSize:12,color:tc,fontWeight:700}}>#{p.shirtNumber}</span></div>}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+//  CLUB PROFILE MODAL 
+function ClubModal({team, onClose}){
+  const code = TCODE[team?.name] || '???';
+  const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id);
+  const {data:formData} = useApi('/api/team/'+team?.id+'/matches');
+  const {data:standData} = useApi('/api/standings', 300000);
+  const {data:fixturesData} = useApi('/api/matches', 300000);
+  const [squadFilter, setSquadFilter] = useState('ALL');
+  const [view, setView] = useState('overview');
+  const [selPlayer, setSelPlayer] = useState(null);
+
+  const squad = teamData?.squad || [];
+  const positions = ['ALL','Goalkeeper','Defence','Midfield','Offence'];
+  const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>p.position===squadFilter);
+
+  // Get table position
+  const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
+
+  // Get team fixtures
+  const teamFixtures = (fixturesData?.matches||[]).filter(m=>
+    m.homeTeam?.id===team?.id || m.awayTeam?.id===team?.id
+  ).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate));
+  const recent = teamFixtures.filter(m=>m.status==='FINISHED').slice(0,5);
+  const upcoming = teamFixtures.filter(m=>m.status==='SCHEDULED'||m.status==='TIMED').slice(0,3);
+
+  // Form
+  const form = (formData?.matches||[]).slice(-5).reverse().map(m=>{
+    const ih = m.homeTeam?.id===team?.id;
+    const hg = m.score?.fullTime?.home, ag = m.score?.fullTime?.away;
+    if(hg==null) return null;
+    return hg===ag?'D':(ih?hg>ag:ag>hg)?'W':'L';
+  }).filter(Boolean);
+
+  const tc = teamCol(code);
+  const tS={padding:'6px 12px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:600,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+      {selPlayer&&<PlayerModal player={selPlayer} teamId={team?.id} onClose={()=>setSelPlayer(null)}/>}
+      <div style={{background:C.d2,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:520,maxHeight:'90vh',overflowY:'auto',animation:'slideUp .25s ease'}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4,position:'sticky',top:0,background:C.d2,zIndex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
+            <Badge code={code} size={44}/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:.5,lineHeight:1}}>{TSHORT[team?.name]||team?.name}</div>
+              {teamData&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{teamData.venue}  Est. {teamData.founded}</div>}
+              <div style={{display:'flex',gap:3,marginTop:5}}>
+                {form.map((r,i)=><div key={i} style={{width:18,height:18,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:C.dark}}>{r}</div>)}
+              </div>
+            </div>
+            <button onClick={onClose} style={{...tS}}>Close</button>
+          </div>
+          <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+            {['overview','squad','fixtures'].map(v=>(
+              <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{v.toUpperCase()}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{padding:16}}>
+          {/* OVERVIEW */}
+          {view==='overview'&&(
+            <div>
+              {tLoad&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+
+              {/* Table position */}
+              {tableRow&&(
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>League Position</div>
+                  <div style={{background:C.d3,borderRadius:8,padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:8,textAlign:'center'}}>
+                    {[['POS',tableRow.position,tc],['P',tableRow.playedGames,C.muted],['W',tableRow.won,C.green],['D',tableRow.draw,C.yellow],['L',tableRow.lost,C.red],['GD',(tableRow.goalDifference>0?'+':'')+tableRow.goalDifference,tableRow.goalDifference>=0?C.text:C.red],['PTS',tableRow.points,C.white]].map(([l,v,c])=>(
+                      <div key={l}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:c,lineHeight:1}}>{v}</div>
+                        <div style={{fontSize:9,color:C.muted,marginTop:2}}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manager */}
+              {teamData?.coach?.name&&(
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Manager</div>
+                  <div style={{background:C.d3,borderRadius:8,padding:'12px',display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:'50%',background:tc,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>M</div>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:C.white}}>{teamData.coach.name}</div>
+                      {teamData.coach.nationality&&<div style={{fontSize:11,color:C.muted}}>{teamData.coach.nationality}</div>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent results */}
+              {recent.length>0&&(
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Recent Results</div>
+                  {recent.map((m,i)=>{
+                    const isHome = m.homeTeam?.id===team?.id;
+                    const opp = isHome?m.awayTeam:m.homeTeam;
+                    const oppCode = TCODE[opp?.name]||'???';
+                    const hg = m.score?.fullTime?.home, ag = m.score?.fullTime?.away;
+                    const won = isHome?hg>ag:ag>hg;
+                    const drew = hg===ag;
+                    const res = drew?'D':won?'W':'L';
+                    const col = res==='W'?C.green:res==='D'?C.yellow:C.red;
+                    return(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:C.d3,borderRadius:8,marginBottom:4}}>
+                        <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:55}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                        <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
+                        <Badge code={oppCode} size={18}/>
+                        <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>
+                        <div style={{width:20,height:20,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{res}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Upcoming */}
+              {upcoming.length>0&&(
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Upcoming</div>
+                  {upcoming.map((m,i)=>{
+                    const isHome = m.homeTeam?.id===team?.id;
+                    const opp = isHome?m.awayTeam:m.homeTeam;
+                    const oppCode = TCODE[opp?.name]||'???';
+                    const dt = new Date(m.utcDate);
+                    return(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:C.d3,borderRadius:8,marginBottom:4}}>
+                        <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:55}}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                        <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
+                        <Badge code={oppCode} size={18}/>
+                        <span style={{fontSize:12,flex:1,color:C.text}}>{TSHORT[opp?.name]||opp?.name}</span>
+                        <div style={{fontSize:10,color:C.teal,fontWeight:700}}>{dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SQUAD */}
+          {view==='squad'&&(
+            <div>
+              <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:4,marginBottom:10}}>
+                {positions.map(p=><button key={p} onClick={()=>setSquadFilter(p)} style={squadFilter===p?tA:tS}>{p==='ALL'?'All':p==='Offence'?'Attack':p}</button>)}
+              </div>
+              {filtered.map((p,i)=>(
+                <div key={i} onClick={()=>setSelPlayer(p)} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:C.d3,borderRadius:8,marginBottom:3,cursor:'pointer'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.shirtNumber||'-'}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:1}}>{p.nationality}</div>
+                  </div>
+                  <div style={{fontSize:10,color:tc,fontWeight:700,flexShrink:0}}>{p.position}</div>
+                  <div style={{color:C.muted,fontSize:12}}>{'>'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* FIXTURES */}
+          {view==='fixtures'&&(
+            <div>
+              {teamFixtures.slice(0,20).map((m,i)=>{
+                const isHome = m.homeTeam?.id===team?.id;
+                const opp = isHome?m.awayTeam:m.homeTeam;
+                const oppCode = TCODE[opp?.name]||'???';
+                const hg = m.score?.fullTime?.home, ag = m.score?.fullTime?.away;
+                const fin = m.status==='FINISHED';
+                const dt = new Date(m.utcDate);
+                const won = fin&&(isHome?hg>ag:ag>hg);
+                const drew = fin&&hg===ag;
+                const col = fin?(won?C.teal:drew?C.yellow:C.red):C.d4;
+                return(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:4,borderLeft:'3px solid '+col}}>
+                    <div style={{flexShrink:0,minWidth:60}}>
+                      <div style={{fontSize:10,color:C.muted}}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                      <div style={{fontSize:9,color:fin?C.muted:C.teal,fontWeight:600}}>{fin?'FT':dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
+                    <Badge code={oppCode} size={18}/>
+                    <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
+                    {fin&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2095,6 +2469,8 @@ function Stats(){
   const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
+  const [selPlayer,setSelPlayer]=useState(null);
+  const [selClub,setSelClub]=useState(null);
 
   const allScorers=scorersData?.scorers||[];
   const table=standData?.standings?.[0]?.table||[];
@@ -2146,6 +2522,8 @@ function Stats(){
 
   return(
     <div style={{padding:16,paddingBottom:80}}>
+      {selPlayer&&<PlayerModal player={selPlayer.player} teamId={selPlayer.teamId} onClose={()=>setSelPlayer(null)}/>}
+      {selClub&&<ClubModal team={selClub} onClose={()=>setSelClub(null)}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
         <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
@@ -2159,7 +2537,9 @@ function Stats(){
       {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
-          <PlayerRow key={i} p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+          <div key={i} onClick={()=>s.player?.id&&setSelPlayer({player:{...s.player,position:s.position},teamId:s.team?.id})}>
+            <PlayerRow p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+          </div>
         ))}
         {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           {showFull?'Show Less':'View Full Top 50'}
@@ -2169,7 +2549,9 @@ function Stats(){
       {/* TOP ASSISTERS */}
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
-          <PlayerRow key={i} p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+          <div key={i} onClick={()=>s.player?.id&&setSelPlayer({player:{...s.player,position:s.position},teamId:s.team?.id})}>
+            <PlayerRow p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+          </div>
         ))}
         {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           {showFull?'Show Less':'View Full Top 50'}
