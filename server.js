@@ -599,7 +599,13 @@ function MatchRow({m,onClick}){
   const timeStr=dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   return(
     <div onClick={()=>onClick&&onClick(m)} style={{background:C.d2,borderLeft:'3px solid '+col,borderRadius:9,marginBottom:5,padding:'10px 12px',display:'flex',alignItems:'center',gap:8,cursor:onClick?'pointer':'default'}}>
-      <div style={{fontSize:10,fontWeight:700,color:live?C.orange:C.muted,flexShrink:0,minWidth:72}}>{live?'* LIVE':fin?dateStr:dateStr+' '+timeStr}</div>
+      <div style={{flexShrink:0,minWidth:72}}>
+        <div style={{fontSize:10,color:C.muted,lineHeight:1.3}}>{dateStr}</div>
+        <div style={{fontSize:10,fontWeight:700,marginTop:1,color:live?C.orange:fin?C.muted:C.teal}}>
+          {timeStr}
+          {m.status==='PAUSED'?' HT':live&&m.minute?' '+m.minute+"'":fin?' FT':''}
+        </div>
+      </div>
       <Badge code={hc} size={20}/>
       <span style={{fontWeight:700,fontSize:13,flex:1,color:fin&&hg>ag?C.white:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{hs}</span>
       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:live?C.orange:fin?C.white:C.muted,letterSpacing:3,flexShrink:0,minWidth:50,textAlign:'center'}}>{fin||live?hg+'-'+ag:'v'}</div>
