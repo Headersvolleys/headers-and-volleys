@@ -2236,13 +2236,17 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const s = data?.scorer || (player?.goals!=null ? player : null);
   const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
   const [career, setCareer] = useState(null);
+  const [careerLoading, setCareerLoading] = useState(false);
 
   useEffect(()=>{
-    if(!player?.id) return;
-    fetch('/api/person/'+player.id).then(r=>r.json()).then(d=>{
-      if(d.currentTeam||d.lastUpdated) setCareer(d);
-    }).catch(()=>{});
-  },[player?.id]);
+    if(!player?.name) return;
+    setCareerLoading(true);
+    const teamName = team?.name || player?.teamName || '';
+    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName))
+      .then(r=>r.json())
+      .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
+      .catch(()=>setCareerLoading(false));
+  },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || null;
   const posDisplay = {'Offence':'Forward','Offense':'Forward','Attack':'Forward','Attacker':'Forward','F':'Forward','M':'Midfielder','D':'Defender','GK':'Goalkeeper','AM':'Midfielder','DM':'Midfielder','FW':'Forward','MF':'Midfielder','DF':'Defender'}[rawPos]||rawPos;
@@ -2342,25 +2346,51 @@ function PlayerModal({player, teamId, onClose, openClub}){
             </div>
           </>}
 
-          {/* Career history */}
-          {career?.currentTeam&&<>
-            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Career</div>
-            <div style={{background:C.d2,borderRadius:10,padding:'0 14px',marginBottom:16}}>
-              {(career.currentTeam.contract)&&<>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
-                  <span style={{fontSize:13,color:C.muted}}>Contract Start</span>
-                  <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.contract?.start||'-'}</span>
+          {/* Career history from API-Football */}
+          {careerLoading&&<div style={{textAlign:'center',padding:16}}><Spinner size={20}/></div>}
+          {!careerLoading&&career&&<>
+            {/* Season by season stats */}
+            {career.seasonStats&&career.seasonStats.length>0&&<>
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
+              <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
+                <div style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
+                  {['Season','Club','G','A','App'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
                 </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
-                  <span style={{fontSize:13,color:C.muted}}>Contract Until</span>
-                  <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.contract?.until||'-'}</span>
-                </div>
-              </>}
-              {(career.currentTeam.area?.name)&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0'}}>
-                <span style={{fontSize:13,color:C.muted}}>Club Country</span>
-                <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.area?.name}</span>
-              </div>}
-            </div>
+                {career.seasonStats.slice(0,8).map((s,i)=>{
+                  const code = TCODE[s.team]||Object.entries(TSHORT).find(([k,v])=>v===s.team||k.includes(s.team?.split(' ')[0]?.toLowerCase()||''))?.[0];
+                  return(
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.04)',alignItems:'center'}}>
+                      <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{s.season}/{String(s.season+1).slice(2)}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+                        {code&&<Badge code={code} size={16}/>}
+                        <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.team}</span>
+                      </div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:tc}}>{s.goals??'-'}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{s.assists??'-'}</div>
+                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{s.appearances??'-'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>}
+            {/* Transfer history */}
+            {career.transfers&&career.transfers.length>0&&<>
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Transfer History</div>
+              <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
+                {career.transfers.slice(0,8).map((t,i)=>(
+                  <div key={i} style={{padding:'9px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                      <div style={{fontSize:12,color:C.white,fontWeight:600}}>{t.to}</div>
+                      <div style={{fontSize:11,color:t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'?C.gold:C.muted,fontWeight:700}}>{t.fee||'Unknown'}</div>
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between'}}>
+                      <div style={{fontSize:10,color:C.muted}}>From: {t.from}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>}
           </>}
         </>}
       </div>
