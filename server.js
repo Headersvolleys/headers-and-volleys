@@ -113,6 +113,22 @@ app.get('/api/af/logo/:id', async (req, res) => {
   } catch(e) { res.status(500).send(e.message); }
 });
 
+// Debug: raw AF player search
+app.get('/api/af/debug-search', async (req, res) => {
+  try {
+    const q = req.query.q || '';
+    const data = await af('/players?search='+encodeURIComponent(q)+'&season=2024', 0);
+    res.json({
+      results: (data.response||[]).slice(0,5).map(p=>({
+        name: p.player?.name,
+        dob: p.player?.birth?.date,
+        team: p.statistics?.[0]?.team?.name,
+        league: p.statistics?.[0]?.league?.name,
+      }))
+    });
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
 // API-Football player career - minimal calls: search + transfers only
 app.get('/api/af/player-career', async (req, res) => {
   try {
