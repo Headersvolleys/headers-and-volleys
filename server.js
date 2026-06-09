@@ -118,7 +118,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc5_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
+    const cacheKey = 'afc6_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -150,19 +150,41 @@ app.get('/api/af/player-career', async (req, res) => {
     }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score);
     hit = scored[0]?.p || null;
 
-    // Fallback: search without league filter using DOB
-    if(!hit && (dob || firstName)) {
+    // Fallback 1: search without league filter
+    if(!hit && dob) {
       const s2 = await af('/players?search='+encodeURIComponent(lastName), 5*MIN);
       const scored2 = (s2.response||[]).map(p => {
         const pdob = (p.player?.birth?.date||'').slice(0,10);
-        const fn = norm(p.player?.name||'');
         let score = 0;
-        if(dob && pdob && pdob === dob) score += 20;
+        if(pdob === dob) score += 20;
+        const fn = norm(p.player?.name||'');
         if(fn === pn) score += 8;
-        else if(firstName && fn.includes(norm(firstName).slice(0,4))) score += 4;
         return {p, score};
-      }).filter(x => x.score >= 4).sort((a,b) => b.score - a.score);
+      }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score);
       hit = scored2[0]?.p || null;
+    }
+
+    // Fallback 2: search by first name (catches players with different surname in AF)
+    if(!hit && dob && firstName) {
+      const s3 = await af('/players?search='+encodeURIComponent(firstName), 5*MIN);
+      const scored3 = (s3.response||[]).map(p => {
+        const pdob = (p.player?.birth?.date||'').slice(0,10);
+        let score = 0;
+        if(pdob === dob) score += 20;
+        return {p, score};
+      }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score);
+      hit = scored3[0]?.p || null;
+    }
+
+    // Fallback 3: search each part of the name individually with DOB match
+    if(!hit && dob) {
+      const nameParts = name.split(' ').filter(p => p.length > 3);
+      for(const part of nameParts) {
+        if(hit) break;
+        const sx = await af('/players?search='+encodeURIComponent(part), 5*MIN).catch(()=>({response:[]}));
+        const match = (sx.response||[]).find(p => (p.player?.birth?.date||'').slice(0,10) === dob);
+        if(match) hit = match;
+      }
     }
 
     if(!hit) return res.json({found:false});
