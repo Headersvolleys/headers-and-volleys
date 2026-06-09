@@ -117,7 +117,7 @@ app.get('/api/af/logo/:id', async (req, res) => {
 app.get('/api/af/debug-search', async (req, res) => {
   try {
     const q = req.query.q || '';
-    const data = await af('/players?search='+encodeURIComponent(q)+'&season=2024', 0);
+    const data = await af('/players?search='+encodeURIComponent(q)+'&season=2025', 0);
     res.json({
       results: (data.response||[]).slice(0,5).map(p=>({
         name: p.player?.name,
@@ -134,7 +134,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc6_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
+    const cacheKey = 'afc7_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -147,7 +147,7 @@ app.get('/api/af/player-career', async (req, res) => {
     const firstName = name.split(' ').slice(0,-1).join(' ');
     const tn = norm(teamName||'');
 
-    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 5*MIN);
+    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
     const candidates = s1.response||[];
 
     const scored = candidates.map(p => {
@@ -168,7 +168,7 @@ app.get('/api/af/player-career', async (req, res) => {
 
     // Fallback 1: search without league filter
     if(!hit && dob) {
-      const s2 = await af('/players?search='+encodeURIComponent(lastName), 5*MIN);
+      const s2 = await af('/players?search='+encodeURIComponent(lastName)+'&season=2025', 5*MIN);
       const scored2 = (s2.response||[]).map(p => {
         const pdob = (p.player?.birth?.date||'').slice(0,10);
         let score = 0;
@@ -182,7 +182,7 @@ app.get('/api/af/player-career', async (req, res) => {
 
     // Fallback 2: search by first name (catches players with different surname in AF)
     if(!hit && dob && firstName) {
-      const s3 = await af('/players?search='+encodeURIComponent(firstName), 5*MIN);
+      const s3 = await af('/players?search='+encodeURIComponent(firstName)+'&season=2025', 5*MIN);
       const scored3 = (s3.response||[]).map(p => {
         const pdob = (p.player?.birth?.date||'').slice(0,10);
         let score = 0;
@@ -197,7 +197,7 @@ app.get('/api/af/player-career', async (req, res) => {
       const nameParts = name.split(' ').filter(p => p.length > 3);
       for(const part of nameParts) {
         if(hit) break;
-        const sx = await af('/players?search='+encodeURIComponent(part), 5*MIN).catch(()=>({response:[]}));
+        const sx = await af('/players?search='+encodeURIComponent(part)+'&season=2025', 5*MIN).catch(()=>({response:[]}));
         const match = (sx.response||[]).find(p => (p.player?.birth?.date||'').slice(0,10) === dob);
         if(match) hit = match;
       }
