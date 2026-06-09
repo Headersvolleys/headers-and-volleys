@@ -1895,7 +1895,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.position||s.player?.position,teamName:s.team?.name},s.team?.id)}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
           </div>
         ))}
@@ -1907,7 +1907,7 @@ function Stats({openPlayer, openClub}){
       {/* TOP ASSISTERS */}
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
-          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.position||s.player?.position,teamName:s.team?.name},s.team?.id)}>
+          <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
             <PlayerRow p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
           </div>
         ))}
@@ -2249,7 +2249,13 @@ function PlayerModal({player, teamId, onClose, openClub}){
   },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || null;
-  const posDisplay = {'Offence':'Forward','Offense':'Forward','Attack':'Forward','Attacker':'Forward','F':'Forward','M':'Midfielder','D':'Defender','GK':'Goalkeeper','AM':'Midfielder','DM':'Midfielder','FW':'Forward','MF':'Midfielder','DF':'Defender'}[rawPos]||rawPos;
+  const posDisplay = {
+    'Attacker':'Forward','Offence':'Forward','Offense':'Forward','Attack':'Forward',
+    'F':'Forward','FW':'Forward',
+    'Midfielder':'Midfielder','M':'Midfielder','MF':'Midfielder','AM':'Midfielder','DM':'Midfielder',
+    'Defender':'Defender','D':'Defender','DF':'Defender',
+    'Goalkeeper':'Goalkeeper','GK':'Goalkeeper','G':'Goalkeeper',
+  }[rawPos]||rawPos;
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
