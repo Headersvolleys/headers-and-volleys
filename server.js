@@ -100,47 +100,31 @@ app.get('/api/person/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// API-Football player career - season stats + transfers
+// API-Football player career - minimal calls: search + transfers only
 app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20);
+    const cacheKey = 'afc2_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
-    // Search AF for player - try multiple strategies
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pn = norm(name);
     let hit = null;
 
-    // Strategy 1: search by full name in PL 2024 season
-    const s1 = await af('/players?search='+encodeURIComponent(name)+'&league=39&season=2024', 10*MIN);
-    hit = (s1.response||[])[0];
-
-    // Strategy 2: search by last name only
-    if(!hit) {
-      const lastName = name.split(' ').pop();
-      const s2 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 10*MIN);
-      hit = (s2.response||[]).find(p => { const fn=norm(p.player?.name||''); return fn===pn||fn.includes(pn.slice(0,6))||pn.includes(fn.slice(0,6)); });
-    }
-
-    // Strategy 3: search without league filter
-    if(!hit) {
-      const lastName = name.split(' ').pop();
-      const s3 = await af('/players?search='+encodeURIComponent(lastName), 10*MIN);
-      hit = (s3.response||[]).find(p => { const fn=norm(p.player?.name||''); return fn===pn||fn.includes(pn.slice(0,6))||pn.includes(fn.slice(0,6)); })
-             || (s3.response||[])[0];
-    }
+    // Single search call - by last name in PL 2024
+    const lastName = name.split(' ').pop();
+    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 60*MIN);
+    hit = (s1.response||[]).find(p => {
+      const fn = norm(p.player?.name||'');
+      return fn === pn || fn.includes(pn.slice(0,5)) || pn.includes(fn.slice(0,5));
+    }) || (s1.response||[])[0];
 
     if(!hit) return res.json({found:false});
     const afId = hit.player?.id;
 
-    // Get transfers + multi-season stats in parallel
-    const seasons = ['2025','2024','2023','2022','2021','2020','2019','2018'];
-    const [transferRes, ...statsRes] = await Promise.all([
-      af('/transfers?player='+afId, 24*60*MIN).catch(()=>({response:[]})),
-      ...seasons.map(s => af('/players?id='+afId+'&season='+s, 24*60*MIN).catch(()=>null))
-    ]);
+    // Just get transfers (1 call) - cheaper than multi-season stats
+    const transferRes = await af('/transfers?player='+afId, 24*60*MIN).catch(()=>({response:[]}));
 
     const transfers = (transferRes.response||[]).flatMap(t =>
       (t.transfers||[]).map(tr => ({
@@ -151,24 +135,19 @@ app.get('/api/af/player-career', async (req, res) => {
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-    const seasonStats = statsRes
-      .filter(Boolean)
-      .flatMap(r => (r.response||[]).map(p => {
-        const st = p.statistics?.[0];
-        return {
-          season: st?.league?.season,
-          team: st?.team?.name,
-          league: st?.league?.name,
-          appearances: st?.games?.appearences,
-          goals: st?.goals?.total,
-          assists: st?.goals?.assists,
-          minutes: st?.games?.minutes,
-          rating: st?.games?.rating ? parseFloat(st.games.rating).toFixed(1) : null,
-          position: st?.games?.position,
-        };
-      }))
-      .filter(s => s.appearances > 0)
-      .sort((a,b) => b.season - a.season);
+    // Use current season stats from the search result
+    const currentStats = hit.statistics?.[0];
+    const seasonStats = currentStats ? [{
+      season: currentStats.league?.season,
+      team: currentStats.team?.name,
+      league: currentStats.league?.name,
+      appearances: currentStats.games?.appearences,
+      goals: currentStats.goals?.total,
+      assists: currentStats.goals?.assists,
+      minutes: currentStats.games?.minutes,
+      rating: currentStats.games?.rating ? parseFloat(currentStats.games.rating).toFixed(1) : null,
+      position: currentStats.games?.position,
+    }] : [];
 
     const result = {found:true, player:hit.player, transfers, seasonStats};
     cache[cacheKey] = {data:result, ts:Date.now()};
@@ -2318,7 +2297,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
     if(!player?.name) return;
     setCareerLoading(true);
     const teamName = team?.name || player?.teamName || '';
-    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName))
+    fetch('/api/af/player-career?name='+encodeURIComponent(player.name.split(' ').pop())+'&teamName='+encodeURIComponent(teamName))
       .then(r=>r.json())
       .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
