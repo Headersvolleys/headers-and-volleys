@@ -118,52 +118,51 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc4_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+teamName.toLowerCase().replace(/[^a-z]/g,'').slice(0,8);
+    const cacheKey = 'afc5_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-    // Some players are known by different names in different databases
-    const NAME_ALIASES = {
-      'thiago rodrigues': 'igor thiago',
-      'igor thiago nascimento rodrigues': 'igor thiago',
-      'rayan cherki': 'cherki',
-      'joao pedro': 'joao pedro',
-      'kaoru mitoma': 'mitoma',
-    };
-    const nameNorm = norm(name);
-    const searchName = NAME_ALIASES[nameNorm] ? NAME_ALIASES[nameNorm] : name;
-    const pn = norm(searchName);
+    const pn = norm(name);
     let hit = null;
 
-    // Search by last name but validate against full name AND current team
-    const lastName = searchName.split(' ').pop();
-    const firstName = searchName.split(' ').slice(0,-1).join(' ');
+    // Match by date of birth (reliable across APIs with different name formats)
+    const dob = req.query.dob || '';
+    const lastName = name.split(' ').pop();
+    const firstName = name.split(' ').slice(0,-1).join(' ');
     const tn = norm(teamName||'');
 
-    // Use short TTL for search to avoid wrong cached matches
     const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 5*MIN);
-    
-    // Score matches: exact full name = 10, name+team match +4, name+firstname = 6, lastname only = 3
-    const scored = (s1.response||[]).map(p => {
+    const candidates = s1.response||[];
+
+    const scored = candidates.map(p => {
       const fn = norm(p.player?.name||'');
       const pt = norm(p.statistics?.[0]?.team?.name||'');
+      const pdob = (p.player?.birth?.date||'').slice(0,10);
       let score = 0;
+      if(dob && pdob && pdob === dob) score += 20;
       if(fn === pn) score += 10;
-      else if(firstName && fn.includes(norm(lastName)) && fn.includes(norm(firstName).slice(0,4))) score += 6;
-      else if(fn.includes(norm(lastName)) && norm(lastName).length > 4) score += 3;
-      // Team name boost - strip FC/United/City suffixes for comparison
+      else if(firstName && fn.includes(norm(lastName)) && fn.includes(norm(firstName).slice(0,4))) score += 5;
+      else if(fn.includes(norm(lastName)) && norm(lastName).length > 4) score += 2;
       const ptClean = pt.replace(/fc|united|city|rovers|town|athletic/g,'').trim();
       const tnClean = tn.replace(/fc|united|city|rovers|town|athletic/g,'').trim();
-      if(tnClean.length > 3 && ptClean.length > 3 && (ptClean.includes(tnClean.slice(0,5)) || tnClean.includes(ptClean.slice(0,5)))) score += 5;
+      if(tnClean.length > 3 && ptClean.length > 3 && (ptClean.includes(tnClean.slice(0,5)) || tnClean.includes(ptClean.slice(0,5)))) score += 4;
       return {p, score};
-    }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
+    }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score);
     hit = scored[0]?.p || null;
 
-    // Fallback: search full first+last name
-    if(!hit && firstName) {
-      const s2 = await af('/players?search='+encodeURIComponent(searchName)+'&league=39&season=2024', 5*MIN);
-      hit = (s2.response||[]).find(p => norm(p.player?.name||'') === pn)
-         || (s2.response||[])[0] || null;
+    // Fallback: search without league filter using DOB
+    if(!hit && (dob || firstName)) {
+      const s2 = await af('/players?search='+encodeURIComponent(lastName), 5*MIN);
+      const scored2 = (s2.response||[]).map(p => {
+        const pdob = (p.player?.birth?.date||'').slice(0,10);
+        const fn = norm(p.player?.name||'');
+        let score = 0;
+        if(dob && pdob && pdob === dob) score += 20;
+        if(fn === pn) score += 8;
+        else if(firstName && fn.includes(norm(firstName).slice(0,4))) score += 4;
+        return {p, score};
+      }).filter(x => x.score >= 4).sort((a,b) => b.score - a.score);
+      hit = scored2[0]?.p || null;
     }
 
     if(!hit) return res.json({found:false});
@@ -2350,7 +2349,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
     if(!player?.name) return;
     setCareerLoading(true);
     const teamName = team?.name || player?.teamName || '';
-    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName))
+    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(p?.dateOfBirth||player?.dateOfBirth||''))
       .then(r=>r.json())
       .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
