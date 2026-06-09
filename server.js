@@ -92,6 +92,14 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Person/player career from football-data.org
+app.get('/api/person/:id', async (req, res) => {
+  try {
+    const data = await fd('/persons/' + req.params.id, 24*60*MIN);
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Understat xG by player name
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
@@ -2226,10 +2234,18 @@ function PlayerModal({player, teamId, onClose, openClub}){
   // Use passed player prop as base - API call enriches with scorer stats
   const p = data?.player || player;
   const s = data?.scorer || (player?.goals!=null ? player : null);
-  // Team: use API response, fall back to passed teamName/teamId
   const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
-  // Position: normalize Offence -> Forward
-  const posDisplay = {'Offence':'Forward','Offense':'Forward','Attack':'Forward','Attacker':'Forward'}[p?.position]||p?.position;
+  const [career, setCareer] = useState(null);
+
+  useEffect(()=>{
+    if(!player?.id) return;
+    fetch('/api/person/'+player.id).then(r=>r.json()).then(d=>{
+      if(d.currentTeam||d.lastUpdated) setCareer(d);
+    }).catch(()=>{});
+  },[player?.id]);
+
+  const rawPos = p?.position || xgData?.position || null;
+  const posDisplay = {'Offence':'Forward','Offense':'Forward','Attack':'Forward','Attacker':'Forward','F':'Forward','M':'Midfielder','D':'Defender','GK':'Goalkeeper','AM':'Midfielder','DM':'Midfielder','FW':'Forward','MF':'Midfielder','DF':'Defender'}[rawPos]||rawPos;
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
@@ -2323,6 +2339,27 @@ function PlayerModal({player, teamId, onClose, openClub}){
                 </div>}
               </div>
               <div style={{color:C.muted,fontSize:18}}>{'>'}</div>
+            </div>
+          </>}
+
+          {/* Career history */}
+          {career?.currentTeam&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Career</div>
+            <div style={{background:C.d2,borderRadius:10,padding:'0 14px',marginBottom:16}}>
+              {(career.currentTeam.contract)&&<>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                  <span style={{fontSize:13,color:C.muted}}>Contract Start</span>
+                  <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.contract?.start||'-'}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                  <span style={{fontSize:13,color:C.muted}}>Contract Until</span>
+                  <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.contract?.until||'-'}</span>
+                </div>
+              </>}
+              {(career.currentTeam.area?.name)&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0'}}>
+                <span style={{fontSize:13,color:C.muted}}>Club Country</span>
+                <span style={{fontSize:13,color:C.text,fontWeight:600}}>{career.currentTeam.area?.name}</span>
+              </div>}
             </div>
           </>}
         </>}
