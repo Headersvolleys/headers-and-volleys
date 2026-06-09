@@ -122,12 +122,22 @@ app.get('/api/af/player-career', async (req, res) => {
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-    const pn = norm(name);
+    // Some players are known by different names in different databases
+    const NAME_ALIASES = {
+      'thiago rodrigues': 'igor thiago',
+      'igor thiago nascimento rodrigues': 'igor thiago',
+      'rayan cherki': 'cherki',
+      'joao pedro': 'joao pedro',
+      'kaoru mitoma': 'mitoma',
+    };
+    const nameNorm = norm(name);
+    const searchName = NAME_ALIASES[nameNorm] ? NAME_ALIASES[nameNorm] : name;
+    const pn = norm(searchName);
     let hit = null;
 
     // Search by last name but validate against full name AND current team
-    const lastName = name.split(' ').pop();
-    const firstName = name.split(' ').slice(0,-1).join(' ');
+    const lastName = searchName.split(' ').pop();
+    const firstName = searchName.split(' ').slice(0,-1).join(' ');
     const tn = norm(teamName||'');
 
     // Use short TTL for search to avoid wrong cached matches
@@ -151,7 +161,7 @@ app.get('/api/af/player-career', async (req, res) => {
 
     // Fallback: search full first+last name
     if(!hit && firstName) {
-      const s2 = await af('/players?search='+encodeURIComponent(name)+'&league=39&season=2024', 5*MIN);
+      const s2 = await af('/players?search='+encodeURIComponent(searchName)+'&league=39&season=2024', 5*MIN);
       hit = (s2.response||[]).find(p => norm(p.player?.name||'') === pn)
          || (s2.response||[])[0] || null;
     }
