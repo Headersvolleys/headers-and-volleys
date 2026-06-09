@@ -100,6 +100,19 @@ app.get('/api/person/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Proxy API-Football team logo images (CORS fix)
+app.get('/api/af/logo/:id', async (req, res) => {
+  try {
+    const url = 'https://media.api-sports.io/football/teams/'+req.params.id+'.png';
+    const r = await fetch(url, {headers:{'x-apisports-key': AF_KEY}});
+    if(!r.ok) return res.status(404).send('Not found');
+    const buf = await r.arrayBuffer();
+    res.set('Content-Type','image/png');
+    res.set('Cache-Control','public, max-age=86400');
+    res.send(Buffer.from(buf));
+  } catch(e) { res.status(500).send(e.message); }
+});
+
 // API-Football player career - minimal calls: search + transfers only
 app.get('/api/af/player-career', async (req, res) => {
   try {
@@ -138,10 +151,10 @@ app.get('/api/af/player-career', async (req, res) => {
         date: tr.date,
         from: tr.teams?.out?.name,
         fromId: tr.teams?.out?.id,
-        fromLogo: tr.teams?.out?.logo,
+        fromLogo: tr.teams?.out?.id ? '/api/af/logo/'+tr.teams.out.id : null,
         to: tr.teams?.in?.name,
         toId: tr.teams?.in?.id,
-        toLogo: tr.teams?.in?.logo,
+        toLogo: tr.teams?.in?.id ? '/api/af/logo/'+tr.teams.in.id : null,
         fee: tr.fee?.amount && tr.fee.amount !== 'null' && tr.fee.amount !== 'None'
              ? (tr.fee.currency||'') + tr.fee.amount
              : tr.fee?.type && tr.fee.type !== 'null' && tr.fee.type !== 'None'
