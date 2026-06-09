@@ -108,20 +108,28 @@ app.get('/api/af/player-career', async (req, res) => {
     const cacheKey = 'afc_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
-    // Search AF for player by name
-    const searchRes = await af('/players?search='+encodeURIComponent(name)+'&league=39&season=2025', 10*MIN);
-    let hit = (searchRes.response||[])[0];
+    // Search AF for player - try multiple strategies
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+    const pn = norm(name);
+    let hit = null;
 
-    // Fallback: search by last name only without league filter
+    // Strategy 1: search by full name in PL 2024 season
+    const s1 = await af('/players?search='+encodeURIComponent(name)+'&league=39&season=2024', 10*MIN);
+    hit = (s1.response||[])[0];
+
+    // Strategy 2: search by last name only
     if(!hit) {
       const lastName = name.split(' ').pop();
-      const search2 = await af('/players?search='+encodeURIComponent(lastName), 10*MIN);
-      const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
-      const pn = norm(name);
-      hit = (search2.response||[]).find(p => {
-        const fn = norm(p.player?.name||'');
-        return fn === pn || fn.includes(pn.slice(0,6)) || pn.includes(fn.slice(0,6));
-      });
+      const s2 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 10*MIN);
+      hit = (s2.response||[]).find(p => { const fn=norm(p.player?.name||''); return fn===pn||fn.includes(pn.slice(0,6))||pn.includes(fn.slice(0,6)); });
+    }
+
+    // Strategy 3: search without league filter
+    if(!hit) {
+      const lastName = name.split(' ').pop();
+      const s3 = await af('/players?search='+encodeURIComponent(lastName), 10*MIN);
+      hit = (s3.response||[]).find(p => { const fn=norm(p.player?.name||''); return fn===pn||fn.includes(pn.slice(0,6))||pn.includes(fn.slice(0,6)); })
+             || (s3.response||[])[0];
     }
 
     if(!hit) return res.json({found:false});
