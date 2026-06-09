@@ -118,27 +118,38 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc2_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20);
+    const cacheKey = 'afc3_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+teamName.toLowerCase().replace(/[^a-z]/g,'').slice(0,8);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pn = norm(name);
     let hit = null;
 
-    // Search by last name but validate full name match
+    // Search by last name but validate against full name AND current team
     const lastName = name.split(' ').pop();
     const firstName = name.split(' ').slice(0,-1).join(' ');
+    const tn = norm(teamName||'');
     const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 60*MIN);
-    // Score matches: exact full name > last name + first name prefix > last name only
+    
+    // Score matches: exact full name = 10, name+team match = 8, name match = 5, name prefix = 2
     const scored = (s1.response||[]).map(p => {
       const fn = norm(p.player?.name||'');
+      const pt = norm(p.statistics?.[0]?.team?.name||'');
       let score = 0;
-      if(fn === pn) score = 3;
-      else if(fn.includes(norm(lastName)) && firstName && fn.includes(norm(firstName).slice(0,4))) score = 2;
-      else if(fn.includes(norm(lastName))) score = 1;
+      if(fn === pn) score += 10;
+      else if(firstName && fn.includes(norm(lastName)) && fn.includes(norm(firstName).slice(0,4))) score += 6;
+      else if(fn.includes(norm(lastName)) && norm(lastName).length > 3) score += 3;
+      // Boost if team matches
+      if(tn && pt && (pt.includes(tn.slice(0,5)) || tn.includes(pt.slice(0,5)))) score += 4;
       return {p, score};
-    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+    }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
     hit = scored[0]?.p || null;
+
+    // If no hit, try searching with full name
+    if(!hit && firstName) {
+      const s2 = await af('/players?search='+encodeURIComponent(firstName.slice(0,4)+' '+lastName)+'&league=39&season=2024', 60*MIN);
+      hit = (s2.response||[]).find(p => norm(p.player?.name||'') === pn) || null;
+    }
 
     if(!hit) return res.json({found:false});
     const afId = hit.player?.id;
@@ -2324,7 +2335,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
     if(!player?.name) return;
     setCareerLoading(true);
     const teamName = team?.name || player?.teamName || '';
-    fetch('/api/af/player-career?name='+encodeURIComponent(player.name.split(' ').pop())+'&teamName='+encodeURIComponent(teamName))
+    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName))
       .then(r=>r.json())
       .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
