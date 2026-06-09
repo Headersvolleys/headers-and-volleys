@@ -112,13 +112,20 @@ app.get('/api/af/player-career', async (req, res) => {
     const pn = norm(name);
     let hit = null;
 
-    // Single search call - by last name in PL 2024
+    // Search by last name but validate full name match
     const lastName = name.split(' ').pop();
+    const firstName = name.split(' ').slice(0,-1).join(' ');
     const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2024', 60*MIN);
-    hit = (s1.response||[]).find(p => {
+    // Score matches: exact full name > last name + first name prefix > last name only
+    const scored = (s1.response||[]).map(p => {
       const fn = norm(p.player?.name||'');
-      return fn === pn || fn.includes(pn.slice(0,5)) || pn.includes(fn.slice(0,5));
-    }) || (s1.response||[])[0];
+      let score = 0;
+      if(fn === pn) score = 3;
+      else if(fn.includes(norm(lastName)) && firstName && fn.includes(norm(firstName).slice(0,4))) score = 2;
+      else if(fn.includes(norm(lastName))) score = 1;
+      return {p, score};
+    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+    hit = scored[0]?.p || null;
 
     if(!hit) return res.json({found:false});
     const afId = hit.player?.id;
@@ -130,8 +137,11 @@ app.get('/api/af/player-career', async (req, res) => {
       (t.transfers||[]).map(tr => ({
         date: tr.date,
         from: tr.teams?.out?.name,
+        fromId: tr.teams?.out?.id,
         to: tr.teams?.in?.name,
-        fee: tr.fee?.amount ? tr.fee.amount : (tr.fee?.type||''),
+        toId: tr.teams?.in?.id,
+        fee: tr.fee?.amount && tr.fee.amount !== 'null' ? (tr.fee.currency||'')+tr.fee.amount :
+             tr.fee?.type && tr.fee.type !== 'null' ? tr.fee.type : null,
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
@@ -2418,7 +2428,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
                   {['Season','Club','G','A','App'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
                 </div>
                 {career.seasonStats.slice(0,8).map((s,i)=>{
-                  const code = TCODE[s.team]||Object.entries(TSHORT).find(([k,v])=>v===s.team||k.includes(s.team?.split(' ')[0]?.toLowerCase()||''))?.[0];
+                  const tname = s.team||'';
+                  const code = TCODE[tname]||Object.entries(TSHORT).find(([k,v])=>v===tname||tname.toLowerCase().includes(v?.toLowerCase()?.split(' ')[0]||'x'))?.[0]||null;
                   return(
                     <div key={i} style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.04)',alignItems:'center'}}>
                       <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{s.season}/{String(s.season+1).slice(2)}</div>
@@ -2438,18 +2449,26 @@ function PlayerModal({player, teamId, onClose, openClub}){
             {career.transfers&&career.transfers.length>0&&<>
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Transfer History</div>
               <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
-                {career.transfers.slice(0,8).map((t,i)=>(
-                  <div key={i} style={{padding:'9px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
-                      <div style={{fontSize:12,color:C.white,fontWeight:600}}>{t.to}</div>
-                      <div style={{fontSize:11,color:t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'?C.gold:C.muted,fontWeight:700}}>{t.fee||'Unknown'}</div>
+                {career.transfers.slice(0,8).map((t,i)=>{
+                  const toCode = TCODE[t.to]||Object.entries(TSHORT).find(([k,v])=>v===t.to)?.[0]||null;
+                  const fromCode = TCODE[t.from]||Object.entries(TSHORT).find(([k,v])=>v===t.from)?.[0]||null;
+                  const isPaid = t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'&&t.fee!=='N/A';
+                  return(
+                    <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                        {fromCode&&<Badge code={fromCode} size={18}/>}
+                        <div style={{fontSize:11,color:C.muted,flexShrink:0}}>{t.from||'Unknown'}</div>
+                        <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)',margin:'0 4px'}}/>
+                        <div style={{fontSize:11,color:C.muted,flexShrink:0}}>{t.to||'Unknown'}</div>
+                        {toCode&&<Badge code={toCode} size={18}/>}
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
+                        <div style={{fontSize:12,fontWeight:700,color:isPaid?C.gold:t.fee?C.green:C.muted}}>{t.fee||'Undisclosed'}</div>
+                      </div>
                     </div>
-                    <div style={{display:'flex',justifyContent:'space-between'}}>
-                      <div style={{fontSize:10,color:C.muted}}>From: {t.from}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>}
           </>}
