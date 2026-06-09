@@ -138,10 +138,14 @@ app.get('/api/af/player-career', async (req, res) => {
         date: tr.date,
         from: tr.teams?.out?.name,
         fromId: tr.teams?.out?.id,
+        fromLogo: tr.teams?.out?.logo,
         to: tr.teams?.in?.name,
         toId: tr.teams?.in?.id,
-        fee: tr.fee?.amount && tr.fee.amount !== 'null' ? (tr.fee.currency||'')+tr.fee.amount :
-             tr.fee?.type && tr.fee.type !== 'null' ? tr.fee.type : null,
+        toLogo: tr.teams?.in?.logo,
+        fee: tr.fee?.amount && tr.fee.amount !== 'null' && tr.fee.amount !== 'None'
+             ? (tr.fee.currency||'') + tr.fee.amount
+             : tr.fee?.type && tr.fee.type !== 'null' && tr.fee.type !== 'None'
+             ? tr.fee.type : null,
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
@@ -2452,15 +2456,15 @@ function PlayerModal({player, teamId, onClose, openClub}){
                 {career.transfers.slice(0,8).map((t,i)=>{
                   const toCode = TCODE[t.to]||Object.entries(TSHORT).find(([k,v])=>v===t.to)?.[0]||null;
                   const fromCode = TCODE[t.from]||Object.entries(TSHORT).find(([k,v])=>v===t.from)?.[0]||null;
-                  const isPaid = t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'&&t.fee!=='N/A';
+                  const isPaid = t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'&&t.fee!=='N/A'&&t.fee!=='?';
                   return(
                     <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                        {fromCode&&<Badge code={fromCode} size={18}/>}
-                        <div style={{fontSize:11,color:C.muted,flexShrink:0}}>{t.from||'Unknown'}</div>
-                        <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)',margin:'0 4px'}}/>
-                        <div style={{fontSize:11,color:C.muted,flexShrink:0}}>{t.to||'Unknown'}</div>
-                        {toCode&&<Badge code={toCode} size={18}/>}
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                        {fromCode?<Badge code={fromCode} size={20}/>:t.fromLogo?<img src={t.fromLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
+                        <div style={{fontSize:11,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.from||'?'}</div>
+                        <div style={{fontSize:10,color:C.muted,flexShrink:0,padding:'0 4px'}}>to</div>
+                        <div style={{fontSize:11,color:C.white,fontWeight:700,flex:1,textAlign:'right',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.to||'?'}</div>
+                        {toCode?<Badge code={toCode} size={20}/>:t.toLogo?<img src={t.toLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                         <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
