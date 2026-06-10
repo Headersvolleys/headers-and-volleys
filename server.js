@@ -358,7 +358,7 @@ app.get('/api/af/fixtures', async (req, res) => {
 app.get('/api/af/squad', async (req, res) => {
   try {
     const name = req.query.name || '';
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').replace(/\b(fc|afc|cf)\b/g,'').replace(/\s+/g,' ').trim();
     const EXPAND = {
       'man utd':'manchester united','man united':'manchester united',
       'man city':'manchester city',
@@ -389,15 +389,28 @@ app.get('/api/af/squad', async (req, res) => {
     const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
     const teamId = ranked[0]?.t?.team?.id || null;
     if(!teamId) return res.json({ squad: [], teamId: null });
-    const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
-    const players = sq.response?.[0]?.players || [];
-    const squad = players.map(p=>({
-      name: p.name,
-      shirtNumber: p.number,
-      position: p.position,
-      nationality: null,
-      afId: p.id,
-    }));
+    const deEntity = s => (s||'').replace(/&apos;/g,"'").replace(/&#0?39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+    // /players includes nationality; paginate (PL squads span ~2 pages)
+    let all = [];
+    let page = 1, totalPages = 1;
+    do {
+      const pd = await af('/players?team=' + teamId + '&season=2025&page=' + page, 6*60*MIN);
+      all = all.concat(pd.response || []);
+      totalPages = pd.paging?.total || 1;
+      page++;
+    } while(page <= totalPages && page <= 5);
+    const seen = {};
+    const squad = all.map(row=>{
+      const pl = row.player || {};
+      const g = (row.statistics||[]).find(s=>s.league?.id===39) || row.statistics?.[0] || {};
+      return {
+        name: deEntity(pl.name),
+        shirtNumber: g.games?.number || null,
+        position: g.games?.position || pl.position || null,
+        nationality: pl.nationality || null,
+        afId: pl.id,
+      };
+    }).filter(p=>{ if(seen[p.afId]) return false; seen[p.afId]=1; return true; });
     res.json({ squad, teamId });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1830,14 +1843,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
 
   const fdSquad = teamData?.squad || [];
   const afSquad = afSquadData?.squad || [];
-  const nameKey = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
-  const fdByName = {};
-  fdSquad.forEach(p=>{ const surname=nameKey((p.name||'').split(' ').pop()); fdByName[nameKey(p.name)]=p; if(surname)fdByName[surname]=fdByName[surname]||p; });
-  const mergedAf = afSquad.map(p=>{
-    const m = fdByName[nameKey(p.name)] || fdByName[nameKey((p.name||'').split(' ').pop())];
-    return { ...p, nationality: p.nationality || m?.nationality || null, dateOfBirth: p.dateOfBirth || m?.dateOfBirth || null };
-  });
-  const squad = mergedAf.length>0 ? mergedAf : fdSquad;
+  const squad = afSquad.length>0 ? afSquad : fdSquad;
   const squadLoading = afSquadLoad && tLoad;
   const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
