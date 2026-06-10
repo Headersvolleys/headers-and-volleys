@@ -2633,6 +2633,41 @@ async function findAFFixture(match) {
   return d.fixtureId || null;
 }
 
+function EventIcon({kind,size=18}){
+  // kind: 'goal' | 'owngoal' | 'yellow' | 'red' | 'sub' | 'boot' | 'other'
+  const s=size;
+  if(kind==='goal'||kind==='owngoal'){
+    const base=kind==='owngoal'?C.red:C.white;
+    return(
+      <svg width={s} height={s} viewBox="0 0 24 24" style={{display:'block'}}>
+        <circle cx="12" cy="12" r="10" fill={base} stroke={C.dark} strokeWidth="1.2"/>
+        <polygon points="12,7 15.2,9.3 14,13 10,13 8.8,9.3" fill={C.dark}/>
+        <path d="M12 2.2 L12 7 M21.5 9 L15.2 9.3 M18 19.5 L14 13 M6 19.5 L10 13 M2.5 9 L8.8 9.3" stroke={C.dark} strokeWidth="1" fill="none"/>
+      </svg>
+    );
+  }
+  if(kind==='yellow'||kind==='red'){
+    return <div style={{width:s*0.72,height:s,borderRadius:2,background:kind==='red'?C.red:C.yellow,boxShadow:'0 0 0 1px rgba(0,0,0,.25)'}}/>;
+  }
+  if(kind==='boot'){
+    return(
+      <svg width={s} height={s} viewBox="0 0 24 24" style={{display:'block'}}>
+        <path d="M4 6 L9 6 L10 13 L19 14 Q21 14.3 21 16.5 L21 18 L4 18 Z" fill={C.orange}/>
+        <rect x="4" y="18" width="18" height="2" rx="1" fill={C.muted}/>
+      </svg>
+    );
+  }
+  if(kind==='sub'){
+    return(
+      <svg width={s} height={s} viewBox="0 0 24 24" style={{display:'block'}}>
+        <path d="M8 4 L8 17 M8 4 L5 8 M8 4 L11 8" stroke={C.green} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M16 20 L16 7 M16 20 L13 16 M16 20 L19 16" stroke={C.red} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+  return <div style={{width:s,height:s,borderRadius:'50%',background:C.d4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff'}}>?</div>;
+}
+
 function MatchModal({match, onClose, openPlayer, openClub}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
@@ -2841,18 +2876,24 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                 const isGoal=e.type==='Goal', isCard=e.type==='Card', isSub=e.type==='subst';
                 const isRed=isCard&&e.detail==='Red Card', isYellow=isCard&&e.detail==='Yellow Card';
                 const isOG=isGoal&&e.detail==='Own Goal';
-                const iconBg=isGoal?(isOG?C.red:C.green):isRed?C.red:isYellow?C.yellow:isSub?C.blue:C.d4;
-                const iconTxt=isGoal?'G':isRed?'R':isYellow?'Y':isSub?'S':'?';
-                const detail=isSub?('On: '+e.assist?.name+' | Off: '+e.player?.name):isGoal?(isOG?'Own Goal':e.assist?.name?'Assist: '+e.assist.name:''):isCard?e.detail:'';
+                const iconKind=isGoal?(isOG?'owngoal':'goal'):isRed?'red':isYellow?'yellow':isSub?'sub':isCard?'yellow':'other';
                 const eCol=isHome?homeCol:awayCol;
                 const min=e.time?.elapsed+(e.time?.extra?'+'+e.time.extra:'');
+                const detailNode=isSub
+                  ? <span style={{fontSize:10}}><span style={{color:C.green,fontWeight:700}}>{e.assist?.name}</span><span style={{color:C.muted}}> on </span><span style={{color:C.red,fontWeight:700}}>{e.player?.name}</span><span style={{color:C.muted}}> off</span></span>
+                  : isGoal
+                    ? (isOG?<span style={{fontSize:10,color:C.red}}>Own Goal</span>:e.assist?.name?<span style={{fontSize:10,color:C.muted,display:'inline-flex',alignItems:'center',gap:3}}><EventIcon kind="boot" size={12}/>{e.assist.name}</span>:null)
+                    : isCard?<span style={{fontSize:10,color:C.muted}}>{e.detail}</span>:null;
+                const nameNode=isSub
+                  ? <div style={{fontWeight:700,fontSize:12,color:C.green}}>{e.assist?.name}</div>
+                  : <div style={{fontWeight:700,fontSize:12,color:C.white}}>{e.player?.name}</div>;
                 return(
-                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 36px 16px 36px 1fr',alignItems:'center',gap:4,padding:'7px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
-                    <div style={{textAlign:'right'}}>{isHome&&<><div style={{fontWeight:700,fontSize:12,color:C.white}}>{e.player?.name}</div>{detail&&<div style={{fontSize:10,color:C.muted,marginTop:1}}>{detail}</div>}</>}</div>
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 36px 20px 36px 1fr',alignItems:'center',gap:4,padding:'7px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                    <div style={{textAlign:'right'}}>{isHome&&<>{nameNode}{detailNode&&<div style={{marginTop:1,display:'flex',justifyContent:'flex-end'}}>{detailNode}</div>}</>}</div>
                     <div style={{textAlign:'center'}}>{isHome&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:12,color:eCol}}>{min}&apos;</div>}</div>
-                    <div style={{display:'flex',justifyContent:'center'}}><div style={{width:16,height:16,borderRadius:isCard?2:'50%',background:iconBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff'}}>{iconTxt}</div></div>
+                    <div style={{display:'flex',justifyContent:'center',alignItems:'center'}}><EventIcon kind={iconKind} size={18}/></div>
                     <div style={{textAlign:'center'}}>{!isHome&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:12,color:eCol}}>{min}&apos;</div>}</div>
-                    <div style={{textAlign:'left'}}>{!isHome&&<><div style={{fontWeight:700,fontSize:12,color:C.white}}>{e.player?.name}</div>{detail&&<div style={{fontSize:10,color:C.muted,marginTop:1}}>{detail}</div>}</>}</div>
+                    <div style={{textAlign:'left'}}>{!isHome&&<>{nameNode}{detailNode&&<div style={{marginTop:1,display:'flex',justifyContent:'flex-start'}}>{detailNode}</div>}</>}</div>
                   </div>
                 );
               })}
