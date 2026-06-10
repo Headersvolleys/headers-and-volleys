@@ -1725,7 +1725,7 @@ function Quiz({openPlayer, openClub}){
 //  PLAYER PROFILE MODAL 
 
 //  CLUB PROFILE MODAL (full page)
-function FixRow({m,teamId,openClub}){
+function FixRow({m,teamId,openClub,openMatch}){
   const isHome=m.homeTeam?.id===teamId;
   const opp=isHome?m.awayTeam:m.homeTeam;
   const oppCode=TCODE[opp?.name]||'???';
@@ -1735,21 +1735,21 @@ function FixRow({m,teamId,openClub}){
   const col=fin?(won?C.green:drew?C.yellow:C.red):C.d4;
   const dt=new Date(m.utcDate);
   return(
-    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:4,borderLeft:'3px solid '+col}}>
+    <div onClick={()=>openMatch&&openMatch(m)} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d2,borderRadius:8,marginBottom:4,borderLeft:'3px solid '+col,cursor:openMatch?'pointer':'default'}}>
       <div style={{flexShrink:0,minWidth:60}}>
         <div style={{fontSize:10,color:C.muted}}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
         <div style={{fontSize:9,color:fin?C.muted:C.teal,fontWeight:600}}>{fin?'FT':dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
       </div>
       <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
-      <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{cursor:'pointer'}}><Badge code={oppCode} size={18}/></span>
-      <span onClick={e=>{e.stopPropagation();openClub&&openClub(opp);}} style={{fontSize:12,flex:1,color:C.teal,cursor:'pointer',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
+      <Badge code={oppCode} size={18}/>
+      <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
       {fin&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>}
       {fin&&<div style={{width:20,height:20,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{won?'W':drew?'D':'L'}</div>}
     </div>
   );
 }
 
-function ClubModal({team, onClose, openPlayer, openClub}){
+function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
   const code = TCODE[team?.name] || '???';
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
   const {data:standData} = useApi('/api/standings', 300000);
@@ -1852,14 +1852,14 @@ function ClubModal({team, onClose, openPlayer, openClub}){
           {/* Recent results */}
           {recent.length>0&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Recent Results</div>
-            {recent.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
+            {recent.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub} openMatch={openMatch}/>)}
             <div style={{marginBottom:16}}/>
           </>}
 
           {/* Upcoming */}
           {upcoming.length>0&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Upcoming</div>
-            {upcoming.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
+            {upcoming.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub} openMatch={openMatch}/>)}
           </>}
         </>}
 
@@ -1892,7 +1892,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
         {/* FIXTURES */}
         {view==='fixtures'&&<>
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>All Fixtures</div>
-          {[...teamFixtures].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
+          {[...teamFixtures].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub} openMatch={openMatch}/>)}
         </>}
 
       </div>
@@ -2925,9 +2925,11 @@ function App(){
   const openPlayer=(player,teamId)=>{ if(!player||!teamId) return; setPage({type:'player',player,teamId}); };
   const openClub=(team)=>{ if(!team) return; setPage({type:'club',team}); };
   const goBack=()=>setPage(null);
+  const [matchOverlay,setMatchOverlay]=useState(null);
+  const openMatch=(m)=>{ if(!m) return; setMatchOverlay(m); };
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
-  if(page?.type==='club') return <ClubModal team={page.team} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
+  if(page?.type==='club') return <><ClubModal team={page.team} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatch}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
 
   return(
     <div style={{minHeight:'100vh',background:C.dark}}>
