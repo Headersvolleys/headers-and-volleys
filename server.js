@@ -2397,14 +2397,14 @@ function PlayerModal({player, teamId, onClose, openClub}){
 
   useEffect(()=>{
     if(!player?.name) return;
-    const dob = p?.dateOfBirth||player?.dateOfBirth||'';
+    const dob = player?.dateOfBirth||'';
+    const teamName = player?.teamName||'';
     setCareerLoading(true);
-    const teamName = team?.name || player?.teamName || '';
     fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
       .then(r=>r.json())
-      .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
+      .then(d=>{ if(d.found) setCareer(d); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
-  },[player?.name, p?.dateOfBirth]);
+  },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || career?.player?.position || null;
   const posDisplay = {
