@@ -141,7 +141,14 @@ async function getAFPlayersByDOB() {
     const byDOB = {};
     for (const tid of teams) {
       const r = await af('/players?team='+tid+'&season=2025', 60*MIN).catch(()=>({response:[]}));
-      (r.response||[]).forEach(p => { if(p.player?.birth?.date) byDOB[p.player.birth.date] = p; });
+      (r.response||[]).forEach(p => {
+        if(p.player?.birth?.date) {
+          const d = p.player.birth.date;
+          if(!byDOB[d]) byDOB[d] = p;
+          // Store as array if multiple players share DOB
+          else if(!byDOB[d+'_2']) byDOB[d+'_2'] = p;
+        }
+      });
     }
     cache[cKey] = { data: byDOB, ts: Date.now() };
     return byDOB;
@@ -164,7 +171,15 @@ app.get('/api/af/player-career', async (req, res) => {
     // Strategy 1: DOB lookup from pre-cached full squad (most reliable)
     if (dob) {
       const byDOB = await getAFPlayersByDOB();
-      hit = byDOB[dob] || null;
+      const candidates = [byDOB[dob], byDOB[dob+'_2']].filter(Boolean);
+      for(const candidate of candidates) {
+        const pt = norm(candidate.statistics?.[0]?.team?.name||'');
+        const ptc = pt.replace(/fc|united|city|rovers|town/g,'').trim();
+        const tnc = tn.replace(/fc|united|city|rovers|town/g,'').trim();
+        const teamMatch = !tnc || tnc.length < 3 || ptc.includes(tnc.slice(0,5)) || tnc.includes(ptc.slice(0,5));
+        if(teamMatch) { hit = candidate; break; }
+      }
+      if(!hit && candidates.length) hit = candidates[0]; // fallback to first if no team match
     }
 
     // Strategy 2: search by last name
@@ -2380,13 +2395,14 @@ function PlayerModal({player, teamId, onClose, openClub}){
 
   useEffect(()=>{
     if(!player?.name) return;
+    const dob = p?.dateOfBirth||player?.dateOfBirth||'';
     setCareerLoading(true);
     const teamName = team?.name || player?.teamName || '';
-    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(p?.dateOfBirth||player?.dateOfBirth||''))
+    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
       .then(r=>r.json())
       .then(d=>{ setCareer(d.found?d:null); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
-  },[player?.name]);
+  },[player?.name, p?.dateOfBirth]);
 
   const rawPos = p?.position || xgData?.position || career?.player?.position || null;
   const posDisplay = {
