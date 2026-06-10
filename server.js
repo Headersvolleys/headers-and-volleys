@@ -389,28 +389,9 @@ app.get('/api/af/squad', async (req, res) => {
     const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
     const teamId = ranked[0]?.t?.team?.id || null;
     if(!teamId) return res.json({ squad: [], teamId: null });
-    const deEntity = s => (s||'').replace(/&apos;/g,"'").replace(/&#0?39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,'&');
-    // /players includes nationality; paginate (PL squads span ~2 pages)
-    let all = [];
-    let page = 1, totalPages = 1;
-    do {
-      const pd = await af('/players?team=' + teamId + '&season=2025&page=' + page, 6*60*MIN);
-      all = all.concat(pd.response || []);
-      totalPages = pd.paging?.total || 1;
-      page++;
-    } while(page <= totalPages && page <= 5);
-    const seen = {};
-    const squad = all.map(row=>{
-      const pl = row.player || {};
-      const g = (row.statistics||[]).find(s=>s.league?.id===39) || row.statistics?.[0] || {};
-      return {
-        name: deEntity(pl.name),
-        shirtNumber: g.games?.number || null,
-        position: g.games?.position || pl.position || null,
-        nationality: pl.nationality || null,
-        afId: pl.id,
-      };
-    }).filter(p=>{ if(seen[p.afId]) return false; seen[p.afId]=1; return true; });
+    // Return API-Football's squad list directly, no editing.
+    const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
+    const squad = sq.response?.[0]?.players || [];
     res.json({ squad, teamId });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1957,7 +1938,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
             const flagUrl = flag(p.nationality);
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
-                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.shirtNumber||'-'}</div>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
                   {p.nationality&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
