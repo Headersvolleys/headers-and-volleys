@@ -117,14 +117,16 @@ app.get('/api/af/logo/:id', async (req, res) => {
 app.get('/api/af/debug-search', async (req, res) => {
   try {
     const q = req.query.q || '';
-    const data = await af('/players?search='+encodeURIComponent(q)+'&season=2025', 0);
+    const [r1, r2, r3] = await Promise.all([
+      af('/players?search='+encodeURIComponent(q)+'&league=39&season=2025', 0).catch(e=>({error:e.message})),
+      af('/players?search='+encodeURIComponent(q)+'&season=2025', 0).catch(e=>({error:e.message})),
+      af('/players?search='+encodeURIComponent(q), 0).catch(e=>({error:e.message})),
+    ]);
     res.json({
-      results: (data.response||[]).slice(0,5).map(p=>({
-        name: p.player?.name,
-        dob: p.player?.birth?.date,
-        team: p.statistics?.[0]?.team?.name,
-        league: p.statistics?.[0]?.league?.name,
-      }))
+      'league+season': (r1.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
+      'season_only': (r2.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
+      'no_filter': (r3.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
+      errors: {r1:r1.error, r2:r2.error, r3:r3.error}
     });
   } catch(e) { res.status(500).json({error:e.message}); }
 });
