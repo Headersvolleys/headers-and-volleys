@@ -131,92 +131,96 @@ app.get('/api/af/debug-search', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-// API-Football player career - minimal calls: search + transfers only
+// Pre-cache all PL players from AF for reliable DOB-based lookup
+async function getAFPlayersByDOB() {
+  const cKey = 'af_all_players';
+  if (cache[cKey] && Date.now() - cache[cKey].ts < 24*60*MIN) return cache[cKey].data;
+  try {
+    const teamsRes = await af('/teams?league=39&season=2025', 60*MIN);
+    const teams = (teamsRes.response||[]).map(t => t.team?.id).filter(Boolean);
+    const byDOB = {};
+    for (const tid of teams) {
+      const r = await af('/players?team='+tid+'&season=2025', 60*MIN).catch(()=>({response:[]}));
+      (r.response||[]).forEach(p => { if(p.player?.birth?.date) byDOB[p.player.birth.date] = p; });
+    }
+    cache[cKey] = { data: byDOB, ts: Date.now() };
+    return byDOB;
+  } catch(e) { return {}; }
+}
+
+// API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
   try {
-    const {name, teamName} = req.query;
+    const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc7_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,20)+'_'+(req.query.dob||'').replace(/-/g,'').slice(0,8);
+    const cacheKey = 'afc8_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pn = norm(name);
+    const tn = norm(teamName||'');
     let hit = null;
 
-    // Match by date of birth (reliable across APIs with different name formats)
-    const dob = req.query.dob || '';
-    const lastName = name.split(' ').pop();
-    const firstName = name.split(' ').slice(0,-1).join(' ');
-    const tn = norm(teamName||'');
-
-    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
-    const candidates = s1.response||[];
-
-    const scored = candidates.map(p => {
-      const fn = norm(p.player?.name||'');
-      const pt = norm(p.statistics?.[0]?.team?.name||'');
-      const pdob = (p.player?.birth?.date||'').slice(0,10);
-      let score = 0;
-      if(dob && pdob && pdob === dob) score += 20;
-      if(fn === pn) score += 10;
-      else if(firstName && fn.includes(norm(lastName)) && fn.includes(norm(firstName).slice(0,4))) score += 5;
-      else if(fn.includes(norm(lastName)) && norm(lastName).length > 4) score += 2;
-      const ptClean = pt.replace(/fc|united|city|rovers|town|athletic/g,'').trim();
-      const tnClean = tn.replace(/fc|united|city|rovers|town|athletic/g,'').trim();
-      if(tnClean.length > 3 && ptClean.length > 3 && (ptClean.includes(tnClean.slice(0,5)) || tnClean.includes(ptClean.slice(0,5)))) score += 4;
-      return {p, score};
-    }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score);
-    hit = scored[0]?.p || null;
-
-    // Fallback 1: search by first name with league filter (catches "Igor Thiago" type names)
-    if(!hit && firstName) {
-      const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
-      const scored2 = (s2.response||[]).map(p => {
-        const pdob = (p.player?.birth?.date||'').slice(0,10);
-        let score = 0;
-        if(dob && pdob && pdob === dob) score += 20;
-        const fn = norm(p.player?.name||'');
-        if(fn === pn) score += 8;
-        else if(fn.includes(norm(firstName))) score += 3;
-        return {p, score};
-      }).filter(x => x.score >= 3).sort((a,b) => b.score - a.score);
-      hit = scored2[0]?.p || null;
+    // Strategy 1: DOB lookup from pre-cached full squad (most reliable)
+    if (dob) {
+      const byDOB = await getAFPlayersByDOB();
+      hit = byDOB[dob] || null;
     }
 
-    // Fallback 2: try each word in the name with DOB matching
-    if(!hit && dob) {
-      const parts = name.split(' ').filter(p => p.length > 3);
-      for(const part of parts) {
-        if(hit) break;
-        const sx = await af('/players?search='+encodeURIComponent(part)+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
-        const match = (sx.response||[]).find(p => (p.player?.birth?.date||'').slice(0,10) === dob);
-        if(match) hit = match;
+    // Strategy 2: search by last name
+    if (!hit) {
+      const lastName = name.split(' ').pop();
+      const firstName = name.split(' ').slice(0,-1).join(' ');
+      const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
+      const scored = (s1.response||[]).map(p => {
+        const fn = norm(p.player?.name||'');
+        const pt = norm(p.statistics?.[0]?.team?.name||'');
+        const pdob = (p.player?.birth?.date||'').slice(0,10);
+        let score = 0;
+        if(dob && pdob === dob) score += 20;
+        if(fn === pn) score += 10;
+        else if(firstName && fn.includes(norm(firstName).slice(0,4))) score += 5;
+        const ptc = pt.replace(/fc|united|city/g,'').trim();
+        const tnc = tn.replace(/fc|united|city/g,'').trim();
+        if(tnc.length>3 && ptc.includes(tnc.slice(0,5))) score += 4;
+        return {p, score};
+      }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
+      hit = scored[0]?.p || null;
+    }
+
+    // Strategy 3: search by first name
+    if (!hit) {
+      const firstName = name.split(' ').slice(0,-1).join(' ');
+      if (firstName) {
+        const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
+        const scored2 = (s2.response||[]).map(p => {
+          const pdob = (p.player?.birth?.date||'').slice(0,10);
+          let score = 0;
+          if(dob && pdob === dob) score += 20;
+          if(norm(p.player?.name||'') === pn) score += 10;
+          return {p, score};
+        }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
+        hit = scored2[0]?.p || null;
       }
     }
 
     if(!hit) return res.json({found:false});
     const afId = hit.player?.id;
 
-    // Just get transfers (1 call) - cheaper than multi-season stats
     const transferRes = await af('/transfers?player='+afId, 24*60*MIN).catch(()=>({response:[]}));
-
     const transfers = (transferRes.response||[]).flatMap(t =>
       (t.transfers||[]).map(tr => ({
         date: tr.date,
         from: tr.teams?.out?.name,
-        fromId: tr.teams?.out?.id,
         fromLogo: tr.teams?.out?.id ? '/api/af/logo/'+tr.teams.out.id : null,
         to: tr.teams?.in?.name,
-        toId: tr.teams?.in?.id,
         toLogo: tr.teams?.in?.id ? '/api/af/logo/'+tr.teams.in.id : null,
         fee: tr.fee?.amount && tr.fee.amount !== 'null' && tr.fee.amount !== 'None'
-             ? (tr.fee.currency||'') + tr.fee.amount
-             : tr.fee?.type && tr.fee.type !== 'null' && tr.fee.type !== 'None'
-             ? tr.fee.type : null,
+             ? (tr.fee.currency||'')+tr.fee.amount
+             : tr.fee?.type && tr.fee.type !== 'null' ? tr.fee.type : null,
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-    // Use current season stats from the search result
     const currentStats = hit.statistics?.[0];
     const seasonStats = currentStats ? [{
       season: currentStats.league?.season,
@@ -233,7 +237,7 @@ app.get('/api/af/player-career', async (req, res) => {
     const result = {found:true, player:hit.player, transfers, seasonStats};
     cache[cacheKey] = {data:result, ts:Date.now()};
     res.json(result);
-  } catch(e) { res.status(500).json({error: e.message, found:false}); }
+  } catch(e) { res.status(500).json({error:e.message, found:false}); }
 });
 
 // Understat xG by player name
