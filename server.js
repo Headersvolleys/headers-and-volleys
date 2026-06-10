@@ -1942,7 +1942,7 @@ function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
         <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
       </div>
       <div style={{textAlign:'right',flexShrink:0}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||tc,lineHeight:1}}>{stat}</div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:statCol||C.text,lineHeight:1}}>{stat}</div>
         <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>{statLabel}</div>
       </div>
       {stat2!=null&&<div style={{textAlign:'right',flexShrink:0,marginLeft:5}}>
