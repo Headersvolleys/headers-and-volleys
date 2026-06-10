@@ -674,6 +674,28 @@ const TSHORT={
 };
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
 
+function normPos(raw){
+  if(!raw) return '-';
+  const s=String(raw).trim();
+  const MAP={
+    'Attacker':'Forward','Offence':'Forward','Offense':'Forward','Attack':'Forward',
+    'F':'Forward','FW':'Forward','Forward':'Forward','Centre-Forward':'Forward','Centre Forward':'Forward','Second Striker':'Forward','Striker':'Forward','CF':'Forward','ST':'Forward',
+    'Midfielder':'Midfielder','M':'Midfielder','MF':'Midfielder','AM':'Midfielder','DM':'Midfielder','CM':'Midfielder',
+    'Midfield':'Midfielder','Central Midfield':'Midfielder','Attacking Midfield':'Midfielder','Defensive Midfield':'Midfielder',
+    'Right Midfield':'Midfielder','Left Midfield':'Midfielder',
+    'Defender':'Defender','D':'Defender','DF':'Defender','Defence':'Defender','Defense':'Defender',
+    'Centre-Back':'Defender','Centre Back':'Defender','Left-Back':'Defender','Right-Back':'Defender',
+    'Left Back':'Defender','Right Back':'Defender','CB':'Defender','LB':'Defender','RB':'Defender','Full Back':'Defender','Wing Back':'Defender',
+    'Goalkeeper':'Goalkeeper','GK':'Goalkeeper','G':'Goalkeeper','Keeper':'Goalkeeper',
+  };
+  if(MAP[s]) return MAP[s];
+  const l=s.toLowerCase();
+  if(l.includes('keep')||l==='gk') return 'Goalkeeper';
+  if(l.includes('back')||l.includes('defen')) return 'Defender';
+  if(l.includes('mid')) return 'Midfielder';
+  if(l.includes('forward')||l.includes('attack')||l.includes('strik')||l.includes('wing')||l.includes('offen')) return 'Forward';
+  return '-';
+}
 function teamCol(code) {
   const [bg, acc] = CC[code] || ['#333','#fff'];
   return bg;
@@ -1758,13 +1780,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
   const [view, setView] = useState('overview');
 
   const squad = teamData?.squad || [];  // Note: requires football-data.org Tier 2+
-  const positions = ['ALL','Goalkeeper','Defence','Midfield','Forward'];
-  const posMap = {'Forward':'Forward','Forward':'Forward'};
-  const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>{
-    const pos = posMap[p.position]||p.position;
-    const sqFilter = squadFilter==='Forward'?['Forward','Offence','Offense','Attack','Attacker']:null;
-    return sqFilter ? sqFilter.includes(pos)||sqFilter.includes(p.position) : pos===squadFilter;
-  });
+  const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
+  const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
   const teamFixtures = (fixturesData?.matches||[])
@@ -1870,7 +1887,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
           </div>
           {tLoad&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
           {filtered.map((p,i)=>{
-            const posDisplay = p.position==='Forward'?'Forward':p.position;
+            const posDisplay = normPos(p.position);
             const flagUrl = flag(p.nationality);
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
@@ -2369,18 +2386,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || career?.seasonStats?.[0]?.position || career?.player?.position || player?.position || null;
-  const POS_MAP = {
-    'Attacker':'Forward','Offence':'Forward','Offense':'Forward','Attack':'Forward',
-    'F':'Forward','FW':'Forward','Centre-Forward':'Forward','Second Striker':'Forward',
-    'Midfielder':'Midfielder','M':'Midfielder','MF':'Midfielder','AM':'Midfielder','DM':'Midfielder',
-    'Central Midfield':'Midfielder','Attacking Midfield':'Midfielder','Defensive Midfield':'Midfielder',
-    'Right Midfield':'Midfielder','Left Midfield':'Midfielder',
-    'Defender':'Defender','D':'Defender','DF':'Defender',
-    'Centre-Back':'Defender','Left-Back':'Defender','Right-Back':'Defender',
-    'Left Back':'Defender','Right Back':'Defender','Centre Back':'Defender',
-    'Goalkeeper':'Goalkeeper','GK':'Goalkeeper','G':'Goalkeeper',
-  };
-  const posDisplay = POS_MAP[rawPos] || rawPos;
+  const posDisplay = normPos(rawPos);
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
