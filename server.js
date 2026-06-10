@@ -160,7 +160,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc10_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc11_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
@@ -174,14 +174,16 @@ app.get('/api/af/player-career', async (req, res) => {
     if (dob) {
       const byDOB = await getAFPlayersByDOB();
       const candidates = [byDOB[dob], byDOB[dob+'_2']].filter(Boolean);
-      for(const candidate of candidates) {
-        const pt = norm(candidate.statistics?.[0]?.team?.name||'');
-        const ptc = pt.replace(/fc|united|city|rovers|town/g,'').trim();
-        const tnc = tn.replace(/fc|united|city|rovers|town/g,'').trim();
-        const teamMatch = !tnc || tnc.length < 3 || ptc.includes(tnc.slice(0,5)) || tnc.includes(ptc.slice(0,5));
-        if(teamMatch) { hit = candidate; break; }
-      }
-      if(!hit && candidates.length) hit = candidates[0]; // fallback to first if no team match
+      // Score each candidate by team name match
+      const teamScored = candidates.map(c => {
+        const pt = norm(c.statistics?.[0]?.team?.name||'');
+        // Check if any word in teamName appears in pt or vice versa
+        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic/g,'').trim().split(/\s+/).filter(w=>w.length>3);
+        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic/g,'').trim().split(/\s+/).filter(w=>w.length>3);
+        const score = tnWords.reduce((acc,w)=>acc+(ptWords.some(pw=>pw.includes(w)||w.includes(pw))?1:0),0);
+        return {c, score, pt};
+      }).sort((a,b)=>b.score-a.score);
+      hit = teamScored[0]?.c || null;
     }
 
     // Strategy 2: search by last name
