@@ -57,7 +57,7 @@ app.get('/api/team/:id', async (req, res) => {
 });
 // Team matches for form
 app.get('/api/team/:id/matches', async (req, res) => {
-  try { res.json(await fd(`/teams/${req.params.id}/matches?competitions=PL&season=2025&status=FINISHED&limit=5`, 5*MIN)); }
+  try { res.json(await fd(`/teams/${req.params.id}/matches?competitions=PL&season=2025&status=FINISHED`, 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 // Player profile
@@ -2718,8 +2718,8 @@ function MatchModal({match, onClose, openPlayer, openClub}){
       .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
     fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
     if(match.homeTeam?.id){
-      fetch('/api/team/'+match.homeTeam.id+'/matches').then(r=>r.json()).then(setHForm).catch(()=>{});
-      fetch('/api/team/'+match.awayTeam.id+'/matches').then(r=>r.json()).then(setAForm).catch(()=>{});
+      fetch('/api/team/'+match.homeTeam.id+'/matches').then(r=>r.json()).then(d=>setHForm(d&&d.matches?d:{matches:[]})).catch(()=>setHForm({matches:[]}));
+      fetch('/api/team/'+match.awayTeam.id+'/matches').then(r=>r.json()).then(d=>setAForm(d&&d.matches?d:{matches:[]})).catch(()=>setAForm({matches:[]}));
     }
   },[match.id]);
 
@@ -2945,6 +2945,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                     <div style={{fontWeight:700,fontSize:14,color:C.white,flex:1}}>{TSHORT[team?.name]||team?.name}</div>
                     <div style={{display:'flex',gap:4}}>{form.map((r,i)=><div key={i} style={{width:20,height:20,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark}}>{r}</div>)}</div>
                   </div>
+                  {ms.length===0&&<div style={{fontSize:12,color:C.muted,paddingTop:4}}>No recent results available</div>}
                   {ms.map((m,i)=>{
                     const ih=m.homeTeam?.id===team?.id, opp=ih?m.awayTeam:m.homeTeam, oc=TCODE[opp?.name]||'???';
                     const mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
