@@ -132,34 +132,41 @@ app.get('/api/af/debug-search', async (req, res) => {
 });
 
 // Pre-cache all PL players from AF for reliable DOB-based lookup
-async function getAFPlayersByDOB() {
-  const cKey = 'af_allpl_v3';
+// Pre-cache all PL players from AF - indexed by DOB and by team
+async function getAFSquads() {
+  const cKey = 'af_squads_v1';
   if (cache[cKey] && Date.now() - cache[cKey].ts < 24*60*MIN) return cache[cKey].data;
   try {
     const teamsRes = await af('/teams?league=39&season=2025', 60*MIN);
-    const teams = (teamsRes.response||[]).map(t => t.team?.id).filter(Boolean);
-    const byDOB = {};
-    for (const tid of teams) {
-      const r = await af('/players?team='+tid+'&season=2025', 60*MIN).catch(()=>({response:[]}));
-      (r.response||[]).forEach(p => {
-        if(p.player?.birth?.date) {
-          const d = p.player.birth.date;
-          if(!byDOB[d]) byDOB[d] = [];
-          byDOB[d].push(p);
+    const teams = (teamsRes.response||[]).map(t=>({id:t.team?.id, name:t.team?.name})).filter(t=>t.id);
+    const byDOB = {};   // dob -> array of players
+    const byTeam = {};  // normalized team name -> array of players
+    for (const team of teams) {
+      const r = await af('/players?team='+team.id+'&season=2025', 60*MIN).catch(()=>({response:[]}));
+      const players = r.response||[];
+      const tn = (team.name||'').toLowerCase().replace(/[^a-z]/g,'');
+      byTeam[tn] = players;
+      players.forEach(p => {
+        const dob = p.player?.birth?.date;
+        if(dob) {
+          if(!byDOB[dob]) byDOB[dob] = [];
+          byDOB[dob].push(p);
         }
       });
     }
-    cache[cKey] = { data: byDOB, ts: Date.now() };
-    return byDOB;
-  } catch(e) { return {}; }
+    const data = {byDOB, byTeam, teams};
+    cache[cKey] = {data, ts:Date.now()};
+    return data;
+  } catch(e) { return {byDOB:{}, byTeam:{}, teams:[]}; }
 }
+
 
 // API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc13_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc14_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
@@ -169,41 +176,61 @@ app.get('/api/af/player-career', async (req, res) => {
     const tn = norm(teamName||'');
     let hit = null;
 
-    // Map fd.org team names to AF-compatible search terms
-    const FD_TO_AF = {
-      'tottenham hotspur':'tottenham','manchester city':'manchester city',
-      'manchester united':'manchester united','chelsea fc':'chelsea',
-      'arsenal fc':'arsenal','liverpool fc':'liverpool',
-      'newcastle united':'newcastle','west ham united':'west ham',
-      'aston villa':'aston villa','brighton & hove albion':'brighton',
-      'wolverhampton wanderers':'wolverhampton','nottingham forest':'nottingham',
-      'leicester city':'leicester','everton fc':'everton',
-      'brentford fc':'brentford','fulham fc':'fulham',
-      'bournemouth':'bournemouth','crystal palace':'crystal palace',
-      'ipswich town':'ipswich','southampton fc':'southampton',
-    };
-    const afTeamName = FD_TO_AF[norm(teamName)] || teamName.replace(/FC$/i,'').replace(/&.*$/,'').trim();
+    // Get pre-cached squad data
+    const squads = await getAFSquads();
+    const deaccentNorm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
 
-    // Strategy 1: Search within the player's team (most accurate)
+    // Strategy 1: Find player in their team's squad by name (most accurate)
     if (teamName) {
-      // Get AF team id by searching for the team name
-      const teamSearch = await af('/teams?name='+encodeURIComponent(afTeamName)+'&league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
-      const afTeam = (teamSearch.response||[])[0];
-      if (afTeam?.team?.id) {
-        const teamPlayers = await af('/players?team='+afTeam.team.id+'&season=2025', 60*MIN).catch(()=>({response:[]}));
-        const scored = (teamPlayers.response||[]).map(p => {
-          const fn = norm(p.player?.name||'');
+      // Try multiple normalizations of team name to find in byTeam
+      const teamVariants = [
+        deaccentNorm(teamName),
+        deaccentNorm(teamName.replace(/fc|united|city|hotspur|wanderers|athletic|albion/gi,'').trim()),
+      ];
+      let teamPlayers = null;
+      for (const variant of teamVariants) {
+        // Find best matching team
+        const match = Object.keys(squads.byTeam).find(k => 
+          k.includes(variant.slice(0,6)) || variant.includes(k.slice(0,6))
+        );
+        if (match) { teamPlayers = squads.byTeam[match]; break; }
+      }
+      if (teamPlayers) {
+        const scored = teamPlayers.map(p => {
+          const fn = deaccentNorm(p.player?.name||'');
           const pdob = (p.player?.birth?.date||'').slice(0,10);
           let score = 0;
           if(fn === pn) score += 10;
-          else if(fn.includes(pn.slice(0,6)) || pn.includes(fn.slice(0,6))) score += 5;
-          if(dob && pdob === dob) score += 8;
+          else if(fn.includes(pn.slice(0,5)) || pn.includes(fn.slice(0,5))) score += 5;
+          if(dob && pdob === dob) score += 6;
           return {p, score};
         }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
         hit = scored[0]?.p || null;
       }
     }
-    
+
+    // Strategy 2: DOB lookup with team scoring (fallback)
+    if (!hit && dob) {
+      const candidates = squads.byDOB[dob] || [];
+      if (candidates.length === 1) {
+        hit = candidates[0];
+      } else if (candidates.length > 1) {
+        const tnNorm = deaccentNorm(teamName).replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
+        const scored = candidates.map(c => {
+          const pt = deaccentNorm(c.statistics?.[0]?.team?.name||'').replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
+          let score = 0;
+          for(let len=Math.min(tnNorm.length,pt.length,8); len>=3; len--) {
+            for(let i=0; i<=tnNorm.length-len; i++) {
+              if(pt.includes(tnNorm.slice(i,i+len))) { score=len; break; }
+            }
+            if(score) break;
+          }
+          return {c, score};
+        }).sort((a,b)=>b.score-a.score);
+        hit = scored[0]?.c || candidates[0];
+      }
+    }
+
     // Strategy 2: DOB lookup from pre-cached full squad (fallback)
     if (!hit && dob) {
       const byDOB = await getAFPlayersByDOB();
