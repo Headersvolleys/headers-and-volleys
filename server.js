@@ -166,85 +166,69 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc15_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
-    if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
+    const cKey = 'afc16_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,15)+'_'+(dob||'').replace(/-/g,'').slice(0,8);
+    if(cache[cKey] && Date.now()-cache[cKey].ts < 24*60*MIN) return res.json(cache[cKey].data);
 
-    // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
-    const deaccent = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z ]/g,' ').trim();
-    const norm = s => deaccent(s||'').toLowerCase().replace(/[^a-z]/g,'');
-    const pn = norm(name);
-    const tn = norm(teamName||'');
+    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    const pn = da(name);
+    const tn = da(teamName||'');
     let hit = null;
 
-    // Search by last name in PL - simple and reliable
+    // Search AF by full name first (most precise)
+    const byFull = await af('/players?search='+encodeURIComponent(da(name))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
+    // Then by last name as fallback
     const lastName = name.split(' ').pop();
-    const firstName = name.split(' ').slice(0,-1).join(' ');
-    const deaccentNorm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
-    const tn = deaccentNorm(teamName);
+    const byLast = lastName !== name
+      ? await af('/players?search='+encodeURIComponent(da(lastName))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}))
+      : {response:[]};
 
-    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
-    const candidates = s1.response||[];
+    const all = [...(byFull.response||[]), ...(byLast.response||[])];
+    // Deduplicate by player id
+    const seen = new Set();
+    const unique = all.filter(p => { const id = p.player?.id; return id && !seen.has(id) && seen.add(id); });
 
-    const scored = candidates.map(p => {
-      const fn = deaccentNorm(p.player?.name||'');
-      const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
+    const scored = unique.map(p => {
+      const fn = da(p.player?.name||'');
+      const pt = da(p.statistics?.[0]?.team?.name||'');
       const pdob = (p.player?.birth?.date||'').slice(0,10);
       let score = 0;
-      // Name match
-      if(fn === pn) score += 10;
-      else if(firstName && fn.includes(deaccentNorm(lastName)) && fn.includes(deaccentNorm(firstName).slice(0,4))) score += 6;
-      else if(fn.includes(deaccentNorm(lastName)) && deaccentNorm(lastName).length > 4) score += 3;
-      // DOB match
-      if(dob && pdob === dob) score += 8;
-      // Team match - check if any significant word from teamName appears in pt
-      const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-      const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-      const teamScore = tnWords.reduce((acc,w)=>acc+(ptWords.some(pw=>pw.includes(w)||w.includes(pw))?3:0),0);
-      score += Math.min(teamScore, 6);
+      if(fn === pn) score += 20;
+      else if(fn.replace(/ /g,'') === pn.replace(/ /g,'')) score += 18;
+      else if(pn.split(' ').every(w => w.length < 3 || fn.includes(w))) score += 12;
+      else if(fn.includes(pn.slice(0,8)) || pn.includes(fn.slice(0,8))) score += 6;
+      if(dob && pdob === dob) score += 10;
+      // Team matching - strip common words and compare
+      const ts = s => s.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion|hotspurs/g,'').replace(/ +/g,' ').trim();
+      const tTeam = ts(tn), pTeam = ts(pt);
+      if(tTeam && pTeam && (tTeam.includes(pTeam.slice(0,5)) || pTeam.includes(tTeam.slice(0,5)))) score += 8;
       return {p, score};
-    }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
+    }).filter(x => x.score >= 6).sort((a,b) => b.score - a.score);
+
     hit = scored[0]?.p || null;
 
-    // Fallback: search by first name (for players known by first name like Richarlison)
-    if(!hit || (hit && dob && (hit.player?.birth?.date||'').slice(0,10) !== dob && candidates.length > 1)) {
-      // Re-score with stronger DOB+team weighting to resolve ambiguity
-      const reScored = candidates.map(p => {
-        const fn = deaccentNorm(p.player?.name||'');
-        const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
-        const pdob = (p.player?.birth?.date||'').slice(0,10);
-        let score = 0;
-        if(dob && pdob === dob) score += 10;
-        if(fn === pn) score += 8;
-        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-        tnWords.forEach(w=>{ if(ptWords.some(pw=>pw.includes(w)||w.includes(pw))) score+=5; });
-        return {p, score};
-      }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
-      if(reScored[0]?.score > (scored[0] ? scored[0].score - 5 : 0)) {
-        hit = reScored[0].p;
+    // Last resort: search by first name only (e.g. Richarlison)
+    if(!hit) {
+      const firstName = name.split(' ')[0];
+      if(firstName !== lastName && firstName.length > 3) {
+        const byFirst = await af('/players?search='+encodeURIComponent(da(firstName))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
+        const fScored = (byFirst.response||[]).map(p => {
+          const fn = da(p.player?.name||'');
+          const pt = da(p.statistics?.[0]?.team?.name||'');
+          const pdob = (p.player?.birth?.date||'').slice(0,10);
+          let score = 0;
+          if(dob && pdob === dob) score += 10;
+          const ts = s => s.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').replace(/ +/g,' ').trim();
+          if(tn && pt && ts(pt).includes(ts(tn).slice(0,5))) score += 8;
+          if(fn.includes(da(firstName))) score += 5;
+          return {p, score};
+        }).filter(x => x.score >= 10).sort((a,b) => b.score - a.score);
+        hit = fScored[0]?.p || null;
       }
     }
 
-    // Search by first name as final fallback
-    if(!hit && firstName) {
-      const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
-      const s2scored = (s2.response||[]).map(p => {
-        const pdob = (p.player?.birth?.date||'').slice(0,10);
-        const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
-        let score = 0;
-        if(dob && pdob === dob) score += 10;
-        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
-        tnWords.forEach(w=>{ if(ptWords.some(pw=>pw.includes(w)||w.includes(pw))) score+=5; });
-        return {p, score};
-      }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
-      if(s2scored[0]) hit = s2scored[0].p;
-    }
-
     if(!hit) return res.json({found:false});
-    const afId = hit.player?.id;
 
-    const transferRes = await af('/transfers?player='+afId, 24*60*MIN).catch(()=>({response:[]}));
+    const transferRes = await af('/transfers?player='+hit.player.id, 24*60*MIN).catch(()=>({response:[]}));
     const transfers = (transferRes.response||[]).flatMap(t =>
       (t.transfers||[]).map(tr => ({
         date: tr.date,
@@ -258,21 +242,21 @@ app.get('/api/af/player-career', async (req, res) => {
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-    const currentStats = hit.statistics?.[0];
-    const seasonStats = currentStats ? [{
-      season: currentStats.league?.season,
-      team: currentStats.team?.name,
-      league: currentStats.league?.name,
-      appearances: currentStats.games?.appearences,
-      goals: currentStats.goals?.total,
-      assists: currentStats.goals?.assists,
-      minutes: currentStats.games?.minutes,
-      rating: currentStats.games?.rating ? parseFloat(currentStats.games.rating).toFixed(1) : null,
-      position: currentStats.games?.position,
+    const st = hit.statistics?.[0];
+    const seasonStats = st ? [{
+      season: st.league?.season,
+      team: st.team?.name,
+      league: st.league?.name,
+      appearances: st.games?.appearences,
+      goals: st.goals?.total,
+      assists: st.goals?.assists,
+      minutes: st.games?.minutes,
+      rating: st.games?.rating ? parseFloat(st.games.rating).toFixed(1) : null,
+      position: st.games?.position,
     }] : [];
 
     const result = {found:true, player:hit.player, transfers, seasonStats};
-    cache[cacheKey] = {data:result, ts:Date.now()};
+    cache[cKey] = {data:result, ts:Date.now()};
     res.json(result);
   } catch(e) { res.status(500).json({error:e.message, found:false}); }
 });
