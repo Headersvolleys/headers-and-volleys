@@ -160,10 +160,12 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc9_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc10_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+    // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
+    const deaccent = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z ]/g,' ').trim();
+    const norm = s => deaccent(s||'').toLowerCase().replace(/[^a-z]/g,'');
     const pn = norm(name);
     const tn = norm(teamName||'');
     let hit = null;
@@ -2400,8 +2402,11 @@ function PlayerModal({player, teamId, onClose, openClub}){
     const dob = player?.dateOfBirth||'';
     const teamName = player?.teamName||'';
     setCareerLoading(true);
-    console.log('CAREER FETCH',player.name, dob, teamName);
-    fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
+    // Normalize name - remove accents for API search
+    const ascii = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z ]/g,' ').trim();
+    const searchName = ascii(player.name);
+    console.log('CAREER FETCH',searchName, dob, teamName);
+    fetch('/api/af/player-career?name='+encodeURIComponent(searchName)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
       .then(r=>r.json())
       .then(d=>{ console.log('CAREER RESULT',d.found, d.transfers?.length, d.seasonStats?.length); if(d.found) setCareer(d); setCareerLoading(false); })
       .catch(e=>{ console.log('CAREER ERROR',e); setCareerLoading(false); });
