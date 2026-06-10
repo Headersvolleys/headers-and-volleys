@@ -159,7 +159,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc12_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc13_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
@@ -169,10 +169,25 @@ app.get('/api/af/player-career', async (req, res) => {
     const tn = norm(teamName||'');
     let hit = null;
 
+    // Map fd.org team names to AF-compatible search terms
+    const FD_TO_AF = {
+      'tottenham hotspur':'tottenham','manchester city':'manchester city',
+      'manchester united':'manchester united','chelsea fc':'chelsea',
+      'arsenal fc':'arsenal','liverpool fc':'liverpool',
+      'newcastle united':'newcastle','west ham united':'west ham',
+      'aston villa':'aston villa','brighton & hove albion':'brighton',
+      'wolverhampton wanderers':'wolverhampton','nottingham forest':'nottingham',
+      'leicester city':'leicester','everton fc':'everton',
+      'brentford fc':'brentford','fulham fc':'fulham',
+      'bournemouth':'bournemouth','crystal palace':'crystal palace',
+      'ipswich town':'ipswich','southampton fc':'southampton',
+    };
+    const afTeamName = FD_TO_AF[norm(teamName)] || teamName.replace(/FC$/i,'').replace(/&.*$/,'').trim();
+
     // Strategy 1: Search within the player's team (most accurate)
     if (teamName) {
       // Get AF team id by searching for the team name
-      const teamSearch = await af('/teams?name='+encodeURIComponent(teamName.replace(/FC$/,'').trim())+'&league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
+      const teamSearch = await af('/teams?name='+encodeURIComponent(afTeamName)+'&league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
       const afTeam = (teamSearch.response||[])[0];
       if (afTeam?.team?.id) {
         const teamPlayers = await af('/players?team='+afTeam.team.id+'&season=2025', 60*MIN).catch(()=>({response:[]}));
