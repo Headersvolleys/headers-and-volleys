@@ -64,12 +64,17 @@ app.get('/api/team/:id/matches', async (req, res) => {
 app.get('/api/player/:teamId/:playerId', async (req, res) => {
   try {
     const scorersData = await fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN);
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+    const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
     const pid = String(req.params.playerId);
+    const qname = norm(req.query.name||'');
     const scorers = scorersData.scorers || [];
 
-    // Find scorer by id
-    const scorer = scorers.find(s => String(s.player?.id) === pid);
+    // Find scorer by id first; if no hit (e.g. cross-provider id), match by name
+    let scorer = scorers.find(s => String(s.player?.id) === pid);
+    if(!scorer && qname){
+      scorer = scorers.find(s => norm(s.player?.name) === qname)
+        || scorers.find(s => { const n=norm(s.player?.name); return n && (n.includes(qname.slice(0,7)) || qname.includes(n.slice(0,7))); });
+    }
 
     // Build player object from scorer data
     const player = scorer ? {
@@ -389,9 +394,19 @@ app.get('/api/af/squad', async (req, res) => {
     const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
     const teamId = ranked[0]?.t?.team?.id || null;
     if(!teamId) return res.json({ squad: [], teamId: null });
-    // Return API-Football's squad list directly, no editing.
+    // Squad list comes straight from API-Football's squad endpoint (unedited).
     const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
-    const squad = sq.response?.[0]?.players || [];
+    const roster = sq.response?.[0]?.players || [];
+    // Separately fetch nationality (squad endpoint omits it) and attach by id.
+    const natById = {};
+    let page = 1, totalPages = 1;
+    do {
+      const pd = await af('/players?team=' + teamId + '&season=2025&page=' + page, 6*60*MIN);
+      (pd.response||[]).forEach(r=>{ const pl=r.player||{}; if(pl.id) natById[pl.id]=pl.nationality||null; });
+      totalPages = pd.paging?.total || 1;
+      page++;
+    } while(page <= totalPages && page <= 5);
+    const squad = roster.map(p=>({ ...p, nationality: natById[p.id] || null }));
     res.json({ squad, teamId });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -2396,7 +2411,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
     if(player?.goals!=null || player?.assists!=null) setLoading(false);
     if(!player?.id||!teamId) { setLoading(false); return; }
     Promise.all([
-      fetch('/api/player/'+teamId+'/'+player.id).then(r=>r.json()),
+      fetch('/api/player/'+teamId+'/'+player.id+'?name='+encodeURIComponent(player.name||'')).then(r=>r.json()),
       fetch('/api/xg/player-search?name='+encodeURIComponent(player.name||'')).then(r=>r.json()),
     ]).then(([pd, xg])=>{
       setData(pd);
