@@ -2679,8 +2679,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const [lineups, setLineups] = useState([]);
   const [events, setEvents] = useState([]);
   const [h2h, setH2h] = useState(null);
-  const [hForm, setHForm] = useState(null);
-  const [aForm, setAForm] = useState(null);
+  const [allMatches, setAllMatches] = useState(null);
   const [tab, setTab] = useState('stats');
   const [lineupView, setLineupView] = useState('pitch');
   const [understatXG, setUnderstatXG] = useState(null);
@@ -2717,10 +2716,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
     fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2)+'&date='+matchDate)
       .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
     fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
-    if(match.homeTeam?.id){
-      fetch('/api/team/'+match.homeTeam.id+'/matches').then(r=>r.json()).then(d=>setHForm(d&&d.matches?d:{matches:[]})).catch(()=>setHForm({matches:[]}));
-      fetch('/api/team/'+match.awayTeam.id+'/matches').then(r=>r.json()).then(d=>setAForm(d&&d.matches?d:{matches:[]})).catch(()=>setAForm({matches:[]}));
-    }
+    fetch('/api/matches').then(r=>r.json()).then(d=>setAllMatches(d&&d.matches?d.matches:[])).catch(()=>setAllMatches([]));
   },[match.id]);
 
   const homeStats={}, awayStats={};
@@ -2740,12 +2736,15 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const homeLineup=lineups.find(l=>lineupMatch(l.team?.name,hns2))||null;
   const awayLineup=lineups.find(l=>lineupMatch(l.team?.name,ans2))||null;
 
-  const getForm=(fd2,tid)=>{
-    return (fd2?.matches||[]).slice(-5).reverse().map(m=>{
-      const ih=m.homeTeam?.id===tid, mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
-      if(mh==null) return null;
-      return mh===ma?'D':(ih?mh>ma:ma>mh)?'W':'L';
-    }).filter(Boolean);
+  const teamRecentMatches=(tid)=>{
+    return (allMatches||[])
+      .filter(m=>m.status==='FINISHED'&&(m.homeTeam?.id===tid||m.awayTeam?.id===tid)&&m.score?.fullTime?.home!=null)
+      .sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate))
+      .slice(-5).reverse();
+  }
+  const resultFor=(m,tid)=>{
+    const ih=m.homeTeam?.id===tid, mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
+    return mh===ma?'D':(ih?mh>ma:ma>mh)?'W':'L';
   }
 
   const STAT_ROWS=[
@@ -2935,10 +2934,10 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
           {tab==='form'&&(
             <div>
-              {(!hForm||!aForm)&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
-              {hForm&&aForm&&[[match.homeTeam,hForm,hc],[match.awayTeam,aForm,ac]].map(([team,fd2,code])=>{
-                const form=getForm(fd2,team?.id);
-                const ms=(fd2?.matches||[]).slice(-5).reverse();
+              {allMatches===null&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {allMatches!==null&&[[match.homeTeam,hc],[match.awayTeam,ac]].map(([team,code])=>{
+                const ms=teamRecentMatches(team?.id);
+                const form=ms.map(m=>resultFor(m,team?.id));
                 return(<div key={code} style={{background:C.d3,borderRadius:10,padding:14,marginBottom:10}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
                     <Badge code={code} size={22}/>
@@ -2949,7 +2948,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                   {ms.map((m,i)=>{
                     const ih=m.homeTeam?.id===team?.id, opp=ih?m.awayTeam:m.homeTeam, oc=TCODE[opp?.name]||'???';
                     const mh=m.score?.fullTime?.home, ma=m.score?.fullTime?.away;
-                    const r=mh===ma?'D':(ih?mh>ma:ma>mh)?'W':'L';
+                    const r=resultFor(m,team?.id);
                     return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid rgba(255,255,255,.05)'}}>
                       <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:55}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
                       <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{ih?'H':'A'}</div>
