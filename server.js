@@ -168,38 +168,27 @@ app.get('/api/af/player-career', async (req, res) => {
     }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score);
     hit = scored[0]?.p || null;
 
-    // Fallback 1: search without league filter
-    if(!hit && dob) {
-      const s2 = await af('/players?search='+encodeURIComponent(lastName)+'&season=2025', 5*MIN);
+    // Fallback 1: search by first name with league filter (catches "Igor Thiago" type names)
+    if(!hit && firstName) {
+      const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
       const scored2 = (s2.response||[]).map(p => {
         const pdob = (p.player?.birth?.date||'').slice(0,10);
         let score = 0;
-        if(pdob === dob) score += 20;
+        if(dob && pdob && pdob === dob) score += 20;
         const fn = norm(p.player?.name||'');
         if(fn === pn) score += 8;
+        else if(fn.includes(norm(firstName))) score += 3;
         return {p, score};
-      }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score);
+      }).filter(x => x.score >= 3).sort((a,b) => b.score - a.score);
       hit = scored2[0]?.p || null;
     }
 
-    // Fallback 2: search by first name (catches players with different surname in AF)
-    if(!hit && dob && firstName) {
-      const s3 = await af('/players?search='+encodeURIComponent(firstName)+'&season=2025', 5*MIN);
-      const scored3 = (s3.response||[]).map(p => {
-        const pdob = (p.player?.birth?.date||'').slice(0,10);
-        let score = 0;
-        if(pdob === dob) score += 20;
-        return {p, score};
-      }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score);
-      hit = scored3[0]?.p || null;
-    }
-
-    // Fallback 3: search each part of the name individually with DOB match
+    // Fallback 2: try each word in the name with DOB matching
     if(!hit && dob) {
-      const nameParts = name.split(' ').filter(p => p.length > 3);
-      for(const part of nameParts) {
+      const parts = name.split(' ').filter(p => p.length > 3);
+      for(const part of parts) {
         if(hit) break;
-        const sx = await af('/players?search='+encodeURIComponent(part)+'&season=2025', 5*MIN).catch(()=>({response:[]}));
+        const sx = await af('/players?search='+encodeURIComponent(part)+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
         const match = (sx.response||[]).find(p => (p.player?.birth?.date||'').slice(0,10) === dob);
         if(match) hit = match;
       }
