@@ -2510,6 +2510,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
             </div>
           </>}
 
+          </>}
       </div>
 
       {/* Career history from API-Football - outside loading guard */}
