@@ -133,7 +133,7 @@ app.get('/api/af/debug-search', async (req, res) => {
 
 // Pre-cache all PL players from AF for reliable DOB-based lookup
 async function getAFPlayersByDOB() {
-  const cKey = 'af_all_players';
+  const cKey = 'af_allpl_v2';
   if (cache[cKey] && Date.now() - cache[cKey].ts < 24*60*MIN) return cache[cKey].data;
   try {
     const teamsRes = await af('/teams?league=39&season=2025', 60*MIN);
@@ -160,7 +160,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc8_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc9_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -2369,6 +2369,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
+    // If we already have goals/assists from the prop, no need to wait for API
+    if(player?.goals!=null || player?.assists!=null) setLoading(false);
     if(!player?.id||!teamId) { setLoading(false); return; }
     Promise.all([
       fetch('/api/player/'+teamId+'/'+player.id).then(r=>r.json()),
