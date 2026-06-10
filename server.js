@@ -113,53 +113,6 @@ app.get('/api/af/logo/:id', async (req, res) => {
   } catch(e) { res.status(500).send(e.message); }
 });
 
-// Debug: raw AF player search
-app.get('/api/af/debug-search', async (req, res) => {
-  try {
-    const q = req.query.q || '';
-    const [r1, r2, r3] = await Promise.all([
-      af('/players?search='+encodeURIComponent(q)+'&league=39&season=2025', 0).catch(e=>({error:e.message})),
-      af('/players?search='+encodeURIComponent(q)+'&season=2025', 0).catch(e=>({error:e.message})),
-      af('/players?search='+encodeURIComponent(q), 0).catch(e=>({error:e.message})),
-    ]);
-    res.json({
-      'league+season': (r1.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
-      'season_only': (r2.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
-      'no_filter': (r3.response||[]).slice(0,3).map(p=>({name:p.player?.name,dob:p.player?.birth?.date,team:p.statistics?.[0]?.team?.name})),
-      errors: {r1:r1.error, r2:r2.error, r3:r3.error}
-    });
-  } catch(e) { res.status(500).json({error:e.message}); }
-});
-
-// Pre-cache all PL players from AF for reliable DOB-based lookup
-// Pre-cache all PL players from AF - indexed by DOB and by team
-async function getAFSquads() {
-  const cKey = 'af_squads_v1';
-  if (cache[cKey] && Date.now() - cache[cKey].ts < 24*60*MIN) return cache[cKey].data;
-  try {
-    const teamsRes = await af('/teams?league=39&season=2025', 60*MIN);
-    const teams = (teamsRes.response||[]).map(t=>({id:t.team?.id, name:t.team?.name})).filter(t=>t.id);
-    const byDOB = {};   // dob -> array of players
-    const byTeam = {};  // normalized team name -> array of players
-    for (const team of teams) {
-      const r = await af('/players?team='+team.id+'&season=2025', 60*MIN).catch(()=>({response:[]}));
-      const players = r.response||[];
-      const tn = (team.name||'').toLowerCase().replace(/[^a-z]/g,'');
-      byTeam[tn] = players;
-      players.forEach(p => {
-        const dob = p.player?.birth?.date;
-        if(dob) {
-          if(!byDOB[dob]) byDOB[dob] = [];
-          byDOB[dob].push(p);
-        }
-      });
-    }
-    const data = {byDOB, byTeam, teams};
-    cache[cKey] = {data, ts:Date.now()};
-    return data;
-  } catch(e) { return {byDOB:{}, byTeam:{}, teams:[]}; }
-}
-
 
 // API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
@@ -2409,11 +2362,10 @@ function PlayerModal({player, teamId, onClose, openClub}){
     // Normalize name - remove accents for API search
     const ascii = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z ]/g,' ').trim();
     const searchName = ascii(player.name);
-    console.log('CAREER FETCH',searchName, dob, teamName);
     fetch('/api/af/player-career?name='+encodeURIComponent(searchName)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
       .then(r=>r.json())
-      .then(d=>{ console.log('CAREER RESULT',d.found, d.transfers?.length, d.seasonStats?.length); if(d.found) setCareer(d); setCareerLoading(false); })
-      .catch(e=>{ console.log('CAREER ERROR',e); setCareerLoading(false); });
+      .then(d=>{ if(d.found) setCareer(d); setCareerLoading(false); })
+      .catch(()=>setCareerLoading(false));
   },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || career?.player?.position || null;
