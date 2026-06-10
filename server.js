@@ -1725,8 +1725,8 @@ function Quiz({openPlayer, openClub}){
 //  PLAYER PROFILE MODAL 
 
 //  CLUB PROFILE MODAL (full page)
-function FixRow({m}){
-  const isHome=m.homeTeam?.id===team?.id;
+function FixRow({m,teamId,openClub}){
+  const isHome=m.homeTeam?.id===teamId;
   const opp=isHome?m.awayTeam:m.homeTeam;
   const oppCode=TCODE[opp?.name]||'???';
   const hg=m.score?.fullTime?.home, ag=m.score?.fullTime?.away;
@@ -1852,14 +1852,14 @@ function ClubModal({team, onClose, openPlayer, openClub}){
           {/* Recent results */}
           {recent.length>0&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Recent Results</div>
-            {recent.map((m,i)=><FixRow key={i} m={m}/>)}
+            {recent.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
             <div style={{marginBottom:16}}/>
           </>}
 
           {/* Upcoming */}
           {upcoming.length>0&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Upcoming</div>
-            {upcoming.map((m,i)=><FixRow key={i} m={m}/>)}
+            {upcoming.map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
           </>}
         </>}
 
@@ -1892,7 +1892,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
         {/* FIXTURES */}
         {view==='fixtures'&&<>
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>All Fixtures</div>
-          {[...teamFixtures].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m}/>)}
+          {[...teamFixtures].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub}/>)}
         </>}
 
       </div>
