@@ -2510,60 +2510,62 @@ function PlayerModal({player, teamId, onClose, openClub}){
             </div>
           </>}
 
-          {/* Career history from API-Football */}
-          {careerLoading&&<div style={{textAlign:'center',padding:16}}><Spinner size={20}/></div>}
-          {!careerLoading&&career&&<>
-            {/* Season by season stats */}
-            {career.seasonStats&&career.seasonStats.length>0&&<>
-              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
-              <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
-                <div style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
-                  {['Season','Club','G','A','App'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
-                </div>
-                {career.seasonStats.slice(0,8).map((s,i)=>{
-                  const tname = s.team||'';
-                  const code = TCODE[tname]||Object.entries(TSHORT).find(([k,v])=>v===tname||tname.toLowerCase().includes(v?.toLowerCase()?.split(' ')[0]||'x'))?.[0]||null;
-                  return(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.04)',alignItems:'center'}}>
-                      <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{s.season}/{String(s.season+1).slice(2)}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-                        {code&&<Badge code={code} size={16}/>}
-                        <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.team}</span>
-                      </div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:tc}}>{s.goals??'-'}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{s.assists??'-'}</div>
-                      <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{s.appearances??'-'}</div>
-                    </div>
-                  );
-                })}
+          </>}
+        </>}
+      </div>
+
+      {/* Career history from API-Football - outside loading guard */}
+      <div style={{padding:'0 16px 16px'}}>
+        {careerLoading&&<div style={{textAlign:'center',padding:16}}><Spinner size={20}/></div>}
+        {!careerLoading&&career&&<>
+          {career.seasonStats&&career.seasonStats.length>0&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
+            <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
+                {['Season','Club','G','A','App'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
               </div>
-            </>}
-            {/* Transfer history */}
-            {career.transfers&&career.transfers.length>0&&<>
-              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Transfer History</div>
-              <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
-                {career.transfers.slice(0,8).map((t,i)=>{
-                  const toCode = TCODE[t.to]||Object.entries(TSHORT).find(([k,v])=>v===t.to)?.[0]||null;
-                  const fromCode = TCODE[t.from]||Object.entries(TSHORT).find(([k,v])=>v===t.from)?.[0]||null;
-                  const isPaid = t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'&&t.fee!=='N/A'&&t.fee!=='?';
-                  return(
-                    <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
-                        {fromCode?<Badge code={fromCode} size={20}/>:t.fromLogo?<img src={t.fromLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
-                        <div style={{fontSize:11,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.from||'?'}</div>
-                        <div style={{fontSize:10,color:C.muted,flexShrink:0,padding:'0 4px'}}>to</div>
-                        <div style={{fontSize:11,color:C.white,fontWeight:700,flex:1,textAlign:'right',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.to||'?'}</div>
-                        {toCode?<Badge code={toCode} size={20}/>:t.toLogo?<img src={t.toLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                        <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
-                        <div style={{fontSize:12,fontWeight:700,color:isPaid?C.gold:t.fee?C.green:C.muted}}>{t.fee||'Undisclosed'}</div>
-                      </div>
+              {career.seasonStats.slice(0,8).map((s,i)=>{
+                const tname = s.team||'';
+                const code = TCODE[tname]||Object.entries(TSHORT).find(([k,v])=>v===tname||tname.toLowerCase().includes(v?.toLowerCase()?.split(' ')[0]||'x'))?.[0]||null;
+                return(
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.04)',alignItems:'center'}}>
+                    <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{s.season}/{String(s.season+1).slice(2)}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+                      {code&&<Badge code={code} size={16}/>}
+                      <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.team}</span>
                     </div>
-                  );
-                })}
-              </div>
-            </>}
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:tc}}>{s.goals??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{s.assists??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{s.appearances??'-'}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>}
+          {career.transfers&&career.transfers.length>0&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Transfer History</div>
+            <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
+              {career.transfers.slice(0,8).map((t,i)=>{
+                const toCode = TCODE[t.to]||Object.entries(TSHORT).find(([k,v])=>v===t.to)?.[0]||null;
+                const fromCode = TCODE[t.from]||Object.entries(TSHORT).find(([k,v])=>v===t.from)?.[0]||null;
+                const isPaid = t.fee&&t.fee!=='Free Transfer'&&t.fee!=='Loan'&&t.fee!=='N/A'&&t.fee!=='?';
+                return(
+                  <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                      {fromCode?<Badge code={fromCode} size={20}/>:t.fromLogo?<img src={t.fromLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
+                      <div style={{fontSize:11,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.from||'?'}</div>
+                      <div style={{fontSize:10,color:C.muted,flexShrink:0,padding:'0 4px'}}>to</div>
+                      <div style={{fontSize:11,color:C.white,fontWeight:700,flex:1,textAlign:'right',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.to||'?'}</div>
+                      {toCode?<Badge code={toCode} size={20}/>:t.toLogo?<img src={t.toLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:isPaid?C.gold:t.fee?C.green:C.muted}}>{t.fee||'Undisclosed'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </>}
         </>}
       </div>
