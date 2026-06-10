@@ -2400,10 +2400,11 @@ function PlayerModal({player, teamId, onClose, openClub}){
     const dob = player?.dateOfBirth||'';
     const teamName = player?.teamName||'';
     setCareerLoading(true);
+    console.log('CAREER FETCH',player.name, dob, teamName);
     fetch('/api/af/player-career?name='+encodeURIComponent(player.name)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
       .then(r=>r.json())
-      .then(d=>{ if(d.found) setCareer(d); setCareerLoading(false); })
-      .catch(()=>setCareerLoading(false));
+      .then(d=>{ console.log('CAREER RESULT',d.found, d.transfers?.length, d.seasonStats?.length); if(d.found) setCareer(d); setCareerLoading(false); })
+      .catch(e=>{ console.log('CAREER ERROR',e); setCareerLoading(false); });
   },[player?.name]);
 
   const rawPos = p?.position || xgData?.position || career?.player?.position || null;
