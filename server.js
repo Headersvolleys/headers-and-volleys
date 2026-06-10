@@ -2368,14 +2368,19 @@ function PlayerModal({player, teamId, onClose, openClub}){
       .catch(()=>setCareerLoading(false));
   },[player?.name]);
 
-  const rawPos = p?.position || xgData?.position || career?.player?.position || null;
-  const posDisplay = {
+  const rawPos = p?.position || xgData?.position || career?.seasonStats?.[0]?.position || career?.player?.position || player?.position || null;
+  const POS_MAP = {
     'Attacker':'Forward','Offence':'Forward','Offense':'Forward','Attack':'Forward',
-    'F':'Forward','FW':'Forward',
+    'F':'Forward','FW':'Forward','Centre-Forward':'Forward','Second Striker':'Forward',
     'Midfielder':'Midfielder','M':'Midfielder','MF':'Midfielder','AM':'Midfielder','DM':'Midfielder',
+    'Central Midfield':'Midfielder','Attacking Midfield':'Midfielder','Defensive Midfield':'Midfielder',
+    'Right Midfield':'Midfielder','Left Midfield':'Midfielder',
     'Defender':'Defender','D':'Defender','DF':'Defender',
+    'Centre-Back':'Defender','Left-Back':'Defender','Right-Back':'Defender',
+    'Left Back':'Defender','Right Back':'Defender','Centre Back':'Defender',
     'Goalkeeper':'Goalkeeper','GK':'Goalkeeper','G':'Goalkeeper',
-  }[rawPos]||rawPos;
+  };
+  const posDisplay = POS_MAP[rawPos] || rawPos;
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
