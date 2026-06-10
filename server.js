@@ -1579,7 +1579,7 @@ function QuickFireQuiz({quiz,onFinish}){
     <div style={{padding:16,paddingBottom:60}}>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white}}>{quiz.title}</div>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:tc,animation:timeLeft<=3?'blink 1s infinite':undefined}}>{timeLeft}</div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.text,animation:timeLeft<=3?'blink 1s infinite':undefined}}>{timeLeft}</div>
       </div>
       <div style={{height:5,background:C.d4,borderRadius:3,overflow:'hidden',marginBottom:14}}>
         <div style={{width:(timeLeft/TIME*100)+'%',height:'100%',background:tc,transition:'width 1s linear'}}/>
@@ -1801,7 +1801,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
             {teamData&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{teamData.venue}{teamData.founded?'  Est. '+teamData.founded:''}</div>}
           </div>
           {tableRow&&<div style={{textAlign:'center',flexShrink:0}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:36,color:tc,lineHeight:1}}>{tableRow.position}</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:36,color:C.text,lineHeight:1}}>{tableRow.position}</div>
             <div style={{fontSize:9,color:C.muted,fontWeight:700}}>IN TABLE</div>
           </div>}
         </div>
@@ -1882,7 +1882,7 @@ function ClubModal({team, onClose, openPlayer, openClub}){
                     <span style={{fontSize:10,color:C.muted}}>{p.nationality}</span>
                   </div>
                 </div>
-                <div style={{fontSize:10,color:tc,fontWeight:700,flexShrink:0}}>{posDisplay}</div>
+                <div style={{fontSize:10,color:C.text,fontWeight:700,flexShrink:0}}>{posDisplay}</div>
                 <div style={{color:C.muted,fontSize:14}}>{'>'}</div>
               </div>
             );
@@ -1920,7 +1920,7 @@ function GKCleanSheets(){
               <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[gk.team]||gk.team}  {gk.gamesPlayed} apps</div>
             </div>
             <div style={{textAlign:'right',flexShrink:0,marginRight:8}}>
-              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,lineHeight:1}}>{gk.cleanSheets}</div>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.text,lineHeight:1}}>{gk.cleanSheets}</div>
               <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4}}>CLEAN SHEETS</div>
             </div>
           </div>
@@ -2405,7 +2405,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
             <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
               {flagUrl&&<img src={flagUrl} style={{width:20,height:15,objectFit:'cover',borderRadius:2}} alt=""/>}
               <span style={{fontSize:12,color:C.muted}}>{p?.nationality}</span>
-              {posDisplay&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{posDisplay}</span>}
+              {posDisplay&&<span style={{fontSize:11,color:C.text,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{posDisplay}</span>}
               {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted}}>#{p.shirtNumber}</span>}
             </div>
           </div>
@@ -2417,7 +2417,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           {/* Season stats */}
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>2025-26 Season</div>
           <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
-            <PlayerStatBox label="GOALS" value={s?.goals??0} col={tc}/>
+            <PlayerStatBox label="GOALS" value={s?.goals??0} col={C.text}/>
             <PlayerStatBox label="ASSISTS" value={s?.assists??0} col={C.orange}/>
             <PlayerStatBox label="APPS" value={s?.playedMatches??'-'} col={C.muted}/>
             {xgData&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
@@ -2500,7 +2500,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
                       {code&&<Badge code={code} size={16}/>}
                       <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.team}</span>
                     </div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:tc}}>{s.goals??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.text}}>{s.goals??'-'}</div>
                     <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{s.assists??'-'}</div>
                     <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{s.appearances??'-'}</div>
                   </div>
