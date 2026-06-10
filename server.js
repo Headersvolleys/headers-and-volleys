@@ -166,7 +166,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cacheKey = 'afc14_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
+    const cacheKey = 'afc15_'+(dob||name).replace(/[^a-z0-9]/gi,'').slice(0,20);
     if(cache[cacheKey] && Date.now()-cache[cacheKey].ts < 24*60*MIN) return res.json(cache[cacheKey].data);
 
     // Normalize accented characters (e.g. Gyokeres vs Gyokeres)
@@ -176,117 +176,69 @@ app.get('/api/af/player-career', async (req, res) => {
     const tn = norm(teamName||'');
     let hit = null;
 
-    // Get pre-cached squad data
-    const squads = await getAFSquads();
+    // Search by last name in PL - simple and reliable
+    const lastName = name.split(' ').pop();
+    const firstName = name.split(' ').slice(0,-1).join(' ');
     const deaccentNorm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+    const tn = deaccentNorm(teamName);
 
-    // Strategy 1: Find player in their team's squad by name (most accurate)
-    if (teamName) {
-      // Try multiple normalizations of team name to find in byTeam
-      const teamVariants = [
-        deaccentNorm(teamName),
-        deaccentNorm(teamName.replace(/fc|united|city|hotspur|wanderers|athletic|albion/gi,'').trim()),
-      ];
-      let teamPlayers = null;
-      for (const variant of teamVariants) {
-        // Find best matching team
-        const match = Object.keys(squads.byTeam).find(k => 
-          k.includes(variant.slice(0,6)) || variant.includes(k.slice(0,6))
-        );
-        if (match) { teamPlayers = squads.byTeam[match]; break; }
-      }
-      if (teamPlayers) {
-        const scored = teamPlayers.map(p => {
-          const fn = deaccentNorm(p.player?.name||'');
-          const pdob = (p.player?.birth?.date||'').slice(0,10);
-          let score = 0;
-          if(fn === pn) score += 10;
-          else if(fn.includes(pn.slice(0,5)) || pn.includes(fn.slice(0,5))) score += 5;
-          if(dob && pdob === dob) score += 6;
-          return {p, score};
-        }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
-        hit = scored[0]?.p || null;
-      }
-    }
+    const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
+    const candidates = s1.response||[];
 
-    // Strategy 2: DOB lookup with team scoring (fallback)
-    if (!hit && dob) {
-      const candidates = squads.byDOB[dob] || [];
-      if (candidates.length === 1) {
-        hit = candidates[0];
-      } else if (candidates.length > 1) {
-        const tnNorm = deaccentNorm(teamName).replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
-        const scored = candidates.map(c => {
-          const pt = deaccentNorm(c.statistics?.[0]?.team?.name||'').replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
-          let score = 0;
-          for(let len=Math.min(tnNorm.length,pt.length,8); len>=3; len--) {
-            for(let i=0; i<=tnNorm.length-len; i++) {
-              if(pt.includes(tnNorm.slice(i,i+len))) { score=len; break; }
-            }
-            if(score) break;
-          }
-          return {c, score};
-        }).sort((a,b)=>b.score-a.score);
-        hit = scored[0]?.c || candidates[0];
-      }
-    }
+    const scored = candidates.map(p => {
+      const fn = deaccentNorm(p.player?.name||'');
+      const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
+      const pdob = (p.player?.birth?.date||'').slice(0,10);
+      let score = 0;
+      // Name match
+      if(fn === pn) score += 10;
+      else if(firstName && fn.includes(deaccentNorm(lastName)) && fn.includes(deaccentNorm(firstName).slice(0,4))) score += 6;
+      else if(fn.includes(deaccentNorm(lastName)) && deaccentNorm(lastName).length > 4) score += 3;
+      // DOB match
+      if(dob && pdob === dob) score += 8;
+      // Team match - check if any significant word from teamName appears in pt
+      const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+      const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+      const teamScore = tnWords.reduce((acc,w)=>acc+(ptWords.some(pw=>pw.includes(w)||w.includes(pw))?3:0),0);
+      score += Math.min(teamScore, 6);
+      return {p, score};
+    }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
+    hit = scored[0]?.p || null;
 
-    // Strategy 2: DOB lookup from pre-cached full squad (fallback)
-    if (!hit && dob) {
-      const byDOB = await getAFPlayersByDOB();
-      const candidates = byDOB[dob] || [];
-      // Pick best team match
-      const scored = candidates.map(c => {
-        const pt = norm(c.statistics?.[0]?.team?.name||'');
-        const tnNorm = norm(teamName).replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
-        const ptNorm = pt.replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
-        let score = 0;
-        for(let len=Math.min(tnNorm.length,ptNorm.length,8); len>=3; len--) {
-          for(let i=0; i<=tnNorm.length-len; i++) {
-            if(ptNorm.includes(tnNorm.slice(i,i+len))) { score=len; break; }
-          }
-          if(score) break;
-        }
-        return {c, score};
-      }).sort((a,b)=>b.score-a.score);
-      hit = scored[0]?.c || null;
-    }
-
-    // Strategy 2: search by last name
-    if (!hit) {
-      const lastName = name.split(' ').pop();
-      const firstName = name.split(' ').slice(0,-1).join(' ');
-      const s1 = await af('/players?search='+encodeURIComponent(lastName)+'&league=39&season=2025', 5*MIN);
-      const scored = (s1.response||[]).map(p => {
-        const fn = norm(p.player?.name||'');
-        const pt = norm(p.statistics?.[0]?.team?.name||'');
+    // Fallback: search by first name (for players known by first name like Richarlison)
+    if(!hit || (hit && dob && (hit.player?.birth?.date||'').slice(0,10) !== dob && candidates.length > 1)) {
+      // Re-score with stronger DOB+team weighting to resolve ambiguity
+      const reScored = candidates.map(p => {
+        const fn = deaccentNorm(p.player?.name||'');
+        const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
         const pdob = (p.player?.birth?.date||'').slice(0,10);
         let score = 0;
-        if(dob && pdob === dob) score += 20;
-        if(fn === pn) score += 10;
-        else if(firstName && fn.includes(norm(firstName).slice(0,4))) score += 5;
-        const ptc = pt.replace(/fc|united|city/g,'').trim();
-        const tnc = tn.replace(/fc|united|city/g,'').trim();
-        if(tnc.length>3 && ptc.includes(tnc.slice(0,5))) score += 4;
+        if(dob && pdob === dob) score += 10;
+        if(fn === pn) score += 8;
+        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+        tnWords.forEach(w=>{ if(ptWords.some(pw=>pw.includes(w)||w.includes(pw))) score+=5; });
         return {p, score};
-      }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
-      hit = scored[0]?.p || null;
+      }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
+      if(reScored[0]?.score > (scored[0] ? scored[0].score - 5 : 0)) {
+        hit = reScored[0].p;
+      }
     }
 
-    // Strategy 3: search by first name
-    if (!hit) {
-      const firstName = name.split(' ').slice(0,-1).join(' ');
-      if (firstName) {
-        const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
-        const scored2 = (s2.response||[]).map(p => {
-          const pdob = (p.player?.birth?.date||'').slice(0,10);
-          let score = 0;
-          if(dob && pdob === dob) score += 20;
-          if(norm(p.player?.name||'') === pn) score += 10;
-          return {p, score};
-        }).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score);
-        hit = scored2[0]?.p || null;
-      }
+    // Search by first name as final fallback
+    if(!hit && firstName) {
+      const s2 = await af('/players?search='+encodeURIComponent(firstName)+'&league=39&season=2025', 5*MIN);
+      const s2scored = (s2.response||[]).map(p => {
+        const pdob = (p.player?.birth?.date||'').slice(0,10);
+        const pt = deaccentNorm(p.statistics?.[0]?.team?.name||'');
+        let score = 0;
+        if(dob && pdob === dob) score += 10;
+        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic|albion/g,'').trim().split(' ').filter(w=>w.length>3);
+        tnWords.forEach(w=>{ if(ptWords.some(pw=>pw.includes(w)||w.includes(pw))) score+=5; });
+        return {p, score};
+      }).filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
+      if(s2scored[0]) hit = s2scored[0].p;
     }
 
     if(!hit) return res.json({found:false});
