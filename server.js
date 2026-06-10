@@ -2637,12 +2637,16 @@ function EventIcon({kind,size=18}){
   // kind: 'goal' | 'owngoal' | 'yellow' | 'red' | 'sub' | 'boot' | 'other'
   const s=size;
   if(kind==='goal'||kind==='owngoal'){
-    const base=kind==='owngoal'?C.red:C.white;
+    const ring=kind==='owngoal'?C.red:'#111';
     return(
-      <svg width={s} height={s} viewBox="0 0 24 24" style={{display:'block'}}>
-        <circle cx="12" cy="12" r="10" fill={base} stroke={C.dark} strokeWidth="1.2"/>
-        <polygon points="12,7 15.2,9.3 14,13 10,13 8.8,9.3" fill={C.dark}/>
-        <path d="M12 2.2 L12 7 M21.5 9 L15.2 9.3 M18 19.5 L14 13 M6 19.5 L10 13 M2.5 9 L8.8 9.3" stroke={C.dark} strokeWidth="1" fill="none"/>
+      <svg width={s} height={s} viewBox="0 0 32 32" style={{display:'block'}}>
+        <circle cx="16" cy="16" r="15" fill="#fff" stroke={ring} strokeWidth="1.5"/>
+        <polygon points="16,11 20.2,14.1 18.6,19 13.4,19 11.8,14.1" fill="#111"/>
+        <polygon points="16,2 12.4,5 13.4,9.2 16,11 18.6,9.2 19.6,5" fill="#111"/>
+        <polygon points="29,12 24.5,11 21,13.7 20.2,14.1 21.5,18.5 26,19" fill="#111"/>
+        <polygon points="3,12 7.5,11 11,13.7 11.8,14.1 10.5,18.5 6,19" fill="#111"/>
+        <polygon points="24,28 25.5,23 21.5,19.8 18.6,19 17.5,23.5 21,27.5" fill="#111"/>
+        <polygon points="8,28 6.5,23 10.5,19.8 13.4,19 14.5,23.5 11,27.5" fill="#111"/>
       </svg>
     );
   }
@@ -2877,15 +2881,16 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                 const isRed=isCard&&e.detail==='Red Card', isYellow=isCard&&e.detail==='Yellow Card';
                 const isOG=isGoal&&e.detail==='Own Goal';
                 const iconKind=isGoal?(isOG?'owngoal':'goal'):isRed?'red':isYellow?'yellow':isSub?'sub':isCard?'yellow':'other';
-                const eCol=isHome?homeCol:awayCol;
+                const eCol=C.white;
                 const min=e.time?.elapsed+(e.time?.extra?'+'+e.time.extra:'');
+                const subOn=e.assist?.name, subOff=e.player?.name;
                 const detailNode=isSub
-                  ? <span style={{fontSize:10}}><span style={{color:C.green,fontWeight:700}}>{e.assist?.name}</span><span style={{color:C.muted}}> on </span><span style={{color:C.red,fontWeight:700}}>{e.player?.name}</span><span style={{color:C.muted}}> off</span></span>
+                  ? <span style={{fontSize:10}}>{subOn&&<><span style={{color:C.green,fontWeight:700}}>{subOn}</span><span style={{color:C.muted}}> on</span></>}{subOn&&subOff&&<span style={{color:C.muted}}> </span>}{subOff&&<><span style={{color:C.red,fontWeight:700}}>{subOff}</span><span style={{color:C.muted}}> off</span></>}</span>
                   : isGoal
                     ? (isOG?<span style={{fontSize:10,color:C.red}}>Own Goal</span>:e.assist?.name?<span style={{fontSize:10,color:C.muted,display:'inline-flex',alignItems:'center',gap:3}}><EventIcon kind="boot" size={12}/>{e.assist.name}</span>:null)
                     : isCard?<span style={{fontSize:10,color:C.muted}}>{e.detail}</span>:null;
                 const nameNode=isSub
-                  ? <div style={{fontWeight:700,fontSize:12,color:C.green}}>{e.assist?.name}</div>
+                  ? <div style={{fontWeight:700,fontSize:12,color:C.green}}>{subOn||subOff}</div>
                   : <div style={{fontWeight:700,fontSize:12,color:C.white}}>{e.player?.name}</div>;
                 return(
                   <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 36px 20px 36px 1fr',alignItems:'center',gap:4,padding:'7px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
