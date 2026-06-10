@@ -683,9 +683,9 @@ input[type=number]{-moz-appearance:textfield}
 </style>
 </head>
 <body><div id="root"></div>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
 const C={dark:'#0F2027',d2:'#1A3340',d3:'#162D3A',d4:'#1E3545',white:'#fff',text:'#E0FFFD',muted:'#5A9AAA',teal:'#0ABFB8',green:'#00E676',red:'#FF3D3D',yellow:'#FFD600',orange:'#FF8000',blue:'#2979FF',gold:'#FFD700'};
