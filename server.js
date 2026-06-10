@@ -354,6 +354,46 @@ app.get('/api/af/fixtures', async (req, res) => {
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
+// Squad via API-Football (football-data.org /teams/:id 403s on current tier)
+app.get('/api/af/squad', async (req, res) => {
+  try {
+    const name = req.query.name || '';
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
+    const EXPAND = {
+      'man utd':'manchester united','man united':'manchester united',
+      'man city':'manchester city',
+      'spurs':'tottenham hotspur','tottenham':'tottenham hotspur',
+      'nottm forest':'nottingham forest','nottingham':'nottingham forest',
+      'wolves':'wolverhampton wanderers','wolverhampton':'wolverhampton wanderers',
+      'west ham':'west ham united','newcastle':'newcastle united',
+      'brighton':'brighton hove albion','leeds':'leeds united',
+    };
+    const target = EXPAND[norm(name)] || norm(name);
+    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
+    const teams = teamsData.response || [];
+    const sc = (afName) => {
+      const fn = EXPAND[norm(afName)] || norm(afName);
+      if(fn===target) return 3;
+      if(fn.includes(target.slice(0,6))||target.includes(fn.slice(0,6))) return 2;
+      if(fn.includes(target.slice(0,4))||target.includes(fn.slice(0,4))) return 1;
+      return 0;
+    };
+    const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=2).sort((a,b)=>b.s-a.s);
+    const teamId = ranked[0]?.t?.team?.id || null;
+    if(!teamId) return res.json({ squad: [], teamId: null });
+    const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
+    const players = sq.response?.[0]?.players || [];
+    const squad = players.map(p=>({
+      name: p.name,
+      shirtNumber: p.number,
+      position: p.position,
+      nationality: null,
+      afId: p.id,
+    }));
+    res.json({ squad, teamId });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // GK clean sheets - calculated from match results + team squads
 app.get('/api/gk-cleansheets', async (req, res) => {
   try {
@@ -1774,12 +1814,16 @@ function FixRow({m,teamId,openClub,openMatch}){
 function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
   const code = TCODE[team?.name] || '???';
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
+  const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const [squadFilter, setSquadFilter] = useState('ALL');
   const [view, setView] = useState('overview');
 
-  const squad = teamData?.squad || [];  // Note: requires football-data.org Tier 2+
+  const fdSquad = teamData?.squad || [];
+  const afSquad = afSquadData?.squad || [];
+  const squad = afSquad.length>0 ? afSquad : fdSquad;
+  const squadLoading = afSquadLoad && tLoad;
   const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
@@ -1885,7 +1929,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
           <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:6,marginBottom:10}}>
             {positions.map(p=><button key={p} onClick={()=>setSquadFilter(p)} style={squadFilter===p?tA:tS}>{p}</button>)}
           </div>
-          {tLoad&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+          {squadLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+          {!squadLoading&&filtered.length===0&&<div style={{textAlign:'center',padding:20,color:C.muted,fontSize:13}}>Squad unavailable</div>}
           {filtered.map((p,i)=>{
             const posDisplay = normPos(p.position);
             const flagUrl = flag(p.nationality);
@@ -1894,10 +1939,10 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.shirtNumber||'-'}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
+                  {p.nationality&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
                     {flagUrl&&<img src={flagUrl} style={{width:16,height:12,objectFit:'cover',borderRadius:2}} alt=""/>}
                     <span style={{fontSize:10,color:C.muted}}>{p.nationality}</span>
-                  </div>
+                  </div>}
                 </div>
                 <div style={{fontSize:10,color:C.text,fontWeight:700,flexShrink:0}}>{posDisplay}</div>
                 <div style={{color:C.muted,fontSize:14}}>{'>'}</div>
