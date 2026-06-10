@@ -373,12 +373,20 @@ app.get('/api/af/squad', async (req, res) => {
     const teams = teamsData.response || [];
     const sc = (afName) => {
       const fn = EXPAND[norm(afName)] || norm(afName);
-      if(fn===target) return 3;
-      if(fn.includes(target.slice(0,6))||target.includes(fn.slice(0,6))) return 2;
-      if(fn.includes(target.slice(0,4))||target.includes(fn.slice(0,4))) return 1;
+      if(fn===target) return 100;
+      // token-overlap: every word in the shorter name must appear in the longer
+      const ft=fn.split(/\s+/).filter(Boolean), tt=target.split(/\s+/).filter(Boolean);
+      const shared=ft.filter(w=>tt.includes(w)).length;
+      const distinct=['city','united','utd','wanderers','albion','hotspur','forest','rovers'];
+      // if both names contain DIFFERENT distinguishing tokens, reject
+      const fd=ft.find(w=>distinct.includes(w)), td=tt.find(w=>distinct.includes(w));
+      if(fd&&td&&fd!==td) return 0;
+      if(shared>=2) return 3;
+      if(shared===1&&Math.min(ft.length,tt.length)===1) return 3;
+      if(shared===1) return 1;
       return 0;
     };
-    const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=2).sort((a,b)=>b.s-a.s);
+    const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
     const teamId = ranked[0]?.t?.team?.id || null;
     if(!teamId) return res.json({ squad: [], teamId: null });
     const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
@@ -1822,7 +1830,14 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
 
   const fdSquad = teamData?.squad || [];
   const afSquad = afSquadData?.squad || [];
-  const squad = afSquad.length>0 ? afSquad : fdSquad;
+  const nameKey = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+  const fdByName = {};
+  fdSquad.forEach(p=>{ const surname=nameKey((p.name||'').split(' ').pop()); fdByName[nameKey(p.name)]=p; if(surname)fdByName[surname]=fdByName[surname]||p; });
+  const mergedAf = afSquad.map(p=>{
+    const m = fdByName[nameKey(p.name)] || fdByName[nameKey((p.name||'').split(' ').pop())];
+    return { ...p, nationality: p.nationality || m?.nationality || null, dateOfBirth: p.dateOfBirth || m?.dateOfBirth || null };
+  });
+  const squad = mergedAf.length>0 ? mergedAf : fdSquad;
   const squadLoading = afSquadLoad && tLoad;
   const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
