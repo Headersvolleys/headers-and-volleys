@@ -133,7 +133,7 @@ app.get('/api/af/debug-search', async (req, res) => {
 
 // Pre-cache all PL players from AF for reliable DOB-based lookup
 async function getAFPlayersByDOB() {
-  const cKey = 'af_allpl_v2';
+  const cKey = 'af_allpl_v3';
   if (cache[cKey] && Date.now() - cache[cKey].ts < 24*60*MIN) return cache[cKey].data;
   try {
     const teamsRes = await af('/teams?league=39&season=2025', 60*MIN);
@@ -144,9 +144,8 @@ async function getAFPlayersByDOB() {
       (r.response||[]).forEach(p => {
         if(p.player?.birth?.date) {
           const d = p.player.birth.date;
-          if(!byDOB[d]) byDOB[d] = p;
-          // Store as array if multiple players share DOB
-          else if(!byDOB[d+'_2']) byDOB[d+'_2'] = p;
+          if(!byDOB[d]) byDOB[d] = [];
+          byDOB[d].push(p);
         }
       });
     }
@@ -170,20 +169,31 @@ app.get('/api/af/player-career', async (req, res) => {
     const tn = norm(teamName||'');
     let hit = null;
 
-    // Strategy 1: DOB lookup from pre-cached full squad (most reliable)
+    // Strategy 1: DOB lookup from pre-cached full squad
     if (dob) {
       const byDOB = await getAFPlayersByDOB();
-      const candidates = [byDOB[dob], byDOB[dob+'_2']].filter(Boolean);
-      // Score each candidate by team name match
-      const teamScored = candidates.map(c => {
-        const pt = norm(c.statistics?.[0]?.team?.name||'');
-        // Check if any word in teamName appears in pt or vice versa
-        const tnWords = tn.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic/g,'').trim().split(/\s+/).filter(w=>w.length>3);
-        const ptWords = pt.replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic/g,'').trim().split(/\s+/).filter(w=>w.length>3);
-        const score = tnWords.reduce((acc,w)=>acc+(ptWords.some(pw=>pw.includes(w)||w.includes(pw))?1:0),0);
-        return {c, score, pt};
-      }).sort((a,b)=>b.score-a.score);
-      hit = teamScored[0]?.c || null;
+      const candidates = byDOB[dob] || [];
+      if (candidates.length === 1) {
+        hit = candidates[0];
+      } else if (candidates.length > 1) {
+        // Multiple players share DOB - pick by team name
+        const tnWords = norm(teamName).replace(/fc|united|city|hotspur|rovers|town|wanderers|athletic/g,'').trim().split('').filter((_,i,a)=>i===0||a[i-1]===' ').join('');
+        const scored = candidates.map(c => {
+          const pt = norm(c.statistics?.[0]?.team?.name||'');
+          const tnNorm = norm(teamName).replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
+          const ptNorm = pt.replace(/fc|united|city|hotspur|rovers|town/g,'').trim();
+          // Score by longest common substring
+          let score = 0;
+          for(let len=Math.min(tnNorm.length,ptNorm.length); len>=3; len--) {
+            for(let i=0; i<=tnNorm.length-len; i++) {
+              if(ptNorm.includes(tnNorm.slice(i,i+len))) { score=len; break; }
+            }
+            if(score) break;
+          }
+          return {c, score};
+        }).sort((a,b)=>b.score-a.score);
+        hit = scored[0]?.c || candidates[0];
+      }
     }
 
     // Strategy 2: search by last name
