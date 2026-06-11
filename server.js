@@ -2539,14 +2539,17 @@ function PlayerModal({player, teamId, onClose, openClub}){
   // Hero enrichment from API-Football player object
   const cp = career?.player || {};
   const photoUrl = cp.id ? '/api/af/photo/'+cp.id : null;
-  const ageVal = cp.age || (()=>{ const d=p?.dateOfBirth||cp.birth?.date; if(!d) return null; const t=new Date(d); if(isNaN(t)) return null; const diff=Date.now()-t.getTime(); return Math.floor(diff/31557600000); })();
+  const dobRaw = p?.dateOfBirth || cp.birth?.date || null;
+  const dobDate = dobRaw ? new Date(dobRaw) : null;
+  const dobValid = dobDate && !isNaN(dobDate);
+  const ageVal = cp.age || (dobValid ? Math.floor((Date.now()-dobDate.getTime())/31557600000) : null);
   const heightVal = cp.height || null;
   const weightVal = cp.weight || null;
   const detail = career?.detail || {};
   const goalsN = Number(s?.goals)||0, minsN = Number(detail.minutes)||0;
   const minsPerGoal = (goalsN>0 && minsN>0) ? Math.round(minsN/goalsN) : null;
   const ratingVal = detail.rating || career?.seasonStats?.find(x=>x.league==='Premier League')?.rating || null;
-  const dobFmt = (()=>{ const d=p?.dateOfBirth||cp.birth?.date; if(!d) return null; const t=new Date(d); if(isNaN(t)) return null; return t.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}); })();
+  const dobFmt = dobValid ? dobDate.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : null;
 
   return(
     <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -2558,8 +2561,6 @@ function PlayerModal({player, teamId, onClose, openClub}){
       </div>
 
       <div style={{padding:16}}>
-        {/* Hero */}
-        <div style={{background:C.d2,borderRadius:14,padding:'20px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:14,borderLeft:'4px solid '+tc}}>
         {/* Hero */}
         <div style={{borderRadius:16,marginBottom:14,overflow:'hidden',position:'relative',background:'linear-gradient(135deg,'+tc+'22 0%,'+C.d2+' 55%)',border:'1px solid '+C.d4}}>
           <div style={{position:'absolute',top:0,left:0,width:5,height:'100%',background:tc}}/>
