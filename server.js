@@ -161,6 +161,27 @@ app.get('/api/af/photo/:id', async (req, res) => {
   } catch(e) { res.status(500).send(e.message); }
 });
 
+// name -> API-Football player id map for top scorers & assisters (for list photos)
+app.get('/api/scorer-photo-ids', async (req, res) => {
+  try {
+    const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+    const [ts, ta] = await Promise.all([
+      af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
+      af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
+    ]);
+    const map = {};
+    [...(ts.response||[]), ...(ta.response||[])].forEach(row=>{
+      const pl = row.player || {};
+      if(!pl.id || !pl.name) return;
+      const full = norm(pl.name);
+      const last = norm((pl.name||'').split(' ').pop());
+      if(full && !map[full]) map[full] = pl.id;
+      if(last && !map[last]) map[last] = pl.id;
+    });
+    res.json({ map });
+  } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
+});
+
 
 // API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
@@ -2072,13 +2093,16 @@ function GKCleanSheets(){
   );
 }
 
-function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label}){
+function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label,photoId}){
   const code=TCODE[p.team?.name]||'???';
   const tc=teamCol(code);
   return(
     <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
-      <Badge code={code} size={22}/>
+      <div style={{position:'relative',flexShrink:0,width:36,height:36}}>
+        <PlayerThumb id={photoId} size={36}/>
+        <div style={{position:'absolute',right:-3,bottom:-3,background:C.d2,borderRadius:'50%',padding:1}}><Badge code={code} size={16}/></div>
+      </div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name||p.name}</div>
         <div style={{fontSize:10,color:C.muted,marginTop:1}}>{TSHORT[p.team?.name]||p.team||p.team?.name}</div>
@@ -2100,6 +2124,9 @@ function Stats({openPlayer, openClub}){
   const {data:standData,loading:tLoad}=useApi('/api/standings',300000);
   const {data:xgData,loading:xgLoad}=useApi('/api/xg/players',1800000);
   const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
+  const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
+  const photoMap=photoMapData?.map||{};
+  const photoIdFor=(nm)=>{ const k=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,''); const full=k(nm); const last=k((nm||'').split(' ').pop()); return photoMap[full]||photoMap[last]||null; };
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
   const [selPlayer,setSelPlayer]=useState(null);
@@ -2152,7 +2179,7 @@ function Stats({openPlayer, openClub}){
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
           <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
-            <PlayerRow p={s} i={i} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+            <PlayerRow p={s} i={i} photoId={photoIdFor(s.player?.name)} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
           </div>
         ))}
         {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -2164,7 +2191,7 @@ function Stats({openPlayer, openClub}){
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
           <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
-            <PlayerRow p={s} i={i} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+            <PlayerRow p={s} i={i} photoId={photoIdFor(s.player?.name)} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
           </div>
         ))}
         {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
