@@ -161,23 +161,26 @@ app.get('/api/af/photo/:id', async (req, res) => {
   } catch(e) { res.status(500).send(e.message); }
 });
 
-// name -> API-Football player id map for top scorers & assisters (for list photos)
+// name -> API-Football player id map across ALL PL players (for list photos)
 app.get('/api/scorer-photo-ids', async (req, res) => {
   try {
     const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
-    const [ts, ta] = await Promise.all([
-      af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
-      af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
-    ]);
+    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
+    const teamIds = (teamsData.response||[]).map(t=>t.team?.id).filter(Boolean);
     const map = {};
-    [...(ts.response||[]), ...(ta.response||[])].forEach(row=>{
-      const pl = row.player || {};
-      if(!pl.id || !pl.name) return;
-      const full = norm(pl.name);
-      const last = norm((pl.name||'').split(' ').pop());
-      if(full && !map[full]) map[full] = pl.id;
-      if(last && !map[last]) map[last] = pl.id;
-    });
+    // fetch each team's current squad (one call per team, all cached 6h)
+    await Promise.all(teamIds.map(async tid=>{
+      try {
+        const sq = await af('/players/squads?team='+tid, 6*60*MIN);
+        (sq.response?.[0]?.players||[]).forEach(pl=>{
+          if(!pl.id || !pl.name) return;
+          const full = norm(pl.name);
+          const last = norm((pl.name||'').split(' ').pop());
+          if(full && !map[full]) map[full] = pl.id;
+          if(last && !map[last]) map[last] = pl.id;
+        });
+      } catch(e) {}
+    }));
     res.json({ map });
   } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
 });
