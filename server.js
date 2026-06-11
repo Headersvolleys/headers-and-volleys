@@ -174,13 +174,33 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
         const sq = await af('/players/squads?team='+tid, 6*60*MIN);
         (sq.response?.[0]?.players||[]).forEach(pl=>{
           if(!pl.id || !pl.name) return;
-          const full = norm(pl.name);
-          const last = norm((pl.name||'').split(' ').pop());
-          if(full && !map[full]) map[full] = pl.id;
-          if(last && !map[last]) map[last] = pl.id;
+          const raw = pl.name||'';
+          const full = norm(raw);
+          // tokens, splitting on spaces AND hyphens so "Gibbs-White" -> gibbs, white, gibbswhite
+          const parts = raw.split(/[\s-]+/).map(norm).filter(p=>p.length>2);
+          const keys = [full, ...parts];
+          // also a no-initial form: drop a leading single-letter initial ("M. Gibbs-White")
+          const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));
+          if(noInit) keys.push(noInit);
+          keys.forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
         });
       } catch(e) {}
     }));
+    // Also merge the topscorers/topassists feeds to cover any squad-list gaps
+    try {
+      const [ts, ta] = await Promise.all([
+        af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
+        af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
+      ]);
+      [...(ts.response||[]), ...(ta.response||[])].forEach(row=>{
+        const pl=row.player||{};
+        if(!pl.id||!pl.name) return;
+        const raw=pl.name;
+        const full=norm(raw);
+        if(full && !map[full]) map[full]=pl.id;
+        raw.split(/[\s-]+/).map(norm).filter(p=>p.length>=4).forEach(t=>{ if(!map[t]) map[t]=pl.id; });
+      });
+    } catch(e) {}
     res.json({ map });
   } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
 });
@@ -2129,7 +2149,20 @@ function Stats({openPlayer, openClub}){
   const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
   const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
   const photoMap=photoMapData?.map||{};
-  const photoIdFor=(nm)=>{ const k=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,''); const full=k(nm); const last=k((nm||'').split(' ').pop()); return photoMap[full]||photoMap[last]||null; };
+  const photoIdFor=(nm)=>{
+    const k=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+    if(!nm) return null;
+    const full=k(nm);
+    if(photoMap[full]) return photoMap[full];
+    const noInit=k((nm||'').replace(/^[A-Za-z]\.\s*/,''));
+    if(noInit&&photoMap[noInit]) return photoMap[noInit];
+    const toks=(nm||'').split(/[\s-]+/).map(k).filter(t=>t.length>=4);
+    // try last token, then first, then any
+    const last=toks[toks.length-1];
+    if(last&&photoMap[last]) return photoMap[last];
+    for(const t of toks){ if(photoMap[t]) return photoMap[t]; }
+    return null;
+  };
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
   const [selPlayer,setSelPlayer]=useState(null);
