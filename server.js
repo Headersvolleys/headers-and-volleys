@@ -148,6 +148,19 @@ app.get('/api/af/logo/:id', async (req, res) => {
   } catch(e) { res.status(500).send(e.message); }
 });
 
+// Player photo proxy
+app.get('/api/af/photo/:id', async (req, res) => {
+  try {
+    const url = 'https://media.api-sports.io/football/players/'+req.params.id+'.png';
+    const r = await fetch(url, {headers:{'x-apisports-key': AF_KEY}});
+    if(!r.ok) return res.status(404).send('Not found');
+    const buf = await r.arrayBuffer();
+    res.set('Content-Type','image/png');
+    res.set('Cache-Control','public, max-age=86400');
+    res.send(Buffer.from(buf));
+  } catch(e) { res.status(500).send(e.message); }
+});
+
 
 // API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
@@ -230,20 +243,37 @@ app.get('/api/af/player-career', async (req, res) => {
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-    const st = hit.statistics?.[0];
-    const seasonStats = st ? [{
+    const stats = hit.statistics || [];
+    const mapSeason = st => ({
       season: st.league?.season,
       team: st.team?.name,
+      teamLogo: st.team?.id ? '/api/af/logo/'+st.team.id : null,
       league: st.league?.name,
       appearances: st.games?.appearences,
+      lineups: st.games?.lineups,
       goals: st.goals?.total,
       assists: st.goals?.assists,
       minutes: st.games?.minutes,
-      rating: st.games?.rating ? parseFloat(st.games.rating).toFixed(1) : null,
+      rating: st.games?.rating ? parseFloat(st.games.rating).toFixed(2) : null,
       position: st.games?.position,
-    }] : [];
+      yellow: st.cards?.yellow,
+      red: st.cards?.red,
+    });
+    // current-season (PL) detailed breakdown
+    const cur = stats.find(s=>s.league?.id===39) || stats[0] || {};
+    const detail = {
+      shotsTotal: cur.shots?.total, shotsOn: cur.shots?.on,
+      passesTotal: cur.passes?.total, passesKey: cur.passes?.key, passAccuracy: cur.passes?.accuracy,
+      dribblesAttempts: cur.dribbles?.attempts, dribblesSuccess: cur.dribbles?.success,
+      tacklesTotal: cur.tackles?.total, interceptions: cur.tackles?.interceptions,
+      duelsTotal: cur.duels?.total, duelsWon: cur.duels?.won,
+      foulsDrawn: cur.fouls?.drawn, foulsCommitted: cur.fouls?.committed,
+      rating: cur.games?.rating ? parseFloat(cur.games.rating).toFixed(2) : null,
+      minutes: cur.games?.minutes,
+    };
+    const seasonStats = stats.map(mapSeason).filter(s=>s.appearances!=null);
 
-    const result = {found:true, player:hit.player, transfers, seasonStats};
+    const result = {found:true, player:hit.player, transfers, seasonStats, detail};
     cache[cKey] = {data:result, ts:Date.now()};
     res.json(result);
   } catch(e) { res.status(500).json({error:e.message, found:false}); }
@@ -2422,11 +2452,21 @@ function PlayerInfoRow({label, value}){
   );
 }
 
-function PlayerStatBox({label, value, col}){
+function PlayerStatBox({label, value, col, sub}){
   return(
     <div style={{background:C.d3,borderRadius:9,padding:'12px 8px',textAlign:'center',flex:1,minWidth:0}}>
       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:col||C.teal,lineHeight:1}}>{value??0}</div>
       <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4,marginTop:3}}>{label}</div>
+      {sub&&<div style={{fontSize:8.5,color:C.muted,marginTop:2,opacity:.8}}>{sub}</div>}
+    </div>
+  );
+}
+
+function HeroAttr({label, value, accent}){
+  return(
+    <div style={{flex:1,textAlign:'center',padding:'9px 4px'}}>
+      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:accent||C.white,lineHeight:1}}>{value}</div>
+      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.5,marginTop:3}}>{label}</div>
     </div>
   );
 }
@@ -2496,6 +2536,18 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const {data:standData} = useApi('/api/standings', 300000);
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
 
+  // Hero enrichment from API-Football player object
+  const cp = career?.player || {};
+  const photoUrl = cp.id ? '/api/af/photo/'+cp.id : null;
+  const ageVal = cp.age || (()=>{ const d=p?.dateOfBirth||cp.birth?.date; if(!d) return null; const t=new Date(d); if(isNaN(t)) return null; const diff=Date.now()-t.getTime(); return Math.floor(diff/31557600000); })();
+  const heightVal = cp.height || null;
+  const weightVal = cp.weight || null;
+  const detail = career?.detail || {};
+  const goalsN = Number(s?.goals)||0, minsN = Number(detail.minutes)||0;
+  const minsPerGoal = (goalsN>0 && minsN>0) ? Math.round(minsN/goalsN) : null;
+  const ratingVal = detail.rating || career?.seasonStats?.find(x=>x.league==='Premier League')?.rating || null;
+  const dobFmt = (()=>{ const d=p?.dateOfBirth||cp.birth?.date; if(!d) return null; const t=new Date(d); if(isNaN(t)) return null; return t.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}); })();
+
   return(
     <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
       {/* Header */}
@@ -2508,16 +2560,36 @@ function PlayerModal({player, teamId, onClose, openClub}){
       <div style={{padding:16}}>
         {/* Hero */}
         <div style={{background:C.d2,borderRadius:14,padding:'20px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:14,borderLeft:'4px solid '+tc}}>
-          <Badge code={code} size={52}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:.5,lineHeight:1}}>{p?.name}</div>
-            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
-              {flagUrl&&<img src={flagUrl} style={{width:20,height:15,objectFit:'cover',borderRadius:2}} alt=""/>}
-              <span style={{fontSize:12,color:C.muted}}>{p?.nationality}</span>
-              {posDisplay&&<span style={{fontSize:11,color:C.text,fontWeight:700,background:'rgba(10,191,184,.1)',padding:'2px 7px',borderRadius:5}}>{posDisplay}</span>}
-              {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted}}>#{p.shirtNumber}</span>}
+        {/* Hero */}
+        <div style={{borderRadius:16,marginBottom:14,overflow:'hidden',position:'relative',background:'linear-gradient(135deg,'+tc+'22 0%,'+C.d2+' 55%)',border:'1px solid '+C.d4}}>
+          <div style={{position:'absolute',top:0,left:0,width:5,height:'100%',background:tc}}/>
+          <div style={{display:'flex',alignItems:'center',gap:14,padding:'18px 16px 16px 20px'}}>
+            <div style={{width:78,height:78,borderRadius:'50%',flexShrink:0,background:C.d3,border:'2px solid '+tc,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              {photoUrl
+                ? <img src={photoUrl} onError={e=>{e.target.style.display='none';}} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+                : <Badge code={code} size={44}/>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:.5,lineHeight:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p?.name}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+                {flagUrl&&<img src={flagUrl} style={{width:20,height:15,objectFit:'cover',borderRadius:2}} alt=""/>}
+                <span style={{fontSize:12,color:C.muted}}>{p?.nationality}</span>
+                {posDisplay&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(255,255,255,.06)',padding:'2px 8px',borderRadius:5}}>{posDisplay}</span>}
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8}}>
+                <Badge code={code} size={18}/>
+                <span onClick={()=>openClub&&openClub(team)} style={{fontSize:12,color:C.teal,fontWeight:700,cursor:openClub?'pointer':'default'}}>{TSHORT[team?.name]||team?.name}</span>
+                {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted,marginLeft:2}}>#{p.shirtNumber}</span>}
+              </div>
             </div>
           </div>
+          {(ageVal||heightVal||weightVal||ratingVal)&&
+            <div style={{display:'flex',borderTop:'1px solid '+C.d4,background:'rgba(0,0,0,.15)'}}>
+              {ageVal&&<HeroAttr label="AGE" value={ageVal}/>}
+              {heightVal&&<HeroAttr label="HEIGHT" value={heightVal}/>}
+              {weightVal&&<HeroAttr label="WEIGHT" value={weightVal}/>}
+              {ratingVal&&<HeroAttr label="RATING" value={ratingVal} accent={tc}/>}
+            </div>}
         </div>
 
         {loading&&<div style={{textAlign:'center',padding:40}}><Spinner size={28}/></div>}
@@ -2526,7 +2598,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           {/* Season stats */}
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>2025-26 Season</div>
           <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
-            <PlayerStatBox label="GOALS" value={s?.goals??0} col={C.text}/>
+            <PlayerStatBox label="GOALS" value={s?.goals??0} col={C.text} sub={minsPerGoal?minsPerGoal+' min/goal':null}/>
             <PlayerStatBox label="ASSISTS" value={s?.assists??0} col={C.orange}/>
             <PlayerStatBox label="APPS" value={s?.playedMatches??s?.appearances??'-'} col={C.muted}/>
             {xgData&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
@@ -2594,24 +2666,27 @@ function PlayerModal({player, teamId, onClose, openClub}){
         {careerLoading&&<div style={{textAlign:'center',padding:16}}><Spinner size={20}/></div>}
         {!careerLoading&&career&&<>
           {career.seasonStats&&career.seasonStats.length>0&&<>
-            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season by Season</div>
             <div style={{background:C.d2,borderRadius:10,overflow:'hidden',marginBottom:16}}>
-              <div style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
-                {['Season','Club','G','A','App'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
+              <div style={{display:'grid',gridTemplateColumns:'46px 1fr 30px 30px 30px 38px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
+                {[['Season','left'],['Club','left'],['G','center'],['A','center'],['App','center'],['Rtg','center']].map((h,i)=><div key={i} style={{fontSize:9.5,fontWeight:700,color:C.muted,textAlign:h[1],letterSpacing:.3}}>{h[0]}</div>)}
               </div>
-              {career.seasonStats.slice(0,8).map((s,i)=>{
-                const tname = s.team||'';
-                const code = TCODE[tname]||Object.entries(TSHORT).find(([k,v])=>v===tname||tname.toLowerCase().includes(v?.toLowerCase()?.split(' ')[0]||'x'))?.[0]||null;
+              {career.seasonStats.slice(0,10).map((sn,i)=>{
+                const tname = sn.team||'';
+                const code = TCODE[tname]||Object.entries(TSHORT).find(([k,v])=>v===tname||tname.toLowerCase().includes((v?.toLowerCase()?.split(' ')[0])||'x'))?.[0]||null;
+                const rtg = sn.rating?parseFloat(sn.rating):null;
+                const rtgCol = rtg==null?C.muted:rtg>=7.5?C.green:rtg>=7?C.text:rtg>=6.5?C.yellow:C.muted;
                 return(
-                  <div key={i} style={{display:'grid',gridTemplateColumns:'50px 1fr 32px 32px 32px',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,.04)',alignItems:'center'}}>
-                    <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{s.season}/{String(s.season+1).slice(2)}</div>
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'46px 1fr 30px 30px 30px 38px',gap:4,padding:'9px 12px',borderBottom:i<career.seasonStats.slice(0,10).length-1?'1px solid rgba(255,255,255,.04)':'none',alignItems:'center',background:i%2?'rgba(255,255,255,.012)':'transparent'}}>
+                    <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{sn.season}/{String(sn.season+1).slice(2)}</div>
                     <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-                      {code&&<Badge code={code} size={16}/>}
-                      <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.team}</span>
+                      {sn.teamLogo?<img src={sn.teamLogo} style={{width:16,height:16,objectFit:'contain',flexShrink:0}} alt=""/>:code?<Badge code={code} size={16}/>:null}
+                      <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sn.team}</span>
                     </div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.text}}>{s.goals??'-'}</div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{s.assists??'-'}</div>
-                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{s.appearances??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.text}}>{sn.goals??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.orange}}>{sn.assists??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted}}>{sn.appearances??'-'}</div>
+                    <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:rtgCol}}>{sn.rating||'-'}</div>
                   </div>
                 );
               })}
