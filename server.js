@@ -77,7 +77,7 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
     }
 
     // Build player object from scorer data
-    const player = scorer ? {
+    let player = scorer ? {
       id: scorer.player.id,
       name: scorer.player.name,
       nationality: scorer.player.nationality,
@@ -86,13 +86,43 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
       shirtNumber: scorer.player.shirtNumber,
     } : null;
 
-    const team = scorer ? {
+    let team = scorer ? {
       id: scorer.team?.id,
       name: scorer.team?.name,
     } : null;
 
-    res.json({ player, scorer, team,
-      debug: { pid, scorerFound: !!scorer, scorerName: scorer?.player?.name }
+    let scorerOut = scorer ? {
+      goals: scorer.goals,
+      assists: scorer.assists,
+      playedMatches: scorer.playedMatches,
+    } : null;
+
+    // Fallback: not in top-scorers feed. Pull full stats from API-Football by id.
+    if(!scorerOut && /^\d+$/.test(pid)){
+      try {
+        const ap = await af('/players?id=' + pid + '&season=2025', 30*MIN);
+        const row = ap.response?.[0];
+        if(row){
+          const g = (row.statistics||[]).find(s=>s.league?.id===39) || row.statistics?.[0] || {};
+          scorerOut = {
+            goals: g.goals?.total || 0,
+            assists: g.goals?.assists || 0,
+            playedMatches: g.games?.appearences || 0,
+          };
+          player = player || {
+            id: row.player?.id,
+            name: row.player?.name,
+            nationality: row.player?.nationality,
+            dateOfBirth: row.player?.birth?.date,
+            position: g.games?.position || null,
+            shirtNumber: g.games?.number || null,
+          };
+        }
+      } catch(e) {}
+    }
+
+    res.json({ player, scorer: scorerOut, team,
+      debug: { pid, scorerFound: !!scorer }
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -2428,10 +2458,21 @@ function PlayerModal({player, teamId, onClose, openClub}){
 
   // Use passed player prop as base - API call enriches with scorer stats
   const p = data?.player || player;
-  const s = data?.scorer || (player?.goals!=null ? player : null);
   const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
   const [career, setCareer] = useState(null);
   const [careerLoading, setCareerLoading] = useState(false);
+  const careerSeason = career?.seasonStats?.[0];
+  const careerStat = careerSeason ? {
+    goals: careerSeason.goals,
+    assists: careerSeason.assists,
+    playedMatches: careerSeason.appearances,
+  } : null;
+  const hasVals = o => o && (o.goals!=null || o.assists!=null || o.playedMatches!=null || o.appearances!=null);
+  const propStat = (player?.goals!=null||player?.assists!=null) ? player : null;
+  const s = hasVals(data?.scorer) ? data.scorer
+          : hasVals(propStat) ? propStat
+          : hasVals(careerStat) ? careerStat
+          : data?.scorer || propStat || careerStat;
 
   useEffect(()=>{
     if(!player?.name) return;
@@ -2487,7 +2528,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
             <PlayerStatBox label="GOALS" value={s?.goals??0} col={C.text}/>
             <PlayerStatBox label="ASSISTS" value={s?.assists??0} col={C.orange}/>
-            <PlayerStatBox label="APPS" value={s?.playedMatches??'-'} col={C.muted}/>
+            <PlayerStatBox label="APPS" value={s?.playedMatches??s?.appearances??'-'} col={C.muted}/>
             {xgData&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
             {xgData&&<PlayerStatBox label="xA" value={xgData.xA} col={C.orange}/>}
           </div>
