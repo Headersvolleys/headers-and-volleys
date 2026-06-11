@@ -2016,6 +2016,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
+                <PlayerThumb id={p.id||p.afId} size={34}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
                   {p.nationality&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
@@ -2452,6 +2453,12 @@ function PlayerInfoRow({label, value}){
       <span style={{fontSize:13,color:C.text,fontWeight:600,textAlign:'right',maxWidth:'60%'}}>{value||'-'}</span>
     </div>
   );
+}
+
+function PlayerThumb({id, size=34}){
+  const [err,setErr]=useState(false);
+  if(!id||err) return <div style={{width:size,height:size,borderRadius:'50%',background:C.d4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width={size*0.55} height={size*0.55} viewBox="0 0 24 24" fill={C.muted}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></div>;
+  return <img src={'/api/af/photo/'+id} onError={()=>setErr(true)} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',flexShrink:0,background:C.d4}} alt=""/>;
 }
 
 function PlayerStatBox({label, value, col, sub}){
