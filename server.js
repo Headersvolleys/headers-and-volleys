@@ -2482,12 +2482,12 @@ function PlayerRadar({axes, accent}){
   const dataPts = axes.map((ax,i)=>pt(i, R*Math.max(0,Math.min(1,ax.pct/100))));
   const dataStr = dataPts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
   return(
-    <svg viewBox={'0 0 '+size+' '+(size+8)} style={{width:'100%',maxWidth:300,display:'block',margin:'0 auto'}}>
+    <svg viewBox={'-58 -6 '+(size+116)+' '+(size+20)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
       {rings.map((rr,ri)=>(
         <polygon key={ri} points={axes.map((_,i)=>{const p=pt(i,R*rr);return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')}
-          fill="none" stroke={C.d4} strokeWidth="1"/>
+          fill="none" stroke={ri===rings.length-1?'rgba(120,170,180,.55)':'rgba(120,170,180,.32)'} strokeWidth={ri===rings.length-1?1.4:1}/>
       ))}
-      {axes.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke={C.d4} strokeWidth="1"/>; })}
+      {axes.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke="rgba(120,170,180,.38)" strokeWidth="1"/>; })}
       <polygon points={dataStr} fill={accent+'33'} stroke={accent} strokeWidth="2" strokeLinejoin="round"/>
       {dataPts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill={accent}/>)}
       {axes.map((ax,i)=>{
