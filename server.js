@@ -268,6 +268,8 @@ app.get('/api/af/player-career', async (req, res) => {
       tacklesTotal: cur.tackles?.total, interceptions: cur.tackles?.interceptions,
       duelsTotal: cur.duels?.total, duelsWon: cur.duels?.won,
       foulsDrawn: cur.fouls?.drawn, foulsCommitted: cur.fouls?.committed,
+      goals: cur.goals?.total, assists: cur.goals?.assists,
+      yellow: cur.cards?.yellow, red: cur.cards?.red,
       rating: cur.games?.rating ? parseFloat(cur.games.rating).toFixed(2) : null,
       minutes: cur.games?.minutes,
     };
@@ -2471,6 +2473,45 @@ function HeroAttr({label, value, accent}){
   );
 }
 
+function PlayerRadar({axes, accent}){
+  const n = axes.length;
+  if(n<3) return null;
+  const size=220, cx=size/2, cy=size/2, R=78;
+  const pt=(i,r)=>{ const a=(Math.PI*2*i/n)-Math.PI/2; return [cx+Math.cos(a)*r, cy+Math.sin(a)*r]; };
+  const rings=[0.25,0.5,0.75,1];
+  const dataPts = axes.map((ax,i)=>pt(i, R*Math.max(0,Math.min(1,ax.pct/100))));
+  const dataStr = dataPts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  return(
+    <svg viewBox={'0 0 '+size+' '+(size+8)} style={{width:'100%',maxWidth:300,display:'block',margin:'0 auto'}}>
+      {rings.map((rr,ri)=>(
+        <polygon key={ri} points={axes.map((_,i)=>{const p=pt(i,R*rr);return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')}
+          fill="none" stroke={C.d4} strokeWidth="1"/>
+      ))}
+      {axes.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke={C.d4} strokeWidth="1"/>; })}
+      <polygon points={dataStr} fill={accent+'33'} stroke={accent} strokeWidth="2" strokeLinejoin="round"/>
+      {dataPts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill={accent}/>)}
+      {axes.map((ax,i)=>{
+        const lp=pt(i,R+16);
+        const anchor=Math.abs(lp[0]-cx)<8?'middle':lp[0]<cx?'end':'start';
+        return(<g key={i}>
+          <text x={lp[0]} y={lp[1]-2} fill={C.muted} fontSize="8.5" fontWeight="700" textAnchor={anchor} style={{letterSpacing:.3}}>{ax.label}</text>
+          <text x={lp[0]} y={lp[1]+8} fill={C.text} fontSize="9" fontWeight="700" textAnchor={anchor}>{ax.raw}</text>
+        </g>);
+      })}
+    </svg>
+  );
+}
+
+function StatTile({label, value, accent, sub}){
+  return(
+    <div style={{background:C.d3,borderRadius:9,padding:'11px 8px',textAlign:'center'}}>
+      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:accent||C.text,lineHeight:1}}>{value}</div>
+      <div style={{fontSize:8.5,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3,textTransform:'uppercase'}}>{label}</div>
+      {sub&&<div style={{fontSize:8,color:C.muted,marginTop:2,opacity:.8}}>{sub}</div>}
+    </div>
+  );
+}
+
 function PlayerModal({player, teamId, onClose, openClub}){
   const [data, setData] = useState(null);
   const [xgData, setXgData] = useState(null);
@@ -2548,6 +2589,90 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const detail = career?.detail || {};
   const goalsN = Number(s?.goals)||0, minsN = Number(detail.minutes)||0;
   const minsPerGoal = (goalsN>0 && minsN>0) ? Math.round(minsN/goalsN) : null;
+  // per-90 helpers + position-aware radar/breakdown
+  const nineties = minsN>0 ? minsN/90 : 0;
+  const per90 = v => (nineties>0 && v!=null) ? +(Number(v)/nineties).toFixed(2) : null;
+  const pct = (v, max) => v==null ? 0 : Math.max(0,Math.min(100, (Number(v)/max)*100));
+  const posGroup = posDisplay; // Goalkeeper/Defender/Midfielder/Forward
+  const d = detail;
+  // reference per-90 ceilings (rough PL upper bounds) for radar scaling
+  const goals90=per90(d.goals), assists90=per90(d.assists), shots90=per90(d.shotsTotal),
+        key90=per90(d.passesKey), drib90=per90(d.dribblesSuccess), tackle90=per90(d.tacklesTotal),
+        intc90=per90(d.interceptions), duelW90=per90(d.duelsWon), pass90=per90(d.passesTotal);
+  const passAcc = d.passAccuracy!=null ? Number(d.passAccuracy) : null;
+  let radarAxes=[];
+  if(posGroup==='Forward'){
+    radarAxes=[
+      {label:'GOALS',raw:goals90??'-',pct:pct(goals90,0.8)},
+      {label:'SHOTS',raw:shots90??'-',pct:pct(shots90,4)},
+      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.5)},
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,2.5)},
+      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
+    ];
+  } else if(posGroup==='Midfielder'){
+    radarAxes=[
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,3)},
+      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.4)},
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
+      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
+      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,8)},
+    ];
+  } else if(posGroup==='Defender'){
+    radarAxes=[
+      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4.5)},
+      {label:'INTERC',raw:intc90??'-',pct:pct(intc90,3)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,9)},
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,1.5)},
+    ];
+  } else if(posGroup==='Goalkeeper'){
+    radarAxes=[
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,90)},
+      {label:'PASSES',raw:pass90??'-',pct:pct(pass90,40)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,2)},
+    ];
+  }
+  const hasDetail = radarAxes.some(a=>a.raw!=='-'&&a.raw!=null) && nineties>0;
+  // position-aware breakdown tiles (season totals)
+  let breakdownTiles=[];
+  const sd=(v)=>v==null?'-':v;
+  if(posGroup==='Forward'){
+    breakdownTiles=[
+      {label:'Shots',value:sd(d.shotsTotal),sub:d.shotsOn!=null?d.shotsOn+' on target':null},
+      {label:'Key Passes',value:sd(d.passesKey)},
+      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null,accent:C.teal},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
+      {label:'Fouls Won',value:sd(d.foulsDrawn)},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+    ];
+  } else if(posGroup==='Midfielder'){
+    breakdownTiles=[
+      {label:'Key Passes',value:sd(d.passesKey)},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+      {label:'Passes',value:sd(d.passesTotal)},
+      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null},
+      {label:'Tackles',value:sd(d.tacklesTotal)},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
+    ];
+  } else if(posGroup==='Defender'){
+    breakdownTiles=[
+      {label:'Tackles',value:sd(d.tacklesTotal)},
+      {label:'Interceptions',value:sd(d.interceptions)},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+      {label:'Fouls',value:sd(d.foulsCommitted)},
+      {label:'Key Passes',value:sd(d.passesKey)},
+    ];
+  } else if(posGroup==='Goalkeeper'){
+    breakdownTiles=[
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+      {label:'Passes',value:sd(d.passesTotal)},
+      {label:'Duels Won',value:sd(d.duelsWon)},
+      {label:'Fouls',value:sd(d.foulsCommitted)},
+    ];
+  }
+  const hasBreakdown = breakdownTiles.some(t=>t.value!=='-'&&t.value!=null);
   const ratingVal = detail.rating || career?.seasonStats?.find(x=>x.league==='Premier League')?.rating || null;
   const dobFmt = dobValid ? dobDate.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : null;
 
@@ -2605,6 +2730,25 @@ function PlayerModal({player, teamId, onClose, openClub}){
             {xgData&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
             {xgData&&<PlayerStatBox label="xA" value={xgData.xA} col={C.orange}/>}
           </div>
+
+          {/* Performance radar (per 90) */}
+          {hasDetail&&<>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>Performance Profile</div>
+              <div style={{fontSize:9,color:C.muted,fontWeight:600}}>per 90 min</div>
+            </div>
+            <div style={{background:C.d2,borderRadius:14,padding:'16px 12px 10px',marginBottom:16}}>
+              <PlayerRadar axes={radarAxes} accent={tc}/>
+            </div>
+          </>}
+
+          {/* Position-aware breakdown */}
+          {hasBreakdown&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>{posDisplay} Breakdown <span style={{color:C.muted,fontWeight:600}}>&middot; season totals</span></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:16}}>
+              {breakdownTiles.map((t,i)=><StatTile key={i} label={t.label} value={t.value} accent={t.accent} sub={t.sub}/>)}
+            </div>
+          </>}
 
           {/* xG section */}
           {xgData&&<>
