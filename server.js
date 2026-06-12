@@ -165,43 +165,54 @@ app.get('/api/af/photo/:id', async (req, res) => {
 app.get('/api/scorer-photo-ids', async (req, res) => {
   try {
     const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+    const sleep = ms => new Promise(r=>setTimeout(r,ms));
     const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
     const teamIds = (teamsData.response||[]).map(t=>t.team?.id).filter(Boolean);
     const map = {};
-    // fetch each team's current squad (one call per team, all cached 6h)
-    await Promise.all(teamIds.map(async tid=>{
-      try {
-        const sq = await af('/players/squads?team='+tid, 6*60*MIN);
-        (sq.response?.[0]?.players||[]).forEach(pl=>{
-          if(!pl.id || !pl.name) return;
-          const raw = pl.name||'';
-          const full = norm(raw);
-          // tokens, splitting on spaces AND hyphens so "Gibbs-White" -> gibbs, white, gibbswhite
-          const parts = raw.split(/[\s-]+/).map(norm).filter(p=>p.length>2);
-          const keys = [full, ...parts];
-          // also a no-initial form: drop a leading single-letter initial ("M. Gibbs-White")
-          const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));
-          if(noInit) keys.push(noInit);
-          keys.forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
-        });
-      } catch(e) {}
-    }));
-    // Also merge the topscorers/topassists feeds to cover any squad-list gaps
-    try {
-      const [ts, ta] = await Promise.all([
-        af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
-        af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]})),
-      ]);
-      [...(ts.response||[]), ...(ta.response||[])].forEach(row=>{
-        const pl=row.player||{};
-        if(!pl.id||!pl.name) return;
-        const raw=pl.name;
-        const full=norm(raw);
-        if(full && !map[full]) map[full]=pl.id;
-        raw.split(/[\s-]+/).map(norm).filter(p=>p.length>=4).forEach(t=>{ if(!map[t]) map[t]=pl.id; });
+    const addPlayer = (pl) => {
+      if(!pl || !pl.id || !pl.name) return;
+      const raw = pl.name||'';
+      const full = norm(raw);
+      const parts = raw.split(/[\s-]+/).map(norm).filter(p=>p.length>2);
+      const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));
+      [full, ...parts, noInit].forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
+    };
+    // fetch a single team's squad with one retry on failure
+    const fetchSquad = async (tid) => {
+      for(let attempt=0; attempt<2; attempt++){
+        try {
+          const sq = await af('/players/squads?team='+tid, 6*60*MIN);
+          return sq.response?.[0]?.players || [];
+        } catch(e) { await sleep(400); }
+      }
+      return null; // signal failure
+    };
+    // process teams in small sequential batches to stay under the rate limit
+    const BATCH = 3;
+    let failed = [];
+    for(let i=0; i<teamIds.length; i+=BATCH){
+      const chunk = teamIds.slice(i, i+BATCH);
+      const results = await Promise.all(chunk.map(fetchSquad));
+      results.forEach((players, idx)=>{
+        if(players===null) failed.push(chunk[idx]);
+        else players.forEach(addPlayer);
       });
+      await sleep(250);
+    }
+    // one more pass for any teams that failed both attempts
+    for(const tid of failed){
+      const players = await fetchSquad(tid);
+      if(players) players.forEach(addPlayer);
+      await sleep(250);
+    }
+    // Merge topscorers/topassists as an extra safety net for any remaining gaps
+    try {
+      const ts = await af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
+      await sleep(200);
+      const ta = await af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
+      [...(ts.response||[]), ...(ta.response||[])].forEach(row=>addPlayer(row.player));
     } catch(e) {}
-    res.json({ map });
+    res.json({ map, teams: teamIds.length, failed: failed.length });
   } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
 });
 
