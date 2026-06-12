@@ -2507,8 +2507,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   ['CLEAN SHEETS',ts.clean_sheet?.total??'-',C.teal],
                   ['FAILED TO SCORE',ts.failed_to_score?.total??'-',C.muted],
                   ['WIN STREAK',ts.biggest?.streak?.wins??bestWin,C.green],
-                  ['BIGGEST WIN',ts.biggest?.wins||(biggestWin?biggestWin.score:'-'),C.green],
-                  ['BIGGEST LOSS',ts.biggest?.loses||(biggestLoss?biggestLoss.score:'-'),C.red],
+                  ['BIGGEST WIN',(ts.biggest?.wins?.home||ts.biggest?.wins?.away||(biggestWin?biggestWin.score:'-')),C.green],
+                  ['BIGGEST LOSS',(ts.biggest?.loses?.home||ts.biggest?.loses?.away||(biggestLoss?biggestLoss.score:'-')),C.red],
                 ].map(([l,v,c])=>(
                   <div key={l} style={{background:C.d2,borderRadius:9,padding:'10px 6px',textAlign:'center'}}>
                     <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:c,lineHeight:1}}>{v}</div>
