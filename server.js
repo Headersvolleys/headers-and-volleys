@@ -512,16 +512,31 @@ const AF_KEY = process.env.API_FOOTBALL_KEY || '';
 const AF_BASE = 'https://v3.football.api-sports.io';
 const afCache = {};
 
+// Serialize API-Football requests with a small gap so concurrent page loads
+// (squad + stats + xG + standings) don't stampede the per-second rate limit.
+let __afChain = Promise.resolve();
+let __afLast = 0;
+const AF_MIN_GAP = 250; // ms between live AF network calls
+function __afThrottle(fn){
+  const run = async () => {
+    const wait = Math.max(0, AF_MIN_GAP - (Date.now() - __afLast));
+    if(wait) await new Promise(r=>setTimeout(r,wait));
+    __afLast = Date.now();
+    return fn();
+  };
+  __afChain = __afChain.then(run, run);
+  return __afChain;
+}
+
 async function af(endpoint, ttl, skipEmptyCache) {
   const now = Date.now();
   if (afCache[endpoint] && now - afCache[endpoint].ts < ttl) return afCache[endpoint].data;
-  const r = await fetch(AF_BASE + endpoint, {
-    headers: { 'x-apisports-key': AF_KEY }
+  // throttle only the actual network fetch (cache hits above bypass the queue)
+  const data = await __afThrottle(async () => {
+    const r = await fetch(AF_BASE + endpoint, { headers: { 'x-apisports-key': AF_KEY } });
+    if (!r.ok) throw new Error('AF API ' + r.status);
+    return r.json();
   });
-  if (!r.ok) throw new Error('AF API ' + r.status);
-  const data = await r.json();
-  // Don't cache an empty/rate-limited response when the caller opts out,
-  // so a transient empty result doesn't stick for the full TTL.
   const isEmpty = !data || !Array.isArray(data.response) || data.response.length===0;
   if (!(skipEmptyCache && isEmpty)) afCache[endpoint] = { data, ts: now };
   return data;
