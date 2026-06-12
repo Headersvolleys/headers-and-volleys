@@ -245,6 +245,15 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
       // 4) last resort: token containment, but only if exactly one candidate
       const cand2 = players.filter(p=>{ const pn=norm(p.name); return pn.includes(targetSurname)||targetSurname.includes(pn); });
       if(cand2.length===1) return cand2[0].id;
+      // 5) shared significant name-token within this squad (handles fd "Thiago
+      //    Rodrigues" vs AF "Igor Thiago"). Safe because scoped to one club:
+      //    only resolves when exactly one squad member shares a token.
+      const scorerToks = new Set((scorerName||'').split(/[\s-]+/).map(norm).filter(t=>t.length>=4));
+      const cand3 = players.filter(p=>{
+        const pToks = (p.name||'').split(/[\s-]+/).map(norm).filter(t=>t.length>=4);
+        return pToks.some(t=>scorerToks.has(t));
+      });
+      if(cand3.length===1) return cand3[0].id;
       return null;
     };
 
