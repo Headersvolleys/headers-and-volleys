@@ -2541,6 +2541,7 @@ function PlayerInfoRow({label, value}){
 
 function PlayerThumb({id, size=34}){
   const [err,setErr]=useState(false);
+  useEffect(()=>{ setErr(false); },[id]);
   if(!id||err) return <div style={{width:size,height:size,borderRadius:'50%',background:C.d4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width={size*0.55} height={size*0.55} viewBox="0 0 24 24" fill={C.muted}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></div>;
   return <img src={'/api/af/photo/'+id} onError={()=>setErr(true)} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',flexShrink:0,background:C.d4}} alt=""/>;
 }
