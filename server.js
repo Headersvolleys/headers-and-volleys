@@ -2052,6 +2052,9 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:standData} = useApi('/api/standings', 300000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
+  const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
+  const photoMap=photoMapData?.map||{};
+  const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
   const [squadFilter, setSquadFilter] = useState('ALL');
   const [view, setView] = useState(initialView || 'overview');
 
@@ -2208,7 +2211,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Top Performers</div>
             <div style={{display:'flex',gap:8,marginBottom:16}}>
               {topScorer&&<div onClick={()=>openPlayer&&openPlayer({...topScorer.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={topScorer.player?.afId||topScorer.player?.id} size={38}/>
+                <PlayerThumb id={photoIdForId(topScorer.player?.id)} size={38}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP SCORER</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topScorer.player?.name||'').split(' ').pop()}</div>
@@ -2216,7 +2219,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>
               </div>}
               {topAssister&&<div onClick={()=>openPlayer&&openPlayer({...topAssister.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={topAssister.player?.afId||topAssister.player?.id} size={38}/>
+                <PlayerThumb id={photoIdForId(topAssister.player?.id)} size={38}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP ASSISTS</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topAssister.player?.name||'').split(' ').pop()}</div>
