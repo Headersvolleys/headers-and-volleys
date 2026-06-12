@@ -163,66 +163,107 @@ app.get('/api/af/photo/:id', async (req, res) => {
 
 // name -> API-Football player id map across ALL PL players (for list photos)
 app.get('/api/scorer-photo-ids', async (req, res) => {
+  // Bridge football-data scorer IDs -> API-Football photo IDs by matching
+  // each scorer to an AF squad player WITHIN THE SAME TEAM (kills cross-club
+  // name collisions). Client looks up by the fd player id it already has.
   try {
     const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
     const sleep = ms => new Promise(r=>setTimeout(r,ms));
-    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
-    const teamIds = (teamsData.response||[]).map(t=>t.team?.id).filter(Boolean);
-    const map = {};
-    const addPlayer = (pl) => {
-      if(!pl || !pl.id || !pl.name) return;
-      const raw = pl.name||'';
-      const full = norm(raw);                                   // "morgangibbswhite"
-      const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));    // drop leading "M."
-      // surname phrase = everything after the first space, hyphens collapsed
-      // "Morgan Gibbs-White" -> "gibbswhite"; "Ben White" -> "white"
-      const sp = raw.trim().split(/\s+/);
-      const surnamePhrase = sp.length>1 ? norm(sp.slice(1).join(' ')) : full;
-      // Only key by these specific forms. A single shared token like "white"
-      // is intentionally NOT keyed unless it IS the whole surname phrase, and
-      // even then we mark it ambiguous so it never overwrites a more specific id.
-      [full, noInit].forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
-      if(surnamePhrase){
-        if(map[surnamePhrase]===undefined) map[surnamePhrase]=pl.id;
-        else if(map[surnamePhrase]!==pl.id) map[surnamePhrase]=null; // collision -> ambiguous
-      }
+    const tnorm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').replace(/\b(fc|afc|cf)\b/g,'').replace(/\s+/g,' ').trim();
+    const EXPAND = {
+      'man utd':'manchester united','man united':'manchester united','man city':'manchester city',
+      'spurs':'tottenham hotspur','tottenham':'tottenham hotspur',
+      'nottm forest':'nottingham forest','nottingham':'nottingham forest',
+      'wolves':'wolverhampton wanderers','wolverhampton':'wolverhampton wanderers',
+      'west ham':'west ham united','newcastle':'newcastle united',
+      'brighton':'brighton hove albion','leeds':'leeds united','bournemouth':'bournemouth',
     };
-    // fetch a single team's squad with one retry on failure
+
+    // football-data scorers (have fd id, name, team name)
+    const scorersData = await fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN);
+    const scorers = scorersData.scorers || [];
+
+    // AF teams list, to resolve fd team name -> AF team id
+    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
+    const afTeams = teamsData.response || [];
+    const teamScore = (afName, target) => {
+      const fn = EXPAND[tnorm(afName)] || tnorm(afName);
+      if(fn===target) return 100;
+      const ft=fn.split(/\s+/).filter(Boolean), tt=target.split(/\s+/).filter(Boolean);
+      const shared=ft.filter(w=>tt.includes(w)).length;
+      const distinct=['city','united','utd','wanderers','albion','hotspur','forest','rovers'];
+      const fdw=ft.find(w=>distinct.includes(w)), tdw=tt.find(w=>distinct.includes(w));
+      if(fdw&&tdw&&fdw!==tdw) return 0;
+      if(shared>=2) return 3;
+      if(shared===1&&Math.min(ft.length,tt.length)===1) return 3;
+      if(shared===1) return 1;
+      return 0;
+    };
+    const afTeamIdForName = (fdTeamName) => {
+      const target = EXPAND[tnorm(fdTeamName)] || tnorm(fdTeamName);
+      const ranked = afTeams.map(t=>({id:t.team?.id, s:teamScore(t.team?.name, target)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
+      return ranked[0]?.id || null;
+    };
+
+    // cache AF squad per team id
+    const squadCache = {};
     const fetchSquad = async (tid) => {
+      if(squadCache[tid]) return squadCache[tid];
       for(let attempt=0; attempt<2; attempt++){
         try {
           const sq = await af('/players/squads?team='+tid, 6*60*MIN);
-          return sq.response?.[0]?.players || [];
+          const players = sq.response?.[0]?.players || [];
+          squadCache[tid] = players;
+          return players;
         } catch(e) { await sleep(400); }
       }
-      return null; // signal failure
+      squadCache[tid] = [];
+      return [];
     };
-    // process teams in small sequential batches to stay under the rate limit
-    const BATCH = 3;
-    let failed = [];
-    for(let i=0; i<teamIds.length; i+=BATCH){
-      const chunk = teamIds.slice(i, i+BATCH);
-      const results = await Promise.all(chunk.map(fetchSquad));
-      results.forEach((players, idx)=>{
-        if(players===null) failed.push(chunk[idx]);
-        else players.forEach(addPlayer);
+
+    // match a scorer name within a single squad
+    const matchInSquad = (players, scorerName) => {
+      const target = norm(scorerName);
+      const sp = (scorerName||'').trim().split(/\s+/);
+      const targetSurname = norm(sp.slice(1).join(' ')) || target;
+      // 1) exact full-name match
+      let hit = players.find(p=>norm(p.name)===target);
+      if(hit) return hit.id;
+      // 2) de-initialed equality (AF "M. Gibbs-White" vs fd "Morgan Gibbs-White")
+      hit = players.find(p=>{
+        const pn = norm((p.name||'').replace(/^[A-Za-z]\.\s*/,''));
+        return pn===target || pn===targetSurname;
       });
-      await sleep(250);
+      if(hit) return hit.id;
+      // 3) surname-phrase match within this squad (unique within one club)
+      const cand = players.filter(p=>{
+        const psp=(p.name||'').trim().split(/\s+/);
+        const psurname=norm(psp.slice(1).join(' '))||norm(p.name);
+        return psurname===targetSurname || norm(p.name)===targetSurname;
+      });
+      if(cand.length===1) return cand[0].id;
+      // 4) last resort: token containment, but only if exactly one candidate
+      const cand2 = players.filter(p=>{ const pn=norm(p.name); return pn.includes(targetSurname)||targetSurname.includes(pn); });
+      if(cand2.length===1) return cand2[0].id;
+      return null;
+    };
+
+    const map = {};            // fdPlayerId -> afPhotoId
+    let matched=0, missed=0;
+    // resolve sequentially-ish, grouped by team to reuse squad fetches
+    for(const sc of scorers){
+      const fdId = sc.player?.id;
+      const nm = sc.player?.name;
+      const teamName = sc.team?.name;
+      if(!fdId || !nm || !teamName) { missed++; continue; }
+      const afTid = afTeamIdForName(teamName);
+      if(!afTid){ missed++; continue; }
+      const squad = await fetchSquad(afTid);
+      const afId = matchInSquad(squad, nm);
+      if(afId){ map[fdId]=afId; matched++; } else { missed++; }
+      await sleep(60);
     }
-    // one more pass for any teams that failed both attempts
-    for(const tid of failed){
-      const players = await fetchSquad(tid);
-      if(players) players.forEach(addPlayer);
-      await sleep(250);
-    }
-    // Merge topscorers/topassists as an extra safety net for any remaining gaps
-    try {
-      const ts = await af('/players/topscorers?league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
-      await sleep(200);
-      const ta = await af('/players/topassists?league=39&season=2025', 60*MIN).catch(()=>({response:[]}));
-      [...(ts.response||[]), ...(ta.response||[])].forEach(row=>addPlayer(row.player));
-    } catch(e) {}
-    res.json({ map, teams: teamIds.length, failed: failed.length });
+    res.json({ map, matched, missed, total: scorers.length });
   } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
 });
 
@@ -2170,20 +2211,8 @@ function Stats({openPlayer, openClub}){
   const {data:xgTeams,loading:xgTLoad}=useApi('/api/xg/teams',1800000);
   const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
   const photoMap=photoMapData?.map||{};
-  const photoIdFor=(nm)=>{
-    const k=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
-    if(!nm) return null;
-    const pick=key=>{ const v=photoMap[key]; return (v!=null) ? v : null; }; // null = ambiguous/absent
-    const full=k(nm);
-    if(pick(full)) return pick(full);
-    const noInit=k((nm||'').replace(/^[A-Za-z]\.\s*/,''));
-    if(pick(noInit)) return pick(noInit);
-    // whole surname phrase (everything after first name), e.g. "Gibbs-White" -> gibbswhite
-    const sp=(nm||'').trim().split(/\s+/);
-    const surname = sp.length>1 ? k(sp.slice(1).join(' ')) : full;
-    if(pick(surname)) return pick(surname);
-    return null;
-  };
+  // map is keyed by football-data player id; just look it up directly
+  const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
   const [selPlayer,setSelPlayer]=useState(null);
@@ -2236,7 +2265,7 @@ function Stats({openPlayer, openClub}){
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
           <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
-            <PlayerRow p={s} i={i} photoId={photoIdFor(s.player?.name)} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
+            <PlayerRow p={s} i={i} photoId={photoIdForId(s.player?.id)} stat={s.goals} statLabel="GOALS" stat2={s.assists} stat2Col={C.orange} stat2Label="AST"/>
           </div>
         ))}
         {scorers.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -2248,7 +2277,7 @@ function Stats({openPlayer, openClub}){
       {view==='assists'&&<>
         {assisters.slice(0,limit).map((s,i)=>(
           <div key={i} onClick={()=>s.player?.id&&handleOpenPlayer({...s.player,goals:s.goals,assists:s.assists,playedMatches:s.playedMatches,position:s.player?.position||s.position,teamName:s.team?.name},s.team?.id)}>
-            <PlayerRow p={s} i={i} photoId={photoIdFor(s.player?.name)} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
+            <PlayerRow p={s} i={i} photoId={photoIdForId(s.player?.id)} stat={s.assists} statCol={C.orange} statLabel="ASSISTS" stat2={s.goals} stat2Label="GOALS"/>
           </div>
         ))}
         {assisters.length>20&&<button onClick={()=>setShowFull(f=>!f)} style={{width:'100%',marginTop:8,padding:'10px 0',borderRadius:9,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>
