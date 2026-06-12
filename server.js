@@ -296,7 +296,7 @@ app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob} = req.query;
     if(!name) return res.json({found:false});
-    const cKey = 'afc16_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,15)+'_'+(dob||'').replace(/-/g,'').slice(0,8);
+    const cKey = 'afc17_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,15)+'_'+(dob||'').replace(/-/g,'').slice(0,8);
     if(cache[cKey] && Date.now()-cache[cKey].ts < 24*60*MIN) return res.json(cache[cKey].data);
 
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
@@ -372,7 +372,21 @@ app.get('/api/af/player-career', async (req, res) => {
       }))
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-    const stats = hit.statistics || [];
+    // Fetch additional seasons so the profile's season selector has history.
+    // /players?id=&season= returns one season's stats per call (any league).
+    const pid = hit.player?.id;
+    let stats = hit.statistics || [];
+    if(pid){
+      const SEASONS = [2025, 2024, 2023, 2022];
+      const haveSeasons = new Set(stats.map(s=>s.league?.season));
+      const need = SEASONS.filter(y=>!haveSeasons.has(y));
+      const extra = await Promise.all(need.map(y =>
+        af('/players?id='+pid+'&season='+y, 24*60*MIN)
+          .then(r => r.response?.[0]?.statistics || [])
+          .catch(()=>[])
+      ));
+      stats = stats.concat(...extra);
+    }
     const buildDetail = (st) => ({
       shotsTotal: st.shots?.total, shotsOn: st.shots?.on,
       passesTotal: st.passes?.total, passesKey: st.passes?.key, passAccuracy: st.passes?.accuracy,
@@ -405,7 +419,15 @@ app.get('/api/af/player-career', async (req, res) => {
     // current-season (PL preferred) detailed breakdown for the default view
     const cur = stats.find(s=>s.league?.id===39) || stats[0] || {};
     const detail = buildDetail(cur);
-    const seasonStats = stats.map(mapSeason).filter(s=>s.appearances!=null);
+    let seasonStats = stats.map(mapSeason).filter(s=>s.appearances!=null);
+    // keep one entry per season: the one with the most minutes (primary competition)
+    const bySeason = {};
+    seasonStats.forEach(s=>{
+      const key = s.season;
+      const mins = Number(s.minutes)||0;
+      if(!bySeason[key] || mins > (Number(bySeason[key].minutes)||0)) bySeason[key] = s;
+    });
+    seasonStats = Object.values(bySeason).sort((a,b)=>(b.season||0)-(a.season||0));
 
     const result = {found:true, player:hit.player, transfers, seasonStats, detail};
     cache[cKey] = {data:result, ts:Date.now()};
