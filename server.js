@@ -1043,6 +1043,7 @@ function useApi(url,interval=0){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState(null);
   const go=useCallback(async()=>{
+    if(!url){ setLoading(false); return; }
     try{const r=await fetch(url);if(!r.ok)throw new Error('Error '+r.status);setData(await r.json());setError(null);}
     catch(e){setError(e.message);}
     finally{setLoading(false);}
@@ -2689,36 +2690,43 @@ function buildRadarAxes(detail, posGroup){
   return {axes, hasData};
 }
 
-function PlayerRadar({axes, accent, axes2, accent2}){
-  const n = axes.length;
-  if(n<3) return null;
+function PlayerRadar({series}){
+  // series: [{axes:[{label,raw,pct}], color}], series[0] is the main player
+  const valid = (series||[]).filter(s=>s.axes && s.axes.length>=3);
+  if(valid.length===0) return null;
+  const axes0 = valid[0].axes;
+  const n = axes0.length;
   const size=220, cx=size/2, cy=size/2, R=78;
   const pt=(i,r)=>{ const a=(Math.PI*2*i/n)-Math.PI/2; return [cx+Math.cos(a)*r, cy+Math.sin(a)*r]; };
   const rings=[0.25,0.5,0.75,1];
   const polyFor = ax => ax.map((a,i)=>pt(i, R*Math.max(0,Math.min(1,a.pct/100))));
-  const dataPts = polyFor(axes);
-  const dataStr = dataPts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
-  const has2 = axes2 && axes2.length===n;
-  const dataPts2 = has2 ? polyFor(axes2) : null;
-  const dataStr2 = has2 ? dataPts2.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ') : null;
+  const multi = valid.length>1;
+  // bottom labels grow taller with more series; widen the bottom margin
+  const extraBottom = multi ? (valid.length-1)*9 : 0;
   return(
-    <svg viewBox={'-58 -6 '+(size+116)+' '+(size+20)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
+    <svg viewBox={'-58 -6 '+(size+116)+' '+(size+20+extraBottom)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
       {rings.map((rr,ri)=>(
-        <polygon key={ri} points={axes.map((_,i)=>{const p=pt(i,R*rr);return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')}
+        <polygon key={ri} points={axes0.map((_,i)=>{const p=pt(i,R*rr);return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')}
           fill="none" stroke={ri===rings.length-1?'rgba(120,170,180,.55)':'rgba(120,170,180,.32)'} strokeWidth={ri===rings.length-1?1.4:1}/>
       ))}
-      {axes.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke="rgba(120,170,180,.38)" strokeWidth="1"/>; })}
-      {has2&&<polygon points={dataStr2} fill={accent2+'22'} stroke={accent2} strokeWidth="2" strokeLinejoin="round"/>}
-      <polygon points={dataStr} fill={has2?accent+'22':accent+'33'} stroke={accent} strokeWidth="2" strokeLinejoin="round"/>
-      {has2&&dataPts2.map((p,i)=><circle key={'b'+i} cx={p[0]} cy={p[1]} r="2.5" fill={accent2}/>)}
-      {dataPts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill={accent}/>)}
-      {axes.map((ax,i)=>{
+      {axes0.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke="rgba(120,170,180,.38)" strokeWidth="1"/>; })}
+      {/* draw comparison polygons first (under), main player last (on top) */}
+      {valid.slice(1).map((s,si)=>{
+        const pts=polyFor(s.axes);
+        return <polygon key={'p'+si} points={pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')} fill={s.color+'1c'} stroke={s.color} strokeWidth="2" strokeLinejoin="round"/>;
+      })}
+      <polygon points={polyFor(axes0).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')} fill={multi?valid[0].color+'1c':valid[0].color+'33'} stroke={valid[0].color} strokeWidth="2" strokeLinejoin="round"/>
+      {valid.slice(1).map((s,si)=>polyFor(s.axes).map((p,i)=><circle key={'c'+si+'_'+i} cx={p[0]} cy={p[1]} r="2.5" fill={s.color}/>))}
+      {polyFor(axes0).map((p,i)=><circle key={'c0_'+i} cx={p[0]} cy={p[1]} r="2.5" fill={valid[0].color}/>)}
+      {axes0.map((ax,i)=>{
         const lp=pt(i,R+16);
         const anchor=Math.abs(lp[0]-cx)<8?'middle':lp[0]<cx?'end':'start';
         return(<g key={i}>
           <text x={lp[0]} y={lp[1]-2} fill={C.muted} fontSize="8.5" fontWeight="700" textAnchor={anchor} style={{letterSpacing:.3}}>{ax.label}</text>
-          {has2
-            ? <text x={lp[0]} y={lp[1]+8} fontSize="9" fontWeight="700" textAnchor={anchor}><tspan fill={accent}>{ax.raw}</tspan><tspan fill={C.muted}> / </tspan><tspan fill={accent2}>{axes2[i].raw}</tspan></text>
+          {multi
+            ? valid.map((s,si)=>(
+                <text key={si} x={lp[0]} y={lp[1]+8+si*9} fill={s.color} fontSize="8.5" fontWeight="700" textAnchor={anchor}>{s.axes[i]?.raw}</text>
+              ))
             : <text x={lp[0]} y={lp[1]+8} fill={C.text} fontSize="9" fontWeight="700" textAnchor={anchor}>{ax.raw}</text>}
         </g>);
       })}
@@ -2767,9 +2775,10 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const [career, setCareer] = useState(null);
   const [careerLoading, setCareerLoading] = useState(false);
   const [selSeason, setSelSeason] = useState(null); // null = default (current/PL)
-  const [compareWith, setCompareWith] = useState(null); // {name, teamName, code} of 2nd player
-  const [compareCareer, setCompareCareer] = useState(null);
+  const [compareList, setCompareList] = useState([]); // [{name, teamName, code}] up to 3
+  const [compareCareers, setCompareCareers] = useState({}); // name -> career data
   const [comparePicker, setComparePicker] = useState(false);
+  const [cmpClub, setCmpClub] = useState(null); // {name, code} chosen in picker step 1
   const careerSeason = career?.seasonStats?.[0];
   const careerStat = careerSeason ? {
     goals: careerSeason.goals,
@@ -2783,16 +2792,18 @@ function PlayerModal({player, teamId, onClose, openClub}){
           : hasVals(careerStat) ? careerStat
           : data?.scorer || propStat || careerStat;
 
-  useEffect(()=>{ setSelSeason(null); setCompareWith(null); setCompareCareer(null); setComparePicker(false); }, [player?.name]);
+  useEffect(()=>{ setSelSeason(null); setCompareList([]); setCompareCareers({}); setComparePicker(false); setCmpClub(null); }, [player?.name]);
 
   useEffect(()=>{
-    if(!compareWith?.name){ setCompareCareer(null); return; }
-    let cancelled=false;
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const url = '/api/af/player-career?name='+encodeURIComponent(da(compareWith.name))+'&teamName='+encodeURIComponent(compareWith.teamName||'');
-    fetch(url).then(r=>r.json()).then(d=>{ if(!cancelled) setCompareCareer(d&&d.found?d:null); }).catch(()=>{ if(!cancelled) setCompareCareer(null); });
+    let cancelled=false;
+    compareList.forEach(cw=>{
+      if(!cw?.name || compareCareers[cw.name]!==undefined) return;
+      const url = '/api/af/player-career?name='+encodeURIComponent(da(cw.name))+'&teamName='+encodeURIComponent(cw.teamName||'');
+      fetch(url).then(r=>r.json()).then(d=>{ if(!cancelled) setCompareCareers(prev=>({...prev,[cw.name]: (d&&d.found?d:null)})); }).catch(()=>{ if(!cancelled) setCompareCareers(prev=>({...prev,[cw.name]:null})); });
+    });
     return ()=>{ cancelled=true; };
-  }, [compareWith?.name]);
+  }, [compareList]);
 
   useEffect(()=>{
     if(!player?.name) return;
@@ -2815,6 +2826,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const flagUrl = flag(p?.nationality);
   const {data:standData} = useApi('/api/standings', 300000);
   const {data:cmpScorers} = useApi('/api/scorers?limit=100', 600000);
+  const {data:cmpSquadData} = useApi(cmpClub?.name ? '/api/af/squad?name='+encodeURIComponent(cmpClub.name) : null, 6*3600000);
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
 
   // Hero enrichment from API-Football player object
@@ -2848,12 +2860,36 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const d = detail;
   const passAcc = d.passAccuracy!=null ? Number(d.passAccuracy) : null;
   const {axes:radarAxes, hasData:hasDetail} = buildRadarAxes(detail, posGroup);
-  // comparison player's axes (their default/PL season detail), same position template
-  const cmpDetail = compareCareer?.detail || null;
-  const cmpAxes = (cmpDetail && hasDetail) ? buildRadarAxes(cmpDetail, posGroup).axes : null;
-  const cmpName = compareWith?.name || null;
-  const cmpCode = compareWith?.code || null;
-  const cmpColor = cmpCode ? teamCol(cmpCode) : C.orange;
+  // up to 4 total: main player + up to 3 comparisons. Distinct fixed colours.
+  const CMP_COLORS = [tc, C.orange, C.green, '#A77BFF'];
+  const comparing = compareList.length>0;
+  // build a player set: index 0 is the main player
+  const cmpPlayers = compareList.map((cw, idx)=>{
+    const career = compareCareers[cw.name];
+    const det = career?.detail || null;
+    const axes = (det && hasDetail) ? buildRadarAxes(det, posGroup).axes : null;
+    return { name: cw.name, code: cw.code, color: CMP_COLORS[idx+1]||C.muted, detail: det, axes, loading: career===undefined };
+  });
+  // full stat table: main + comparisons, only when comparing
+  const tablefmt = (v)=> v==null?'-':v;
+  const statRows = [
+    {label:'Goals', key:'goals'},
+    {label:'Assists', key:'assists'},
+    {label:'Minutes', key:'minutes'},
+    {label:'Shots', key:'shotsTotal'},
+    {label:'On Target', key:'shotsOn'},
+    {label:'Key Passes', key:'passesKey'},
+    {label:'Pass %', key:'passAccuracy', suffix:'%'},
+    {label:'Dribbles', key:'dribblesSuccess'},
+    {label:'Tackles', key:'tacklesTotal'},
+    {label:'Interceptions', key:'interceptions'},
+    {label:'Duels Won', key:'duelsWon'},
+    {label:'Rating', key:'rating'},
+  ];
+  const tablePlayers = [
+    {name:p?.name, code, color:tc, detail},
+    ...cmpPlayers.map(c=>({name:c.name, code:c.code, color:c.color, detail:c.detail})),
+  ];
   // position-aware breakdown tiles (season totals)
   let breakdownTiles=[];
   const sd=(v)=>v==null?'-':v;
@@ -2968,40 +3004,96 @@ function PlayerModal({player, teamId, onClose, openClub}){
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>Performance Profile</div>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div style={{fontSize:9,color:C.muted,fontWeight:600}}>per 90 min</div>
-                {cmpName
-                  ? <span onClick={()=>{setCompareWith(null);setComparePicker(false);}} style={{fontSize:9,fontWeight:700,color:C.red,cursor:'pointer',letterSpacing:.3}}>CLEAR</span>
-                  : <span onClick={()=>setComparePicker(v=>!v)} style={{fontSize:9,fontWeight:700,color:C.teal,cursor:'pointer',letterSpacing:.3}}>{comparePicker?'CANCEL':'+ COMPARE'}</span>}
+                {compareList.length<3&&<span onClick={()=>{setComparePicker(v=>!v);setCmpClub(null);}} style={{fontSize:9,fontWeight:700,color:C.teal,cursor:'pointer',letterSpacing:.3}}>{comparePicker?'CANCEL':'+ COMPARE'}</span>}
+                {compareList.length>0&&<span onClick={()=>{setCompareList([]);setCompareCareers({});setComparePicker(false);setCmpClub(null);}} style={{fontSize:9,fontWeight:700,color:C.red,cursor:'pointer',letterSpacing:.3}}>CLEAR</span>}
               </div>
             </div>
 
-            {comparePicker&&!cmpName&&
-              <div style={{background:C.d2,borderRadius:10,padding:8,marginBottom:10,maxHeight:200,overflowY:'auto'}}>
-                <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4,padding:'2px 4px 6px'}}>COMPARE WITH</div>
-                {(cmpScorers?.scorers||[]).filter(sc=>(sc.player?.name||'').toLowerCase()!==(p?.name||'').toLowerCase()).slice(0,40).map((sc,i)=>{
-                  const scCode=TCODE[sc.team?.name]||'???';
-                  return(
-                    <div key={i} onClick={()=>{setCompareWith({name:sc.player?.name, teamName:sc.team?.name, code:scCode}); setComparePicker(false);}}
+            {/* two-step picker: club then squad player */}
+            {comparePicker&&compareList.length<3&&
+              <div style={{background:C.d2,borderRadius:10,padding:8,marginBottom:10,maxHeight:240,overflowY:'auto'}}>
+                {!cmpClub&&<>
+                  <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4,padding:'2px 4px 6px'}}>PICK A CLUB</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+                    {(standData?.standings?.[0]?.table||[]).map((row,i)=>{
+                      const cCode=TCODE[row.team?.name]||'???';
+                      return(
+                        <div key={i} onClick={()=>setCmpClub({name:row.team?.name, code:cCode})}
+                          style={{display:'flex',alignItems:'center',gap:7,padding:'7px 6px',cursor:'pointer',borderRadius:6,background:'rgba(255,255,255,.02)'}}
+                          onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.06)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.02)'}>
+                          <Badge code={cCode} size={18}/>
+                          <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>}
+                {cmpClub&&<>
+                  <div style={{display:'flex',alignItems:'center',gap:8,padding:'2px 4px 8px'}}>
+                    <span onClick={()=>setCmpClub(null)} style={{fontSize:14,color:C.teal,cursor:'pointer',fontWeight:700}}>&#8592;</span>
+                    <Badge code={cmpClub.code} size={18}/>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:.4}}>{(TSHORT[cmpClub.name]||cmpClub.name||'').toUpperCase()}</span>
+                  </div>
+                  {!cmpSquadData&&<div style={{textAlign:'center',padding:16}}><Spinner size={20}/></div>}
+                  {(cmpSquadData?.squad||[]).filter(sq=>(sq.name||'').toLowerCase()!==(p?.name||'').toLowerCase() && !compareList.some(c=>c.name===sq.name)).map((sq,i)=>(
+                    <div key={i} onClick={()=>{setCompareList(list=>[...list,{name:sq.name, teamName:cmpClub.name, code:cmpClub.code}]); setComparePicker(false); setCmpClub(null);}}
                       style={{display:'flex',alignItems:'center',gap:8,padding:'6px 4px',cursor:'pointer',borderRadius:6}}
                       onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <Badge code={scCode} size={18}/>
-                      <span style={{fontSize:12,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sc.player?.name}</span>
-                      <span style={{fontSize:11,color:C.muted}}>{sc.goals}G {sc.assists}A</span>
+                      <PlayerThumb id={sq.id} size={26}/>
+                      <span style={{fontSize:12,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sq.name}</span>
+                      <span style={{fontSize:10,color:C.muted}}>{normPos(sq.position)}</span>
+                    </div>
+                  ))}
+                </>}
+              </div>}
+
+            {/* legend when comparing */}
+            {comparing&&
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,marginBottom:6,flexWrap:'wrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:tc,flexShrink:0}}/><span style={{fontSize:10,color:C.text,fontWeight:700}}>{p?.name}</span></div>
+                {cmpPlayers.map((c,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{width:10,height:10,borderRadius:2,background:c.color,flexShrink:0}}/>
+                    <span style={{fontSize:10,color:C.text,fontWeight:700}}>{c.name}{c.loading?' ...':''}</span>
+                    <span onClick={()=>{setCompareList(list=>list.filter(x=>x.name!==c.name));}} style={{fontSize:11,color:C.muted,cursor:'pointer',marginLeft:1}}>&times;</span>
+                  </div>
+                ))}
+              </div>}
+
+            <div style={{background:C.d2,borderRadius:14,padding:'16px 12px 10px',marginBottom:16}}>
+              <PlayerRadar series={[{axes:radarAxes, color:tc}, ...cmpPlayers.map(c=>({axes:c.axes, color:c.color}))]}/>
+            </div>
+
+            {/* full stat comparison table */}
+            {comparing&&
+              <div style={{background:C.d2,borderRadius:12,overflow:'hidden',marginBottom:16}}>
+                <div style={{display:'grid',gridTemplateColumns:'1.3fr repeat('+tablePlayers.length+',1fr)',gap:2,padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.08)',alignItems:'center'}}>
+                  <div/>
+                  {tablePlayers.map((tp,i)=>(
+                    <div key={i} style={{textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                      <Badge code={tp.code} size={18}/>
+                      <span style={{fontSize:8.5,color:tp.color,fontWeight:700,lineHeight:1.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'100%'}}>{(tp.name||'').split(' ').pop()}</span>
+                    </div>
+                  ))}
+                </div>
+                {statRows.map((rw,ri)=>{
+                  const vals = tablePlayers.map(tp=>{ const v=tp.detail?.[rw.key]; return v==null?null:v; });
+                  const nums = vals.map(v=>v==null?-Infinity:Number(v));
+                  const best = Math.max(...nums);
+                  return(
+                    <div key={ri} style={{display:'grid',gridTemplateColumns:'1.3fr repeat('+tablePlayers.length+',1fr)',gap:2,padding:'7px 10px',borderBottom:ri<statRows.length-1?'1px solid rgba(255,255,255,.04)':'none',alignItems:'center',background:ri%2?'rgba(255,255,255,.012)':'transparent'}}>
+                      <div style={{fontSize:10,color:C.muted,fontWeight:600}}>{rw.label}</div>
+                      {vals.map((v,vi)=>(
+                        <div key={vi} style={{textAlign:'center',fontSize:12,fontWeight:700,color: (nums[vi]===best&&best!==-Infinity&&tablePlayers.length>1)?C.green:C.text}}>
+                          {v==null?'-':v}{v!=null&&rw.suffix?rw.suffix:''}
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
               </div>}
-
-            {/* legend when comparing */}
-            {cmpName&&
-              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,marginBottom:6}}>
-                <div style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:tc}}/><span style={{fontSize:10,color:C.text,fontWeight:700}}>{p?.name}</span></div>
-                <div style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:cmpColor}}/><span style={{fontSize:10,color:C.text,fontWeight:700}}>{cmpName}{!cmpAxes?' (loading...)':''}</span></div>
-              </div>}
-
-            <div style={{background:C.d2,borderRadius:14,padding:'16px 12px 10px',marginBottom:16}}>
-              <PlayerRadar axes={radarAxes} accent={tc} axes2={cmpAxes} accent2={cmpColor}/>
-            </div>
           </>}
 
           {/* Position-aware breakdown */}
