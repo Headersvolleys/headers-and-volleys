@@ -2893,38 +2893,45 @@ function PlayerModal({player, teamId, onClose, openClub}){
   // position-aware breakdown tiles (season totals)
   let breakdownTiles=[];
   const sd=(v)=>v==null?'-':v;
+  // derived rates for tile sub-context
+  const rate=(num,den)=> (num!=null&&den!=null&&Number(den)>0) ? Math.round((Number(num)/Number(den))*100) : null;
+  const shotAccuracy = rate(d.shotsOn, d.shotsTotal);            // % shots on target
+  const dribbleRate = rate(d.dribblesSuccess, d.dribblesAttempts); // % dribbles completed
+  const duelRate = rate(d.duelsWon, d.duelsTotal);              // % duels won
+  const shotsPerGoal = (d.shotsTotal!=null && Number(d.goals)>0) ? +(Number(d.shotsTotal)/Number(d.goals)).toFixed(1) : null;
+  const keyPerAssist = (d.passesKey!=null && Number(d.assists)>0) ? +(Number(d.passesKey)/Number(d.assists)).toFixed(1) : null;
   if(posGroup==='Forward'){
     breakdownTiles=[
-      {label:'Shots',value:sd(d.shotsTotal),sub:d.shotsOn!=null?d.shotsOn+' on target':null},
-      {label:'Key Passes',value:sd(d.passesKey)},
-      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null,accent:C.teal},
-      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
-      {label:'Fouls Won',value:sd(d.foulsDrawn)},
+      {label:'Shots',value:sd(d.shotsTotal),sub:shotsPerGoal!=null?shotsPerGoal+' per goal':(d.shotsOn!=null?d.shotsOn+' on target':null)},
+      {label:'Key Passes',value:sd(d.passesKey),sub:keyPerAssist!=null?keyPerAssist+' per assist':null},
+      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:dribbleRate!=null?dribbleRate+'% completed':(d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null),accent:C.teal},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:duelRate!=null?duelRate+'% won':(d.duelsTotal!=null?'of '+d.duelsTotal:null)},
+      {label:'Shot Accuracy',value:shotAccuracy!=null?shotAccuracy+'%':'-',sub:d.shotsOn!=null?d.shotsOn+' on target':null,accent:C.teal},
       {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
     ];
   } else if(posGroup==='Midfielder'){
     breakdownTiles=[
-      {label:'Key Passes',value:sd(d.passesKey)},
-      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
-      {label:'Passes',value:sd(d.passesTotal)},
-      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null},
-      {label:'Tackles',value:sd(d.tacklesTotal)},
-      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
+      {label:'Key Passes',value:sd(d.passesKey),sub:keyPerAssist!=null?keyPerAssist+' per assist':null},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',sub:d.passesTotal!=null?d.passesTotal+' passes':null,accent:C.teal},
+      {label:'Dribbles',value:sd(d.dribblesSuccess),sub:dribbleRate!=null?dribbleRate+'% completed':(d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null)},
+      {label:'Tackles',value:sd(d.tacklesTotal),sub:d.interceptions!=null?d.interceptions+' interceptions':null},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:duelRate!=null?duelRate+'% won':(d.duelsTotal!=null?'of '+d.duelsTotal:null)},
+      {label:'Shots',value:sd(d.shotsTotal),sub:d.shotsOn!=null?d.shotsOn+' on target':null},
     ];
   } else if(posGroup==='Defender'){
     breakdownTiles=[
-      {label:'Tackles',value:sd(d.tacklesTotal)},
+      {label:'Tackles',value:sd(d.tacklesTotal),sub:d.interceptions!=null?d.interceptions+' interceptions':null},
       {label:'Interceptions',value:sd(d.interceptions)},
-      {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
-      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
-      {label:'Fouls',value:sd(d.foulsCommitted)},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:duelRate!=null?duelRate+'% won':(d.duelsTotal!=null?'of '+d.duelsTotal:null)},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',sub:d.passesTotal!=null?d.passesTotal+' passes':null,accent:C.teal},
+      {label:'Fouls',value:sd(d.foulsCommitted),sub:d.foulsDrawn!=null?d.foulsDrawn+' won':null},
       {label:'Key Passes',value:sd(d.passesKey)},
     ];
   } else if(posGroup==='Goalkeeper'){
     breakdownTiles=[
-      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+      {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',sub:d.passesTotal!=null?d.passesTotal+' passes':null,accent:C.teal},
       {label:'Passes',value:sd(d.passesTotal)},
-      {label:'Duels Won',value:sd(d.duelsWon)},
+      {label:'Duels Won',value:sd(d.duelsWon),sub:duelRate!=null?duelRate+'% won':null},
       {label:'Fouls',value:sd(d.foulsCommitted)},
     ];
   }
@@ -3710,4 +3717,15 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 </html>`);
 });
 
-app.listen(PORT, () => console.log('H&V running on port ' + PORT))
+app.listen(PORT, () => {
+  console.log('H&V running on port ' + PORT);
+  // Warm the scorer-photo map + squad caches so the first user load is fast.
+  // Fires once on boot (and on each Render wake-from-idle restart).
+  const warm = () => {
+    const http = require('http');
+    http.get('http://127.0.0.1:'+PORT+'/api/scorer-photo-ids', (r)=>{
+      r.on('data',()=>{}); r.on('end',()=>console.log('[warm] photo cache primed'));
+    }).on('error', (e)=>console.log('[warm] skipped:', e.message));
+  };
+  setTimeout(warm, 2000); // small delay so the server is fully ready
+});
