@@ -2050,36 +2050,169 @@ function TypeAnswerQuiz({quiz,onFinish}){
   );
 }
 
-const CROSSWORDS=[
-  {title:'Between the Sticks', size:9, entries:[
-    {dir:'across',r:4,c:0,a:'CHELSEA',clue:'West London Blues'},
-    {dir:'across',r:1,c:0,a:'PASS',clue:'Move the ball to a team-mate'},
-    {dir:'down',r:1,c:0,a:'PITCH',clue:'The playing surface'},
-    {dir:'down',r:1,c:2,a:'SAVE',clue:'What a keeper does to a shot'},
-    {dir:'down',r:2,c:4,a:'ASSIST',clue:'The final pass before a goal'},
-    {dir:'down',r:4,c:6,a:'AREA',clue:'The penalty ___'},
-  ]},
-  {title:'World Cup', size:9, entries:[
-    {dir:'across',r:3,c:0,a:'BRAZIL',clue:'Five-time world champions'},
-    {dir:'down',r:2,c:1,a:'DRAW',clue:'A level result'},
-    {dir:'down',r:1,c:2,a:'GOAL',clue:'The aim of the game'},
-    {dir:'down',r:2,c:4,a:'KIT',clue:'A team playing strip'},
-    {dir:'down',r:3,c:3,a:'ZONE',clue:'Defensive ___ marking'},
-    {dir:'down',r:3,c:5,a:'LOW',clue:'Germany 2014-winning coach Joachim'},
-  ]},
-  {title:'Premier League', size:9, entries:[
-    {dir:'across',r:0,c:0,a:'ARSENAL',clue:'The Gunners'},
-    {dir:'down',r:0,c:0,a:'ASSIST',clue:'Credited for setting up a goal'},
-    {dir:'down',r:0,c:2,a:'SPAIN',clue:'2010 World Cup winners'},
-    {dir:'down',r:0,c:4,a:'NEYMAR',clue:'Brazilian forward, ex-Barca and PSG'},
-    {dir:'down',r:0,c:6,a:'LAW',clue:'Man Utd great Denis ___'},
-  ]},
+// Football crossword word bank (answers letters-only, clues apostrophe-free)
+const XW_BANK=[
+  {a:'MESSI',clue:'Argentine maestro with 8 Ballon dOrs'},
+  {a:'RONALDO',clue:'Portuguese star, all-time top scorer'},
+  {a:'PELE',clue:'Brazilian who won three World Cups'},
+  {a:'MARADONA',clue:'Hand of God, 1986'},
+  {a:'NEYMAR',clue:'Brazilian forward, ex Barca and PSG'},
+  {a:'MBAPPE',clue:'French speedster, 2018 World Cup winner'},
+  {a:'HAALAND',clue:'Norwegian goal machine at Man City'},
+  {a:'SALAH',clue:'Egyptian King at Liverpool'},
+  {a:'KANE',clue:'England captain at Bayern'},
+  {a:'ZIDANE',clue:'French legend, headbutt final 2006'},
+  {a:'BECKHAM',clue:'England midfielder famed for free kicks'},
+  {a:'HENRY',clue:'Arsenal Invincibles striker Thierry'},
+  {a:'GERRARD',clue:'Liverpool captain Steven'},
+  {a:'ROONEY',clue:'Englands former record scorer Wayne'},
+  {a:'CRUYFF',clue:'Dutch Total Football icon Johan'},
+  {a:'BUFFON',clue:'Italian keeper Gianluigi'},
+  {a:'KAKA',clue:'Brazilian 2007 Ballon dOr winner'},
+  {a:'RAMOS',clue:'Spanish defender, Real Madrid legend Sergio'},
+  {a:'MODRIC',clue:'Croatian midfielder Luka'},
+  {a:'YAMAL',clue:'Teenage Barcelona winger Lamine'},
+  {a:'ARSENAL',clue:'The Gunners'},
+  {a:'CHELSEA',clue:'West London Blues'},
+  {a:'LIVERPOOL',clue:'Anfield Reds'},
+  {a:'EVERTON',clue:'The Toffees of Merseyside'},
+  {a:'FULHAM',clue:'Craven Cottage club'},
+  {a:'BURNLEY',clue:'The Clarets'},
+  {a:'BRENTFORD',clue:'The Bees of west London'},
+  {a:'TOTTENHAM',clue:'North London Spurs'},
+  {a:'NEWCASTLE',clue:'The Magpies'},
+  {a:'VILLA',clue:'Aston ___'},
+  {a:'WOLVES',clue:'Molineux club nickname'},
+  {a:'LEEDS',clue:'Elland Road club'},
+  {a:'SPAIN',clue:'2010 World Cup winners'},
+  {a:'ITALY',clue:'Azzurri, four-time world champions'},
+  {a:'BRAZIL',clue:'Five-time World Cup winners'},
+  {a:'FRANCE',clue:'Les Bleus, 2018 champions'},
+  {a:'ENGLAND',clue:'Three Lions'},
+  {a:'GERMANY',clue:'Four-time world champions, Die Mannschaft'},
+  {a:'ARGENTINA',clue:'2022 World Cup winners'},
+  {a:'PORTUGAL',clue:'Euro 2016 winners'},
+  {a:'CROATIA',clue:'2018 World Cup runners-up'},
+  {a:'BELGIUM',clue:'The Red Devils national side'},
+  {a:'GOAL',clue:'The aim of the game'},
+  {a:'ASSIST',clue:'The final pass before a goal'},
+  {a:'KEEPER',clue:'The one between the sticks'},
+  {a:'STRIKER',clue:'A main goalscorer'},
+  {a:'WINGER',clue:'Wide attacking player'},
+  {a:'CAPTAIN',clue:'The armband wearer'},
+  {a:'OFFSIDE',clue:'Caught beyond the last defender'},
+  {a:'PENALTY',clue:'Spot kick from twelve yards'},
+  {a:'CORNER',clue:'Set piece from the flag'},
+  {a:'HEADER',clue:'Goal scored with the head'},
+  {a:'VOLLEY',clue:'Struck before it bounces'},
+  {a:'TACKLE',clue:'Winning the ball from an opponent'},
+  {a:'DRIBBLE',clue:'Running with the ball at feet'},
+  {a:'CROSS',clue:'Ball delivered into the box'},
+  {a:'SAVE',clue:'A keeper stop'},
+  {a:'DERBY',clue:'A local rivalry match'},
+  {a:'HATTRICK',clue:'Three goals by one player'},
+  {a:'NUTMEG',clue:'Through the legs'},
+  {a:'WEMBLEY',clue:'Englands national stadium'},
+  {a:'ANFIELD',clue:'Liverpools home ground'},
+  {a:'ETIHAD',clue:'Man Citys stadium'},
+  {a:'EMIRATES',clue:'Arsenals home ground'},
+  {a:'BERNABEU',clue:'Real Madrids stadium'},
+  {a:'CAMPNOU',clue:'Barcelonas home ground'},
+  {a:'SANSIRO',clue:'Milan shared stadium'},
+  {a:'REFEREE',clue:'The official with the whistle'},
+  {a:'MANAGER',clue:'The boss in the dugout'},
+  {a:'TROPHY',clue:'Silverware for the winners'},
+  {a:'LEAGUE',clue:'A competition format'},
+  {a:'TREBLE',clue:'Three trophies in one season'},
+  {a:'GUARDIOLA',clue:'Man City manager Pep'},
+  {a:'KLOPP',clue:'Former Liverpool boss Jurgen'},
+  {a:'MOURINHO',clue:'The Special One Jose'},
+  {a:'ANCELOTTI',clue:'Real Madrid manager Carlo'},
+  {a:'WENGER',clue:'Long-serving Arsenal boss Arsene'},
+  {a:'FERGUSON',clue:'Man Utd great Sir Alex'},
+  {a:'IBRA',clue:'Zlatan ___himovic'},
+  {a:'PIRLO',clue:'Italian deep playmaker Andrea'},
+  {a:'XAVI',clue:'Barcelona midfield metronome'},
+  {a:'INIESTA',clue:'Scored Spains 2010 final winner'},
+  {a:'CANNAVARO',clue:'2006 Ballon dOr winning defender'},
+  {a:'BALE',clue:'Welsh winger Gareth'},
+  {a:'FODEN',clue:'Man City and England midfielder Phil'},
+  {a:'SAKA',clue:'Arsenal and England winger Bukayo'},
+  {a:'RICE',clue:'Arsenal midfielder Declan'},
+  {a:'SANCHO',clue:'England winger Jadon'},
+  {a:'STERLING',clue:'England winger Raheem'},
+];
+
+function generateCrossword(bank, opts){
+  const o=opts||{}; const size=o.size||15; const target=o.target||28; const attempts=o.attempts||6;
+  const buildOne=()=>{
+    const seen=new Set();
+    let pool=bank.filter(e=>{const k=e.a;if(seen.has(k))return false;seen.add(k);return /^[A-Z]+$/.test(k)&&k.length>=3&&k.length<=size;});
+    pool=pool.sort(()=>Math.random()-0.5).sort((a,b)=>b.a.length-a.a.length);
+    const grid=Array.from({length:size},()=>Array(size).fill(null));
+    const placed=[];
+    const fits=(word,r,c,dir)=>{
+      const L=word.length; let crosses=0;
+      if(dir==='across'){
+        if(c<0||c+L>size||r<0||r>=size) return -1;
+        if(c>0&&grid[r][c-1]!=null) return -1;
+        if(c+L<size&&grid[r][c+L]!=null) return -1;
+        for(let i=0;i<L;i++){const cc=c+i,ch=grid[r][cc];
+          if(ch!=null){if(ch!==word[i])return -1;crosses++;}
+          else{if(r>0&&grid[r-1][cc]!=null)return -1;if(r<size-1&&grid[r+1][cc]!=null)return -1;}}
+      } else {
+        if(r<0||r+L>size||c<0||c>=size) return -1;
+        if(r>0&&grid[r-1][c]!=null) return -1;
+        if(r+L<size&&grid[r+L][c]!=null) return -1;
+        for(let i=0;i<L;i++){const rr=r+i,ch=grid[rr][c];
+          if(ch!=null){if(ch!==word[i])return -1;crosses++;}
+          else{if(c>0&&grid[rr][c-1]!=null)return -1;if(c<size-1&&grid[rr][c+1]!=null)return -1;}}
+      }
+      return crosses;
+    };
+    const put=(e,r,c,dir)=>{const w=e.a;for(let i=0;i<w.length;i++){if(dir==='across')grid[r][c+i]=w[i];else grid[r+i][c]=w[i];}placed.push({a:w,clue:e.clue,r,c,dir});};
+    if(!pool.length)return{rows:1,cols:1,entries:[]};
+    const first=pool.shift();
+    put(first,Math.floor(size/2),Math.max(0,Math.floor((size-first.a.length)/2)),'across');
+    let remaining=pool.slice(); let progress=true;
+    while(progress && placed.length<target){
+      progress=false;
+      for(let idx=0; idx<remaining.length && placed.length<target; idx++){
+        const e=remaining[idx]; if(!e) continue; const word=e.a;
+        let best=null,bestScore=0;
+        for(let i=0;i<word.length;i++){
+          for(let r=0;r<size;r++)for(let c=0;c<size;c++){
+            if(grid[r][c]!==word[i]) continue;
+            let sc=fits(word,r,c-i,'across');
+            if(sc>bestScore){bestScore=sc;best={r,c:c-i,dir:'across'};}
+            sc=fits(word,r-i,c,'down');
+            if(sc>bestScore){bestScore=sc;best={r:r-i,c,dir:'down'};}
+          }
+        }
+        if(best){ put(e,best.r,best.c,best.dir); remaining[idx]=null; progress=true; }
+      }
+      remaining=remaining.filter(Boolean);
+    }
+    let minR=size,maxR=0,minC=size,maxC=0;
+    for(let r=0;r<size;r++)for(let c=0;c<size;c++) if(grid[r][c]!=null){minR=Math.min(minR,r);maxR=Math.max(maxR,r);minC=Math.min(minC,c);maxC=Math.max(maxC,c);}
+    const entries=placed.map(e=>({...e,r:e.r-minR,c:e.c-minC}));
+    return {rows:maxR-minR+1, cols:maxC-minC+1, entries};
+  };
+  let bestPuz=buildOne();
+  for(let a=1;a<attempts;a++){ const p=buildOne(); if(p.entries.length>bestPuz.entries.length) bestPuz=p; }
+  return bestPuz;
+}
+
+const XW_PUZZLE_DEFS=[
+  {title:'The Big One', sub:'Generated &middot; ~25 clues', make:()=>({title:'The Big One', ...generateCrossword(XW_BANK,{size:15,target:30,attempts:8})})},
+  {title:'Daily Cryptic', sub:'Generated &middot; fresh each time', make:()=>({title:'Daily Cryptic', ...generateCrossword(XW_BANK,{size:13,target:22,attempts:8})})},
+  {title:'Quick Play', sub:'Generated &middot; smaller grid', make:()=>({title:'Quick Play', ...generateCrossword(XW_BANK,{size:11,target:16,attempts:8})})},
 ];
 
 // Build a render model: grid cells, numbering, and per-cell entry membership.
 function buildCrossword(p){
-  const N=p.size;
-  const cell=Array.from({length:N},()=>Array(N).fill(null)); // {sol} or null
+  const R=p.rows||p.size, Cn=p.cols||p.size;
+  const cell=Array.from({length:R},()=>Array(Cn).fill(null)); // {sol} or null (null = black)
   p.entries.forEach(e=>{
     for(let i=0;i<e.a.length;i++){
       const r=e.dir==='across'?e.r:e.r+i;
@@ -2087,31 +2220,33 @@ function buildCrossword(p){
       if(!cell[r][c]) cell[r][c]={sol:e.a[i]};
     }
   });
-  // standard numbering
+  const has=(r,c)=>r>=0&&c>=0&&r<R&&c<Cn&&cell[r][c];
+  // standard numbering: a cell is numbered if it starts an across or down run
   let num=0; const numAt={};
-  const starts=new Set(p.entries.map(e=>e.r+'_'+e.c));
-  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
-    if(cell[r][c] && starts.has(r+'_'+c)){ num++; numAt[r+'_'+c]=num; }
+  for(let r=0;r<R;r++)for(let c=0;c<Cn;c++){
+    if(!cell[r][c]) continue;
+    const startA = !has(r,c-1) && has(r,c+1);
+    const startD = !has(r-1,c) && has(r+1,c);
+    if(startA||startD){ num++; numAt[r+'_'+c]=num; }
   }
-  // attach numbers to entries
   const across=[], down=[];
   p.entries.forEach(e=>{
     const n=numAt[e.r+'_'+e.c];
     (e.dir==='across'?across:down).push({...e,num:n});
   });
-  across.sort((a,b)=>a.num-b.num); down.sort((a,b)=>a.num-b.num);
-  return {N,cell,numAt,across,down};
+  across.sort((a,b)=>(a.num||0)-(b.num||0)); down.sort((a,b)=>(a.num||0)-(b.num||0));
+  return {R,Cn,cell,numAt,across,down};
 }
 
 function CrosswordPlayer({puzzle,onBack}){
   const model=useState(()=>buildCrossword(puzzle))[0];
-  const {N,cell,numAt,across,down}=model;
-  const [grid,setGrid]=useState(()=>Array.from({length:N},()=>Array(N).fill('')));
+  const {R,Cn,cell,numAt,across,down}=model;
+  const [grid,setGrid]=useState(()=>Array.from({length:R},()=>Array(Cn).fill('')));
   const [sel,setSel]=useState(null); // {r,c}
   const [dir,setDir]=useState('across');
   const [checked,setChecked]=useState(false);
 
-  const isCell=(r,c)=>r>=0&&c>=0&&r<N&&c<N&&cell[r][c];
+  const isCell=(r,c)=>r>=0&&c>=0&&r<R&&c<Cn&&cell[r][c];
   const pick=(r,c)=>{ if(!isCell(r,c))return; if(sel&&sel.r===r&&sel.c===c){ setDir(d=>d==='across'?'down':'across'); } else { setSel({r,c}); } };
   const type=(ch)=>{
     if(!sel)return;
@@ -2155,7 +2290,7 @@ function CrosswordPlayer({puzzle,onBack}){
     return r>=rr&&r<=re;
   };
 
-  const cellPx=Math.min(36, Math.floor(320/N));
+  const cellPx=Math.max(16, Math.min(30, Math.floor(330/Cn)));
   return(
     <div style={{padding:16,paddingBottom:80}} tabIndex={0} onKeyDown={onKey}>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
@@ -2164,19 +2299,19 @@ function CrosswordPlayer({puzzle,onBack}){
         {solved&&<span style={{fontSize:12,fontWeight:700,color:C.green}}>SOLVED</span>}
       </div>
 
-      <div style={{display:'flex',justifyContent:'center',marginBottom:16}}>
-        <div style={{display:'grid',gridTemplateColumns:'repeat('+N+', '+cellPx+'px)',gap:2,background:C.d4,padding:2,borderRadius:4}}>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:16,overflowX:'auto'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat('+Cn+', '+cellPx+'px)',gap:1,background:'#1a1a1a',padding:1,borderRadius:2}}>
           {cell.map((row,r)=>row.map((x,c)=>{
-            if(!x) return <div key={r+'_'+c} style={{width:cellPx,height:cellPx,background:'transparent'}}/>;
+            if(!x) return <div key={r+'_'+c} style={{width:cellPx,height:cellPx,background:'#1a1a1a'}}/>;
             const n=numAt[r+'_'+c];
             const isSel=sel&&sel.r===r&&sel.c===c;
             const active=inActive(r,c);
             const val=grid[r][c];
             const wrong=checked&&val&&val!==x.sol;
             return(
-              <div key={r+'_'+c} onClick={()=>pick(r,c)} style={{width:cellPx,height:cellPx,background:isSel?C.teal:active?'rgba(10,191,184,.22)':C.d2,position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',borderRadius:2}}>
-                {n&&<span style={{position:'absolute',top:0,left:1,fontSize:7,color:isSel?C.dark:C.muted,fontWeight:700}}>{n}</span>}
-                <span style={{fontSize:cellPx*0.5,fontWeight:700,color:wrong?C.red:isSel?C.dark:C.text}}>{val}</span>
+              <div key={r+'_'+c} onClick={()=>pick(r,c)} style={{width:cellPx,height:cellPx,background:isSel?C.teal:active?'rgba(10,191,184,.25)':'#fff',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+                {n&&<span style={{position:'absolute',top:0,left:1,fontSize:Math.max(6,cellPx*0.28),color:isSel?C.dark:'#666',fontWeight:700,lineHeight:1}}>{n}</span>}
+                <span style={{fontSize:cellPx*0.55,fontWeight:700,color:wrong?C.red:isSel?C.dark:'#111'}}>{val}</span>
               </div>
             );
           }))}
@@ -2185,7 +2320,7 @@ function CrosswordPlayer({puzzle,onBack}){
 
       <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
         <button onClick={()=>setChecked(c=>!c)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>{checked?'Hide errors':'Check'}</button>
-        <button onClick={()=>{setGrid(Array.from({length:N},()=>Array(N).fill('')));setChecked(false);}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
+        <button onClick={()=>{setGrid(Array.from({length:R},()=>Array(Cn).fill('')));setChecked(false);}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
       </div>
 
       <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
@@ -2294,14 +2429,14 @@ function Quiz({openPlayer, openClub}){
           <div style={{fontSize:11,color:C.muted}}>Football crosswords - tap a cell, type to fill</div>
         </div>
         {SectionToggle}
-        {CROSSWORDS.map((cw,i)=>(
-          <div key={i} onClick={()=>setActiveCross(cw)} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 16px',marginBottom:6,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+        {XW_PUZZLE_DEFS.map((def,i)=>(
+          <div key={i} onClick={()=>setActiveCross(def.make())} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 16px',marginBottom:6,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
             <div style={{width:34,height:34,borderRadius:7,background:C.d3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
               <svg width={18} height={18} viewBox="0 0 24 24" fill={C.teal}><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
             </div>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:14,color:C.white,marginBottom:1}}>{cw.title}</div>
-              <div style={{fontSize:11,color:C.muted}}>{cw.entries.length} clues &middot; {cw.size}x{cw.size}</div>
+              <div style={{fontWeight:700,fontSize:14,color:C.white,marginBottom:1}}>{def.title}</div>
+              <div style={{fontSize:11,color:C.muted}}>{def.sub}</div>
             </div>
             <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
           </div>
