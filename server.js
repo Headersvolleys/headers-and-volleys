@@ -172,10 +172,20 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
     const addPlayer = (pl) => {
       if(!pl || !pl.id || !pl.name) return;
       const raw = pl.name||'';
-      const full = norm(raw);
-      const parts = raw.split(/[\s-]+/).map(norm).filter(p=>p.length>2);
-      const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));
-      [full, ...parts, noInit].forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
+      const full = norm(raw);                                   // "morgangibbswhite"
+      const noInit = norm(raw.replace(/^[A-Za-z]\.\s*/,''));    // drop leading "M."
+      // surname phrase = everything after the first space, hyphens collapsed
+      // "Morgan Gibbs-White" -> "gibbswhite"; "Ben White" -> "white"
+      const sp = raw.trim().split(/\s+/);
+      const surnamePhrase = sp.length>1 ? norm(sp.slice(1).join(' ')) : full;
+      // Only key by these specific forms. A single shared token like "white"
+      // is intentionally NOT keyed unless it IS the whole surname phrase, and
+      // even then we mark it ambiguous so it never overwrites a more specific id.
+      [full, noInit].forEach(k=>{ if(k && !map[k]) map[k]=pl.id; });
+      if(surnamePhrase){
+        if(map[surnamePhrase]===undefined) map[surnamePhrase]=pl.id;
+        else if(map[surnamePhrase]!==pl.id) map[surnamePhrase]=null; // collision -> ambiguous
+      }
     };
     // fetch a single team's squad with one retry on failure
     const fetchSquad = async (tid) => {
@@ -2163,16 +2173,17 @@ function Stats({openPlayer, openClub}){
   const photoIdFor=(nm)=>{
     const k=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
     if(!nm) return null;
+    const pick=key=>{ const v=photoMap[key]; return (v!=null) ? v : null; }; // null = ambiguous/absent
     const full=k(nm);
-    if(photoMap[full]) return photoMap[full];
+    if(pick(full)) return pick(full);
     const noInit=k((nm||'').replace(/^[A-Za-z]\.\s*/,''));
-    if(noInit&&photoMap[noInit]) return photoMap[noInit];
-    const toks=(nm||'').split(/[\s-]+/).map(k).filter(t=>t.length>=4);
-    // try last token, then first, then any
-    const last=toks[toks.length-1];
-    if(last&&photoMap[last]) return photoMap[last];
-    for(const t of toks){ if(photoMap[t]) return photoMap[t]; }
+    if(pick(noInit)) return pick(noInit);
+    // whole surname phrase (everything after first name), e.g. "Gibbs-White" -> gibbswhite
+    const sp=(nm||'').trim().split(/\s+/);
+    const surname = sp.length>1 ? k(sp.slice(1).join(' ')) : full;
+    if(pick(surname)) return pick(surname);
     return null;
+  };
   };
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
