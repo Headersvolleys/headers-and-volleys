@@ -36,8 +36,30 @@ app.get('/api/matches/today', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/standings', async (req, res) => {
-  try { res.json(await fd('/competitions/PL/standings?season=2025', 5*MIN)); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  const season = req.query.season || '2025';
+  try {
+    res.json(await fd('/competitions/PL/standings?season='+season, 60*MIN));
+  } catch(e) {
+    // football-data may not serve past seasons on this tier - fall back to
+    // API-Football and reshape into the football-data structure the client uses.
+    try {
+      const af1 = await af('/standings?league=39&season='+season, 6*60*MIN);
+      const rows = af1.response?.[0]?.league?.standings?.[0] || [];
+      if(!rows.length) return res.status(500).json({ error: 'No standings for season '+season });
+      const table = rows.map(r=>({
+        position: r.rank,
+        team: { id: r.team?.id, name: r.team?.name, crest: r.team?.logo },
+        playedGames: r.all?.played,
+        won: r.all?.win, draw: r.all?.draw, lost: r.all?.lose,
+        goalsFor: r.all?.goals?.for, goalsAgainst: r.all?.goals?.against,
+        goalDifference: r.goalsDiff, points: r.points,
+        form: r.form,
+      }));
+      res.json({ standings: [{ table }], season: Number(season), source: 'api-football' });
+    } catch(e2) {
+      res.status(500).json({ error: e2.message });
+    }
+  }
 });
 app.get('/api/scorers', async (req, res) => {
   try {
@@ -1230,20 +1252,29 @@ function Fixtures({openPlayer, openClub}){
 
 // -- TABLE -------------------------------------------------
 function Table({openClub}){
-  const {data,loading,error}=useApi('/api/standings',300000);
+  const SEASONS=[2025,2024,2023,2022,2021];
+  const [season,setSeason]=useState(2025);
+  const {data,loading,error}=useApi('/api/standings?season='+season, season===2025?300000:6*3600000);
   const [selClub,setSelClub]=useState(null);
-  
+
   const table=data?.standings?.[0]?.table||[];
   const ZC={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red};
-  if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
-  if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
   return(
     <div style={{padding:16,paddingBottom:80}}>
-      
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>TABLE</span></div>
-        <div style={{fontSize:11,color:C.muted}}>Tap a team for squad and stats</div>
+
+      <div style={{marginBottom:14,display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:8}}>
+        <div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>TABLE</span></div>
+          <div style={{fontSize:11,color:C.muted}}>Tap a team for squad and stats</div>
+        </div>
+        <select value={season} onChange={e=>setSeason(Number(e.target.value))}
+          style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none'}}>
+          {SEASONS.map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
+        </select>
       </div>
+      {loading&&<div style={{padding:40,textAlign:'center'}}><Spinner/></div>}
+      {error&&!loading&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable for {season}-{String(season+1).slice(2)}.</div>}
+      {!loading&&!error&&<>
       <div style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'4px 10px',marginBottom:4}}>
         {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
       </div>
@@ -1267,6 +1298,7 @@ function Table({openClub}){
           <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:c}}/>{l}</div>
         ))}
       </div>
+      </>}
     </div>
   );
 }
@@ -2070,6 +2102,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
   const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
+  const [tableSeason,setTableSeason]=useState(2025);
+  const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===2025?300000:6*3600000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
   const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
@@ -2341,13 +2375,23 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
 
         {/* TABLE */}
         {view==='table'&&<>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,gap:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>League Table</div>
+            <select value={tableSeason} onChange={e=>setTableSeason(Number(e.target.value))}
+              style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:7,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer',outline:'none'}}>
+              {[2025,2024,2023,2022,2021].map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
+            </select>
+          </div>
+          {!tableSeasonData&&<div style={{textAlign:'center',padding:24}}><Spinner size={20}/></div>}
+          {tableSeasonData&&(tableSeasonData.standings?.[0]?.table||[]).length===0&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:16}}>Table unavailable for this season.</div>}
+          {tableSeasonData&&(tableSeasonData.standings?.[0]?.table||[]).length>0&&<>
           <div style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'4px 8px',marginBottom:4}}>
             {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
           </div>
-          {(standData?.standings?.[0]?.table||[]).map(row=>{
+          {(tableSeasonData?.standings?.[0]?.table||[]).map(row=>{
             const rCode=TCODE[row.team?.name]||'???';
             const zc={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red}[row.position];
-            const isThis=row.team?.id===team?.id;
+            const isThis=(row.team?.name===team?.name)||(row.team?.id===team?.id);
             return(
               <div key={row.position} onClick={()=>!isThis&&openClub&&openClub(row.team,'table')}
                 style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'8px 8px',alignItems:'center',background:isThis?tc+'22':C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(isThis?tc:(zc||C.d4)),cursor:isThis?'default':'pointer'}}>
@@ -2367,6 +2411,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
               <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:c}}/>{l}</div>
             ))}
           </div>
+          </>}
         </>}
 
         {/* FIXTURES */}
