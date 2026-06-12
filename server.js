@@ -2175,6 +2175,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
   const {data:teamStats} = useApi(team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
+  const {data:xgTeamsData} = useApi('/api/xg/teams', 30*60000);
   const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
   const photoMap=photoMapData?.map||{};
   const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
@@ -2266,6 +2267,18 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const maxMin = Math.max(1, ...minBuckets.map(b=>Math.max(forMin[b]?.total||0, agMin[b]?.total||0)));
   const formation = (ts?.lineups && ts.lineups.length) ? [...ts.lineups].sort((a,b)=>b.played-a.played)[0] : null;
   const fxh = ts?.fixtures || {};
+  // Club xG (Understat) - match by normalised name
+  const xgNorm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+  const xgExpand = {'manchestercity':'manchestercity','manchesterunited':'manchesterunited','newcastleunited':'newcastleunited','tottenhamhotspur':'tottenham','wolverhamptonwanderers':'wolverhamptonwanderers','brightonhovealbion':'brighton','westhamunited':'westham','nottinghamforest':'nottinghamforest','leedsunited':'leeds'};
+  const xgKey = (n)=>{ const k=xgNorm(n); return xgExpand[k]||k; };
+  const clubXG = (xgTeamsData?.teams||[]).find(t=>{
+    const a=xgKey(t.name), b=xgKey(team?.name);
+    return a===b || a.includes(b) || b.includes(a);
+  }) || null;
+  const xgGoalDiff = clubXG ? +(gf - clubXG.xG).toFixed(1) : null;        // actual minus expected (for)
+  const xgaGoalDiff = clubXG ? +(ga - clubXG.xGA).toFixed(1) : null;      // actual conceded minus expected
+  const tablePts = tableRow?.points ?? null;
+  const xPtsDiff = (clubXG && tablePts!=null) ? +(tablePts - clubXG.xPts).toFixed(1) : null;
   const ages=squad.map(p=>p.age).filter(a=>a!=null);
   const avgAge=ages.length? (ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1):null;
   const natCounts={};
@@ -2281,15 +2294,15 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
       </div>
 
       {/* Club hero */}
-      <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'16px'}}>
+      <div style={{background:'linear-gradient(180deg, '+tc+'22 0%, '+C.d2+' 70%)',borderBottom:'1px solid '+C.d4,padding:'16px',borderTop:'3px solid '+tc}}>
         <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:10}}>
           <Badge code={code} size={52}/>
           <div style={{flex:1}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.white,letterSpacing:.5,lineHeight:1}}>{TSHORT[team?.name]||team?.name}</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,letterSpacing:.5,lineHeight:1}}>{TSHORT[team?.name]||team?.name}</div>
             {teamData&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{teamData.venue}{teamData.founded?'  Est. '+teamData.founded:''}</div>}
           </div>
           {tableRow&&<div style={{textAlign:'center',flexShrink:0}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:36,color:C.text,lineHeight:1}}>{tableRow.position}</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:36,color:tc,lineHeight:1}}>{tableRow.position}</div>
             <div style={{fontSize:9,color:C.muted,fontWeight:700}}>IN TABLE</div>
           </div>}
         </div>
@@ -2300,7 +2313,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         {/* Tab bar */}
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}}>
           {['overview','squad','stats','table','fixtures'].map(v=>(
-            <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>
+            <button key={v} onClick={()=>setView(v)} style={view===v?{...tS,borderColor:tc,color:tc,background:tc+'14'}:tS}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>
           ))}
         </div>
       </div>
@@ -2498,6 +2511,46 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   </div>);
                 })}
               </div>
+
+              {/* Expected Goals (Understat) */}
+              {clubXG&&<>
+                <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Expected Goals <span style={{color:C.muted,fontWeight:600}}>&middot; xG</span></div>
+                <div style={{background:C.d2,borderRadius:12,padding:'14px',marginBottom:8}}>
+                  <div style={{display:'flex',gap:8,marginBottom:10}}>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{clubXG.xG}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>xG (EXPECTED)</div>
+                    </div>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.text,lineHeight:1}}>{gf}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>GOALS (ACTUAL)</div>
+                    </div>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:xgGoalDiff>=0?C.green:C.red,lineHeight:1}}>{xgGoalDiff>0?'+':''}{xgGoalDiff}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>{xgGoalDiff>=0?'OVER':'UNDER'}-PERFORM</div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.orange,lineHeight:1}}>{clubXG.xGA}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>xGA (EXPECTED)</div>
+                    </div>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.text,lineHeight:1}}>{ga}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>CONCEDED</div>
+                    </div>
+                    <div style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:clubXG.xPts?C.text:C.muted,lineHeight:1}}>{clubXG.xPts}</div>
+                      <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>xPTS{xPtsDiff!=null?' ('+(xPtsDiff>0?'+':'')+xPtsDiff+')':''}</div>
+                    </div>
+                  </div>
+                  {clubXG.ppda!=null&&<div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:600}}>PPDA <span style={{opacity:.7}}>(pressing intensity)</span></span>
+                    <span style={{fontSize:12,color:C.text,fontWeight:700}}>{clubXG.ppda}</span>
+                  </div>}
+                </div>
+                <div style={{fontSize:9,color:C.muted,marginBottom:16,lineHeight:1.4}}>xG measures chance quality. Scoring above xG suggests clinical finishing or fortune; below suggests wastefulness. Data: Understat.</div>
+              </>}
 
               {/* Rich team stats */}
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team Profile</div>
