@@ -2063,9 +2063,9 @@ const CROSSWORDS=[
     {dir:'across',r:3,c:0,a:'BRAZIL',clue:'Five-time world champions'},
     {dir:'down',r:2,c:1,a:'DRAW',clue:'A level result'},
     {dir:'down',r:1,c:2,a:'GOAL',clue:'The aim of the game'},
-    {dir:'down',r:2,c:4,a:'KIT',clue:'A team\'s playing strip'},
+    {dir:'down',r:2,c:4,a:'KIT',clue:'A team playing strip'},
     {dir:'down',r:3,c:3,a:'ZONE',clue:'Defensive ___ marking'},
-    {dir:'down',r:3,c:5,a:'LOW',clue:'Germany\'s 2014-winning coach Joachim'},
+    {dir:'down',r:3,c:5,a:'LOW',clue:'Germany 2014-winning coach Joachim'},
   ]},
   {title:'Premier League', size:9, entries:[
     {dir:'across',r:0,c:0,a:'ARSENAL',clue:'The Gunners'},
