@@ -676,6 +676,59 @@ app.get('/api/af/squad', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Rich team statistics (formation, splits, goal intervals, streaks) - one AF call
+app.get('/api/team-stats', async (req, res) => {
+  try {
+    const name = req.query.name || '';
+    const season = req.query.season || '2025';
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').replace(/\b(fc|afc|cf)\b/g,'').replace(/\s+/g,' ').trim();
+    const EXPAND = {
+      'man utd':'manchester united','man united':'manchester united','man city':'manchester city',
+      'spurs':'tottenham hotspur','tottenham':'tottenham hotspur',
+      'nottm forest':'nottingham forest','nottingham':'nottingham forest',
+      'wolves':'wolverhampton wanderers','wolverhampton':'wolverhampton wanderers',
+      'west ham':'west ham united','newcastle':'newcastle united',
+      'brighton':'brighton hove albion','leeds':'leeds united',
+    };
+    const target = EXPAND[norm(name)] || norm(name);
+    const teamsData = await af('/teams?league=39&season='+season, 6*60*MIN);
+    const teams = teamsData.response || [];
+    const sc = (afName) => {
+      const fn = EXPAND[norm(afName)] || norm(afName);
+      if(fn===target) return 100;
+      const ft=fn.split(/\s+/).filter(Boolean), tt=target.split(/\s+/).filter(Boolean);
+      const shared=ft.filter(w=>tt.includes(w)).length;
+      const distinct=['city','united','utd','wanderers','albion','hotspur','forest','rovers'];
+      const fd=ft.find(w=>distinct.includes(w)), td=tt.find(w=>distinct.includes(w));
+      if(fd&&td&&fd!==td) return 0;
+      if(shared>=2) return 3;
+      if(shared===1&&Math.min(ft.length,tt.length)===1) return 3;
+      if(shared===1) return 1;
+      return 0;
+    };
+    const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
+    const teamId = ranked[0]?.t?.team?.id || null;
+    if(!teamId) return res.json({ found:false });
+
+    const st = await af('/teams/statistics?team='+teamId+'&league=39&season='+season, 6*60*MIN);
+    const r = st.response || {};
+    if(!r.fixtures) return res.json({ found:false, teamId });
+
+    res.json({
+      found:true, teamId,
+      form: r.form,
+      fixtures: r.fixtures,
+      goals: r.goals,
+      biggest: r.biggest,
+      clean_sheet: r.clean_sheet,
+      failed_to_score: r.failed_to_score,
+      penalty: r.penalty,
+      lineups: r.lineups,
+      cards: r.cards,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // GK clean sheets - calculated from match results + team squads
 app.get('/api/gk-cleansheets', async (req, res) => {
   try {
@@ -2121,6 +2174,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===2025?300000:6*3600000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
+  const {data:teamStats} = useApi(team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
   const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
   const photoMap=photoMapData?.map||{};
   const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
@@ -2184,6 +2238,26 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const clubScorers=(scorersData?.scorers||[]).filter(sc=>sc.team?.id===team?.id);
   const topScorer=[...clubScorers].sort((a,b)=>(b.goals||0)-(a.goals||0))[0]||null;
   const topAssister=[...clubScorers].sort((a,b)=>(b.assists||0)-(a.assists||0))[0]||null;
+  // --- Results analysis (Stats tab) ---
+  // chronological order (oldest -> newest) for streaks
+  const chron = [...finishedAll].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));
+  const resultOf = m => { const ih=m.homeTeam?.id===team?.id; const my=ih?m.score.fullTime.home:m.score.fullTime.away; const opp=ih?m.score.fullTime.away:m.score.fullTime.home; return my>opp?'W':my===opp?'D':'L'; };
+  let curWin=0,bestWin=0,curUnb=0,bestUnb=0;
+  chron.forEach(m=>{ const r=resultOf(m);
+    if(r==='W'){curWin++;curUnb++;} else if(r==='D'){curWin=0;curUnb++;} else {curWin=0;curUnb=0;}
+    bestWin=Math.max(bestWin,curWin); bestUnb=Math.max(bestUnb,curUnb);
+  });
+  // biggest defeat
+  let biggestLoss=null;
+  finishedAll.forEach(m=>{ const ih=m.homeTeam?.id===team?.id; const my=ih?m.score.fullTime.home:m.score.fullTime.away; const opp=ih?m.score.fullTime.away:m.score.fullTime.home;
+    const margin=opp-my; if(my<opp && (!biggestLoss||margin>biggestLoss.margin)) biggestLoss={margin, score:my+'-'+opp, opp:ih?m.awayTeam?.name:m.homeTeam?.name};
+  });
+  // record vs top-6 (by current standings)
+  const top6Ids = new Set((standData?.standings?.[0]?.table||[]).slice(0,6).map(r=>r.team?.id));
+  let t6w=0,t6d=0,t6l=0;
+  finishedAll.forEach(m=>{ const ih=m.homeTeam?.id===team?.id; const oppId=ih?m.awayTeam?.id:m.homeTeam?.id; if(!top6Ids.has(oppId)) return;
+    const r=resultOf(m); if(r==='W')t6w++;else if(r==='D')t6d++;else t6l++;
+  });
   const ages=squad.map(p=>p.age).filter(a=>a!=null);
   const avgAge=ages.length? (ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1):null;
   const natCounts={};
@@ -2217,7 +2291,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         </div>
         {/* Tab bar */}
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}}>
-          {['overview','squad','table','fixtures'].map(v=>(
+          {['overview','squad','stats','table','fixtures'].map(v=>(
             <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>
           ))}
         </div>
@@ -2386,6 +2460,113 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
               </div>
             );
           })}
+        </>}
+
+        {/* STATS */}
+        {view==='stats'&&<>
+          {!teamStats&&<div style={{textAlign:'center',padding:30}}><Spinner size={22}/></div>}
+          {teamStats&&!teamStats.found&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:20}}>Detailed stats unavailable for this club.</div>}
+          {teamStats&&teamStats.found&&(()=>{
+            const ts=teamStats;
+            const forMin=ts.goals?.for?.minute||{};
+            const agMin=ts.goals?.against?.minute||{};
+            const buckets=['0-15','16-30','31-45','46-60','61-75','76-90'];
+            const maxMin=Math.max(1,...buckets.map(b=>Math.max(forMin[b]?.total||0, agMin[b]?.total||0)));
+            const formation=ts.lineups&&ts.lineups.length?[...ts.lineups].sort((a,b)=>b.played-a.played)[0]:null;
+            const fxh=ts.fixtures||{};
+            return(<>
+              {/* Goals by interval */}
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Goals by Interval</div>
+              <div style={{background:C.d2,borderRadius:12,padding:'14px 12px',marginBottom:16}}>
+                <div style={{display:'flex',gap:14,marginBottom:10,fontSize:9,fontWeight:700}}>
+                  <span style={{color:C.teal}}>&#9632; SCORED</span><span style={{color:C.red}}>&#9632; CONCEDED</span>
+                </div>
+                {buckets.map(b=>{
+                  const f=forMin[b]?.total||0, a=agMin[b]?.total||0;
+                  return(<div key={b} style={{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+                    <span style={{fontSize:9,color:C.muted,fontWeight:700,width:38}}>{b}'</span>
+                    <div style={{flex:1}}>
+                      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}>
+                        <div style={{height:7,background:C.teal,borderRadius:3,width:(f/maxMin*100)+'%',minWidth:f?6:0}}/>
+                        <span style={{fontSize:9,color:C.text,fontWeight:700}}>{f}</span>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:4}}>
+                        <div style={{height:7,background:C.red,borderRadius:3,width:(a/maxMin*100)+'%',minWidth:a?6:0}}/>
+                        <span style={{fontSize:9,color:C.muted,fontWeight:700}}>{a}</span>
+                      </div>
+                    </div>
+                  </div>);
+                })}
+              </div>
+
+              {/* Rich team stats */}
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team Profile</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>
+                {[
+                  ['FORMATION',formation?formation.formation:'-',C.text],
+                  ['CLEAN SHEETS',ts.clean_sheet?.total??'-',C.teal],
+                  ['FAILED TO SCORE',ts.failed_to_score?.total??'-',C.muted],
+                  ['WIN STREAK',ts.biggest?.streak?.wins??bestWin,C.green],
+                  ['BIGGEST WIN',ts.biggest?.wins||(biggestWin?biggestWin.score:'-'),C.green],
+                  ['BIGGEST LOSS',ts.biggest?.loses||(biggestLoss?biggestLoss.score:'-'),C.red],
+                ].map(([l,v,c])=>(
+                  <div key={l} style={{background:C.d2,borderRadius:9,padding:'10px 6px',textAlign:'center'}}>
+                    <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:c,lineHeight:1}}>{v}</div>
+                    <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Home / Away splits from statistics */}
+              <div style={{display:'flex',gap:8,marginBottom:16}}>
+                {[['HOME',fxh.wins?.home,fxh.draws?.home,fxh.loses?.home],['AWAY',fxh.wins?.away,fxh.draws?.away,fxh.loses?.away]].map(([lbl,w,d,l])=>(
+                  <div key={lbl} style={{flex:1,textAlign:'center',background:C.d2,borderRadius:9,padding:'9px 4px'}}>
+                    <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.4,marginBottom:4}}>{lbl}</div>
+                    <div style={{fontSize:12,fontWeight:700}}><span style={{color:C.green}}>{w??0}W</span> <span style={{color:C.yellow}}>{d??0}D</span> <span style={{color:C.red}}>{l??0}L</span></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Results analysis */}
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Results Analysis</div>
+              <div style={{background:C.d2,borderRadius:12,padding:'12px 14px',marginBottom:16}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                  <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Record vs Top 6</span>
+                  <span style={{fontSize:12,fontWeight:700}}><span style={{color:C.green}}>{t6w}W</span> <span style={{color:C.yellow}}>{t6d}D</span> <span style={{color:C.red}}>{t6l}L</span></span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                  <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Longest Win Streak</span>
+                  <span style={{fontSize:12,color:C.text,fontWeight:700}}>{bestWin} games</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                  <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Longest Unbeaten Run</span>
+                  <span style={{fontSize:12,color:C.text,fontWeight:700}}>{bestUnb} games</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'}}>
+                  <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Biggest Defeat</span>
+                  <span style={{fontSize:12,color:C.text}}>{biggestLoss?<><span style={{color:C.red,fontWeight:700}}>{biggestLoss.score}</span> vs {TSHORT[biggestLoss.opp]||biggestLoss.opp}</>:'-'}</span>
+                </div>
+              </div>
+
+              {/* Squad depth chart */}
+              {squad.length>0&&<>
+                <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Squad Depth</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginBottom:16}}>
+                  {[['GK','Goalkeeper'],['DEF','Defender'],['MID','Midfielder'],['FWD','Forward']].map(([lbl,grp])=>{
+                    const players=squad.filter(p=>normPos(p.position)===grp);
+                    return(<div key={lbl} style={{background:C.d2,borderRadius:10,padding:'10px 8px'}}>
+                      <div style={{textAlign:'center',marginBottom:8}}>
+                        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.teal,lineHeight:1}}>{players.length}</div>
+                        <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.4}}>{lbl}</div>
+                      </div>
+                      {players.slice(0,8).map((p,i)=>(
+                        <div key={i} onClick={()=>openPlayer&&openPlayer({...p,afId:p.id,teamName:team?.name},team?.id,'stats')} style={{fontSize:9.5,color:C.text,padding:'3px 2px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',cursor:'pointer'}}>{p.name?.split(' ').pop()}</div>
+                      ))}
+                    </div>);
+                  })}
+                </div>
+              </>}
+            </>);
+          })()}
         </>}
 
         {/* TABLE */}
