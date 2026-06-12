@@ -2642,14 +2642,65 @@ function HeroAttr({label, value, accent}){
   );
 }
 
-function PlayerRadar({axes, accent}){
+function buildRadarAxes(detail, posGroup){
+  const d = detail || {};
+  const minsN = Number(d.minutes)||0;
+  const nineties = minsN>0 ? minsN/90 : 0;
+  const per90 = v => (nineties>0 && v!=null) ? +(Number(v)/nineties).toFixed(2) : null;
+  const pct = (v, max) => v==null ? 0 : Math.max(0,Math.min(100, (Number(v)/max)*100));
+  const goals90=per90(d.goals), assists90=per90(d.assists), shots90=per90(d.shotsTotal),
+        key90=per90(d.passesKey), drib90=per90(d.dribblesSuccess), tackle90=per90(d.tacklesTotal),
+        intc90=per90(d.interceptions), duelW90=per90(d.duelsWon), pass90=per90(d.passesTotal);
+  const passAcc = d.passAccuracy!=null ? Number(d.passAccuracy) : null;
+  let axes=[];
+  if(posGroup==='Forward'){
+    axes=[
+      {label:'GOALS',raw:goals90??'-',pct:pct(goals90,0.8)},
+      {label:'SHOTS',raw:shots90??'-',pct:pct(shots90,4)},
+      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.5)},
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,2.5)},
+      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
+    ];
+  } else if(posGroup==='Midfielder'){
+    axes=[
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,3)},
+      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.4)},
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
+      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
+      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,8)},
+    ];
+  } else if(posGroup==='Defender'){
+    axes=[
+      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4.5)},
+      {label:'INTERC',raw:intc90??'-',pct:pct(intc90,3)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,9)},
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
+      {label:'KEY P',raw:key90??'-',pct:pct(key90,1.5)},
+    ];
+  } else if(posGroup==='Goalkeeper'){
+    axes=[
+      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,90)},
+      {label:'PASSES',raw:pass90??'-',pct:pct(pass90,40)},
+      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,2)},
+    ];
+  }
+  const hasData = axes.some(a=>a.raw!=='-'&&a.raw!=null) && nineties>0;
+  return {axes, hasData};
+}
+
+function PlayerRadar({axes, accent, axes2, accent2}){
   const n = axes.length;
   if(n<3) return null;
   const size=220, cx=size/2, cy=size/2, R=78;
   const pt=(i,r)=>{ const a=(Math.PI*2*i/n)-Math.PI/2; return [cx+Math.cos(a)*r, cy+Math.sin(a)*r]; };
   const rings=[0.25,0.5,0.75,1];
-  const dataPts = axes.map((ax,i)=>pt(i, R*Math.max(0,Math.min(1,ax.pct/100))));
+  const polyFor = ax => ax.map((a,i)=>pt(i, R*Math.max(0,Math.min(1,a.pct/100))));
+  const dataPts = polyFor(axes);
   const dataStr = dataPts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const has2 = axes2 && axes2.length===n;
+  const dataPts2 = has2 ? polyFor(axes2) : null;
+  const dataStr2 = has2 ? dataPts2.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ') : null;
   return(
     <svg viewBox={'-58 -6 '+(size+116)+' '+(size+20)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
       {rings.map((rr,ri)=>(
@@ -2657,14 +2708,18 @@ function PlayerRadar({axes, accent}){
           fill="none" stroke={ri===rings.length-1?'rgba(120,170,180,.55)':'rgba(120,170,180,.32)'} strokeWidth={ri===rings.length-1?1.4:1}/>
       ))}
       {axes.map((_,i)=>{ const p=pt(i,R); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke="rgba(120,170,180,.38)" strokeWidth="1"/>; })}
-      <polygon points={dataStr} fill={accent+'33'} stroke={accent} strokeWidth="2" strokeLinejoin="round"/>
+      {has2&&<polygon points={dataStr2} fill={accent2+'22'} stroke={accent2} strokeWidth="2" strokeLinejoin="round"/>}
+      <polygon points={dataStr} fill={has2?accent+'22':accent+'33'} stroke={accent} strokeWidth="2" strokeLinejoin="round"/>
+      {has2&&dataPts2.map((p,i)=><circle key={'b'+i} cx={p[0]} cy={p[1]} r="2.5" fill={accent2}/>)}
       {dataPts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill={accent}/>)}
       {axes.map((ax,i)=>{
         const lp=pt(i,R+16);
         const anchor=Math.abs(lp[0]-cx)<8?'middle':lp[0]<cx?'end':'start';
         return(<g key={i}>
           <text x={lp[0]} y={lp[1]-2} fill={C.muted} fontSize="8.5" fontWeight="700" textAnchor={anchor} style={{letterSpacing:.3}}>{ax.label}</text>
-          <text x={lp[0]} y={lp[1]+8} fill={C.text} fontSize="9" fontWeight="700" textAnchor={anchor}>{ax.raw}</text>
+          {has2
+            ? <text x={lp[0]} y={lp[1]+8} fontSize="9" fontWeight="700" textAnchor={anchor}><tspan fill={accent}>{ax.raw}</tspan><tspan fill={C.muted}> / </tspan><tspan fill={accent2}>{axes2[i].raw}</tspan></text>
+            : <text x={lp[0]} y={lp[1]+8} fill={C.text} fontSize="9" fontWeight="700" textAnchor={anchor}>{ax.raw}</text>}
         </g>);
       })}
     </svg>
@@ -2712,6 +2767,9 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const [career, setCareer] = useState(null);
   const [careerLoading, setCareerLoading] = useState(false);
   const [selSeason, setSelSeason] = useState(null); // null = default (current/PL)
+  const [compareWith, setCompareWith] = useState(null); // {name, teamName, code} of 2nd player
+  const [compareCareer, setCompareCareer] = useState(null);
+  const [comparePicker, setComparePicker] = useState(false);
   const careerSeason = career?.seasonStats?.[0];
   const careerStat = careerSeason ? {
     goals: careerSeason.goals,
@@ -2725,7 +2783,16 @@ function PlayerModal({player, teamId, onClose, openClub}){
           : hasVals(careerStat) ? careerStat
           : data?.scorer || propStat || careerStat;
 
-  useEffect(()=>{ setSelSeason(null); }, [player?.name]);
+  useEffect(()=>{ setSelSeason(null); setCompareWith(null); setCompareCareer(null); setComparePicker(false); }, [player?.name]);
+
+  useEffect(()=>{
+    if(!compareWith?.name){ setCompareCareer(null); return; }
+    let cancelled=false;
+    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    const url = '/api/af/player-career?name='+encodeURIComponent(da(compareWith.name))+'&teamName='+encodeURIComponent(compareWith.teamName||'');
+    fetch(url).then(r=>r.json()).then(d=>{ if(!cancelled) setCompareCareer(d&&d.found?d:null); }).catch(()=>{ if(!cancelled) setCompareCareer(null); });
+    return ()=>{ cancelled=true; };
+  }, [compareWith?.name]);
 
   useEffect(()=>{
     if(!player?.name) return;
@@ -2747,6 +2814,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
   const {data:standData} = useApi('/api/standings', 300000);
+  const {data:cmpScorers} = useApi('/api/scorers?limit=100', 600000);
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
 
   // Hero enrichment from API-Football player object
@@ -2778,45 +2846,14 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const pct = (v, max) => v==null ? 0 : Math.max(0,Math.min(100, (Number(v)/max)*100));
   const posGroup = posDisplay; // Goalkeeper/Defender/Midfielder/Forward
   const d = detail;
-  // reference per-90 ceilings (rough PL upper bounds) for radar scaling
-  const goals90=per90(d.goals), assists90=per90(d.assists), shots90=per90(d.shotsTotal),
-        key90=per90(d.passesKey), drib90=per90(d.dribblesSuccess), tackle90=per90(d.tacklesTotal),
-        intc90=per90(d.interceptions), duelW90=per90(d.duelsWon), pass90=per90(d.passesTotal);
   const passAcc = d.passAccuracy!=null ? Number(d.passAccuracy) : null;
-  let radarAxes=[];
-  if(posGroup==='Forward'){
-    radarAxes=[
-      {label:'GOALS',raw:goals90??'-',pct:pct(goals90,0.8)},
-      {label:'SHOTS',raw:shots90??'-',pct:pct(shots90,4)},
-      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.5)},
-      {label:'KEY P',raw:key90??'-',pct:pct(key90,2.5)},
-      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
-    ];
-  } else if(posGroup==='Midfielder'){
-    radarAxes=[
-      {label:'KEY P',raw:key90??'-',pct:pct(key90,3)},
-      {label:'ASSISTS',raw:assists90??'-',pct:pct(assists90,0.4)},
-      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
-      {label:'DRIBBLES',raw:drib90??'-',pct:pct(drib90,3)},
-      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4)},
-      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,8)},
-    ];
-  } else if(posGroup==='Defender'){
-    radarAxes=[
-      {label:'TACKLES',raw:tackle90??'-',pct:pct(tackle90,4.5)},
-      {label:'INTERC',raw:intc90??'-',pct:pct(intc90,3)},
-      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,9)},
-      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,95)},
-      {label:'KEY P',raw:key90??'-',pct:pct(key90,1.5)},
-    ];
-  } else if(posGroup==='Goalkeeper'){
-    radarAxes=[
-      {label:'PASS %',raw:passAcc!=null?passAcc+'%':'-',pct:pct(passAcc,90)},
-      {label:'PASSES',raw:pass90??'-',pct:pct(pass90,40)},
-      {label:'DUELS W',raw:duelW90??'-',pct:pct(duelW90,2)},
-    ];
-  }
-  const hasDetail = radarAxes.some(a=>a.raw!=='-'&&a.raw!=null) && nineties>0;
+  const {axes:radarAxes, hasData:hasDetail} = buildRadarAxes(detail, posGroup);
+  // comparison player's axes (their default/PL season detail), same position template
+  const cmpDetail = compareCareer?.detail || null;
+  const cmpAxes = (cmpDetail && hasDetail) ? buildRadarAxes(cmpDetail, posGroup).axes : null;
+  const cmpName = compareWith?.name || null;
+  const cmpCode = compareWith?.code || null;
+  const cmpColor = cmpCode ? teamCol(cmpCode) : C.orange;
   // position-aware breakdown tiles (season totals)
   let breakdownTiles=[];
   const sd=(v)=>v==null?'-':v;
@@ -2929,10 +2966,41 @@ function PlayerModal({player, teamId, onClose, openClub}){
           {hasDetail&&<>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>Performance Profile</div>
-              <div style={{fontSize:9,color:C.muted,fontWeight:600}}>per 90 min</div>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{fontSize:9,color:C.muted,fontWeight:600}}>per 90 min</div>
+                {cmpName
+                  ? <span onClick={()=>{setCompareWith(null);setComparePicker(false);}} style={{fontSize:9,fontWeight:700,color:C.red,cursor:'pointer',letterSpacing:.3}}>CLEAR</span>
+                  : <span onClick={()=>setComparePicker(v=>!v)} style={{fontSize:9,fontWeight:700,color:C.teal,cursor:'pointer',letterSpacing:.3}}>{comparePicker?'CANCEL':'+ COMPARE'}</span>}
+              </div>
             </div>
+
+            {comparePicker&&!cmpName&&
+              <div style={{background:C.d2,borderRadius:10,padding:8,marginBottom:10,maxHeight:200,overflowY:'auto'}}>
+                <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:.4,padding:'2px 4px 6px'}}>COMPARE WITH</div>
+                {(cmpScorers?.scorers||[]).filter(sc=>(sc.player?.name||'').toLowerCase()!==(p?.name||'').toLowerCase()).slice(0,40).map((sc,i)=>{
+                  const scCode=TCODE[sc.team?.name]||'???';
+                  return(
+                    <div key={i} onClick={()=>{setCompareWith({name:sc.player?.name, teamName:sc.team?.name, code:scCode}); setComparePicker(false);}}
+                      style={{display:'flex',alignItems:'center',gap:8,padding:'6px 4px',cursor:'pointer',borderRadius:6}}
+                      onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <Badge code={scCode} size={18}/>
+                      <span style={{fontSize:12,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sc.player?.name}</span>
+                      <span style={{fontSize:11,color:C.muted}}>{sc.goals}G {sc.assists}A</span>
+                    </div>
+                  );
+                })}
+              </div>}
+
+            {/* legend when comparing */}
+            {cmpName&&
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,marginBottom:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:tc}}/><span style={{fontSize:10,color:C.text,fontWeight:700}}>{p?.name}</span></div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:cmpColor}}/><span style={{fontSize:10,color:C.text,fontWeight:700}}>{cmpName}{!cmpAxes?' (loading...)':''}</span></div>
+              </div>}
+
             <div style={{background:C.d2,borderRadius:14,padding:'16px 12px 10px',marginBottom:16}}>
-              <PlayerRadar axes={radarAxes} accent={tc}/>
+              <PlayerRadar axes={radarAxes} accent={tc} axes2={cmpAxes} accent2={cmpColor}/>
             </div>
           </>}
 
