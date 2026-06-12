@@ -3066,8 +3066,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
               <PlayerRadar series={[{axes:radarAxes, color:tc}, ...cmpPlayers.map(c=>({axes:c.axes, color:c.color}))]}/>
             </div>
 
-            {/* full stat comparison table */}
-            {comparing&&
+            {/* full stat table (always shown; extra columns appear when comparing) */}
+            {hasDetail&&
               <div style={{background:C.d2,borderRadius:12,overflow:'hidden',marginBottom:16}}>
                 <div style={{display:'grid',gridTemplateColumns:'1.3fr repeat('+tablePlayers.length+',1fr)',gap:2,padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.08)',alignItems:'center'}}>
                   <div/>
