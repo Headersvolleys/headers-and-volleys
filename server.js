@@ -2184,7 +2184,6 @@ function Stats({openPlayer, openClub}){
     if(pick(surname)) return pick(surname);
     return null;
   };
-  };
   const [view,setView]=useState('scorers');
   const [showFull,setShowFull]=useState(false);
   const [selPlayer,setSelPlayer]=useState(null);
