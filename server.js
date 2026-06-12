@@ -648,11 +648,18 @@ app.get('/api/af/squad', async (req, res) => {
     // do NOT let an empty response get cached as the answer.
     const sleep = ms => new Promise(r=>setTimeout(r,ms));
     let roster = [];
-    for(let attempt=0; attempt<3; attempt++){
+    for(let attempt=0; attempt<4; attempt++){
       const sq = await af('/players/squads?team=' + teamId, 6*60*MIN, true).catch(()=>({response:[]}));
       roster = sq.response?.[0]?.players || [];
       if(roster.length>0) break;
-      await sleep(500);
+      await sleep(600*(attempt+1)); // growing backoff: 0.6s, 1.2s, 1.8s
+    }
+    // Persist last-known-good squad per team so a transient failure still serves data
+    if(!global.__squadGood) global.__squadGood = {};
+    if(roster.length>0){
+      global.__squadGood[teamId] = roster;
+    } else if(global.__squadGood[teamId]) {
+      roster = global.__squadGood[teamId]; // fall back to last good roster
     }
     if(roster.length===0) return res.json({ squad: [], teamId, unavailable: true });
     // Separately fetch nationality (squad endpoint omits it) and attach by id.
@@ -1032,6 +1039,14 @@ function safeTeamCols(hCode, aCode) {
 const CRESTS = {};
 let CRESTS_LOADED = false;
 
+function TeamCrest({code, logo, size=18}){
+  // Use the code-based Badge when we recognise the club; otherwise fall back
+  // to a logo URL (e.g. AF crest for historical/relegated clubs in past tables).
+  if(code && code!=='???') return <Badge code={code} size={size}/>;
+  if(logo) return <img src={logo} width={size} height={size} style={{objectFit:'contain',flexShrink:0,maxWidth:size,maxHeight:size}} alt=""/>;
+  return <Badge code={code||'???'} size={size}/>;
+}
+
 function Badge({code,size=24}){
   const [bg,acc]=CC[code]||['#333','#fff'];
   const [err,setErr]=useState(false);
@@ -1283,7 +1298,7 @@ function Table({openClub}){
         return(
           <div key={row.position} onClick={()=>openClub&&openClub(row.team)} style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'8px 10px',alignItems:'center',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(zc||C.d4),cursor:'pointer'}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:zc||C.muted}}>{row.position}</div>
-            <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Badge code={code} size={18}/><span style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
+            <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><TeamCrest code={code} logo={row.team?.crest} size={18}/><span style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
             <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
             <div style={{fontSize:11,color:C.green,textAlign:'center',fontWeight:600}}>{row.won}</div>
             <div style={{fontSize:11,color:C.yellow,textAlign:'center',fontWeight:600}}>{row.draw}</div>
@@ -2396,7 +2411,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
               <div key={row.position} onClick={()=>!isThis&&openClub&&openClub(row.team,'table')}
                 style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'8px 8px',alignItems:'center',background:isThis?tc+'22':C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(isThis?tc:(zc||C.d4)),cursor:isThis?'default':'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:isThis?tc:(zc||C.muted)}}>{row.position}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Badge code={rCode} size={17}/><span style={{fontSize:12,fontWeight:isThis?800:700,color:isThis?C.white:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
+                <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><TeamCrest code={rCode} logo={row.team?.crest} size={17}/><span style={{fontSize:12,fontWeight:isThis?800:700,color:isThis?C.white:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
                 <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
                 <div style={{fontSize:11,color:C.green,textAlign:'center',fontWeight:600}}>{row.won}</div>
                 <div style={{fontSize:11,color:C.yellow,textAlign:'center',fontWeight:600}}>{row.draw}</div>
