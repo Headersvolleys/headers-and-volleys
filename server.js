@@ -259,18 +259,32 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
 
     const map = {};            // fdPlayerId -> afPhotoId
     let matched=0, missed=0;
-    // resolve sequentially-ish, grouped by team to reuse squad fetches
+
+    // 1) resolve each scorer's AF team id, collect the unique set of team ids
+    const scorerRows = [];
+    const uniqueTids = new Set();
     for(const sc of scorers){
-      const fdId = sc.player?.id;
-      const nm = sc.player?.name;
-      const teamName = sc.team?.name;
-      if(!fdId || !nm || !teamName) { missed++; continue; }
+      const fdId = sc.player?.id, nm = sc.player?.name, teamName = sc.team?.name;
+      if(!fdId || !nm || !teamName){ missed++; continue; }
       const afTid = afTeamIdForName(teamName);
       if(!afTid){ missed++; continue; }
-      const squad = await fetchSquad(afTid);
-      const afId = matchInSquad(squad, nm);
-      if(afId){ map[fdId]=afId; matched++; } else { missed++; }
-      await sleep(60);
+      scorerRows.push({fdId, nm, afTid});
+      uniqueTids.add(afTid);
+    }
+
+    // 2) pre-fetch all needed squads in safe parallel batches (cached after)
+    const tids = [...uniqueTids];
+    const BATCH = 3;
+    for(let i=0;i<tids.length;i+=BATCH){
+      await Promise.all(tids.slice(i,i+BATCH).map(fetchSquad));
+      if(i+BATCH < tids.length) await sleep(150);
+    }
+
+    // 3) resolve all scorers instantly against the cached squads (no delay)
+    for(const row of scorerRows){
+      const squad = squadCache[row.afTid] || [];
+      const afId = matchInSquad(squad, row.nm);
+      if(afId){ map[row.fdId]=afId; matched++; } else { missed++; }
     }
     res.json({ map, matched, missed, total: scorers.length });
   } catch(e) { res.status(500).json({ error: e.message, map:{} }); }
