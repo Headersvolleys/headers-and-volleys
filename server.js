@@ -2566,6 +2566,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>
               </>}
             </>}
+        </>}
 
         {/* TABLE */}
         {view==='table'&&<>
