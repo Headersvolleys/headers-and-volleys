@@ -2045,14 +2045,14 @@ function FixRow({m,teamId,openClub,openMatch}){
   );
 }
 
-function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
+function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}){
   const code = TCODE[team?.name] || '???';
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
   const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const [squadFilter, setSquadFilter] = useState('ALL');
-  const [view, setView] = useState('overview');
+  const [view, setView] = useState(initialView || 'overview');
 
   const fdSquad = teamData?.squad || [];
   const afSquad = afSquadData?.squad || [];
@@ -2169,7 +2169,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch}){
             const posDisplay = normPos(p.position);
             const flagUrl = flag(p.nationality);
             return(
-              <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
+              <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id,'squad')} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
                 <PlayerThumb id={p.id||p.afId} size={34}/>
                 <div style={{flex:1,minWidth:0}}>
@@ -3648,17 +3648,31 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
 function App(){
   const [tab,setTab]=useState('live');
-  const [page,setPage]=useState(null); // {type:'player',data:{...}} or {type:'club',data:{...}}
+  const [stack,setStack]=useState([]); // navigation stack of {type, ...}
   useCrests();
 
-  const openPlayer=(player,teamId)=>{ if(!player||!teamId) return; setPage({type:'player',player,teamId}); };
-  const openClub=(team)=>{ if(!team) return; setPage({type:'club',team}); };
-  const goBack=()=>setPage(null);
+  const page = stack.length ? stack[stack.length-1] : null;
+  const pushPage = (pg)=>setStack(s=>[...s, pg]);
+  const openPlayer=(player,teamId,fromTab)=>{ if(!player||!teamId) return; pushPage({type:'player',player,teamId,fromTab}); };
+  const openClub=(team, initialView)=>{ if(!team) return; pushPage({type:'club',team,initialView}); };
+  const goBack=()=>setStack(s=>{
+    const top = s[s.length-1];
+    const rest = s.slice(0,-1);
+    // if leaving a player that came from a club squad tab, ensure the club
+    // beneath reopens on that tab
+    if(top?.type==='player' && top.fromTab && rest.length){
+      const below = rest[rest.length-1];
+      if(below?.type==='club'){
+        return [...rest.slice(0,-1), {...below, initialView: top.fromTab}];
+      }
+    }
+    return rest;
+  });
   const [matchOverlay,setMatchOverlay]=useState(null);
   const openMatch=(m)=>{ if(!m) return; setMatchOverlay(m); };
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
-  if(page?.type==='club') return <><ClubModal team={page.team} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatch}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
+  if(page?.type==='club') return <><ClubModal team={page.team} initialView={page.initialView} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatch}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
 
   return(
     <div style={{minHeight:'100vh',background:C.dark}}>
