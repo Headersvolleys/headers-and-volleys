@@ -2050,7 +2050,169 @@ function TypeAnswerQuiz({quiz,onFinish}){
   );
 }
 
+const CROSSWORDS=[
+  {title:'Between the Sticks', size:9, entries:[
+    {dir:'across',r:4,c:0,a:'CHELSEA',clue:'West London Blues'},
+    {dir:'across',r:1,c:0,a:'PASS',clue:'Move the ball to a team-mate'},
+    {dir:'down',r:1,c:0,a:'PITCH',clue:'The playing surface'},
+    {dir:'down',r:1,c:2,a:'SAVE',clue:'What a keeper does to a shot'},
+    {dir:'down',r:2,c:4,a:'ASSIST',clue:'The final pass before a goal'},
+    {dir:'down',r:4,c:6,a:'AREA',clue:'The penalty ___'},
+  ]},
+  {title:'World Cup', size:9, entries:[
+    {dir:'across',r:3,c:0,a:'BRAZIL',clue:'Five-time world champions'},
+    {dir:'down',r:2,c:1,a:'DRAW',clue:'A level result'},
+    {dir:'down',r:1,c:2,a:'GOAL',clue:'The aim of the game'},
+    {dir:'down',r:2,c:4,a:'KIT',clue:'A team\'s playing strip'},
+    {dir:'down',r:3,c:3,a:'ZONE',clue:'Defensive ___ marking'},
+    {dir:'down',r:3,c:5,a:'LOW',clue:'Germany\'s 2014-winning coach Joachim'},
+  ]},
+  {title:'Premier League', size:9, entries:[
+    {dir:'across',r:0,c:0,a:'ARSENAL',clue:'The Gunners'},
+    {dir:'down',r:0,c:0,a:'ASSIST',clue:'Credited for setting up a goal'},
+    {dir:'down',r:0,c:2,a:'SPAIN',clue:'2010 World Cup winners'},
+    {dir:'down',r:0,c:4,a:'NEYMAR',clue:'Brazilian forward, ex-Barca and PSG'},
+    {dir:'down',r:0,c:6,a:'LAW',clue:'Man Utd great Denis ___'},
+  ]},
+];
+
+// Build a render model: grid cells, numbering, and per-cell entry membership.
+function buildCrossword(p){
+  const N=p.size;
+  const cell=Array.from({length:N},()=>Array(N).fill(null)); // {sol} or null
+  p.entries.forEach(e=>{
+    for(let i=0;i<e.a.length;i++){
+      const r=e.dir==='across'?e.r:e.r+i;
+      const c=e.dir==='across'?e.c+i:e.c;
+      if(!cell[r][c]) cell[r][c]={sol:e.a[i]};
+    }
+  });
+  // standard numbering
+  let num=0; const numAt={};
+  const starts=new Set(p.entries.map(e=>e.r+'_'+e.c));
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    if(cell[r][c] && starts.has(r+'_'+c)){ num++; numAt[r+'_'+c]=num; }
+  }
+  // attach numbers to entries
+  const across=[], down=[];
+  p.entries.forEach(e=>{
+    const n=numAt[e.r+'_'+e.c];
+    (e.dir==='across'?across:down).push({...e,num:n});
+  });
+  across.sort((a,b)=>a.num-b.num); down.sort((a,b)=>a.num-b.num);
+  return {N,cell,numAt,across,down};
+}
+
+function CrosswordPlayer({puzzle,onBack}){
+  const model=useState(()=>buildCrossword(puzzle))[0];
+  const {N,cell,numAt,across,down}=model;
+  const [grid,setGrid]=useState(()=>Array.from({length:N},()=>Array(N).fill('')));
+  const [sel,setSel]=useState(null); // {r,c}
+  const [dir,setDir]=useState('across');
+  const [checked,setChecked]=useState(false);
+
+  const isCell=(r,c)=>r>=0&&c>=0&&r<N&&c<N&&cell[r][c];
+  const pick=(r,c)=>{ if(!isCell(r,c))return; if(sel&&sel.r===r&&sel.c===c){ setDir(d=>d==='across'?'down':'across'); } else { setSel({r,c}); } };
+  const type=(ch)=>{
+    if(!sel)return;
+    const up=ch.toUpperCase();
+    setGrid(g=>{ const ng=g.map(row=>row.slice()); ng[sel.r][sel.c]=up; return ng; });
+    // advance
+    const nr=dir==='across'?sel.r:sel.r+1, nc=dir==='across'?sel.c+1:sel.c;
+    if(isCell(nr,nc)) setSel({r:nr,c:nc});
+  };
+  const back=()=>{
+    if(!sel)return;
+    setGrid(g=>{ const ng=g.map(row=>row.slice()); ng[sel.r][sel.c]=''; return ng; });
+    const pr=dir==='across'?sel.r:sel.r-1, pc=dir==='across'?sel.c-1:sel.c;
+    if(isCell(pr,pc)) setSel({r:pr,c:pc});
+  };
+  const onKey=(e)=>{
+    if(e.key==='Backspace'){ e.preventDefault(); back(); }
+    else if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); type(e.key); }
+    else if(e.key==='ArrowRight'){ setDir('across'); if(isCell(sel?.r,sel?.c+1))setSel({r:sel.r,c:sel.c+1}); }
+    else if(e.key==='ArrowLeft'){ setDir('across'); if(isCell(sel?.r,sel?.c-1))setSel({r:sel.r,c:sel.c-1}); }
+    else if(e.key==='ArrowDown'){ setDir('down'); if(isCell(sel?.r+1,sel?.c))setSel({r:sel.r+1,c:sel.c}); }
+    else if(e.key==='ArrowUp'){ setDir('down'); if(isCell(sel?.r-1,sel?.c))setSel({r:sel.r-1,c:sel.c}); }
+  };
+
+  const allFilled=cell.flatMap((row,r)=>row.map((x,c)=>x?grid[r][c]:'X')).every(v=>v!=='');
+  const allCorrect=cell.every((row,r)=>row.every((x,c)=>!x||grid[r][c]===x.sol));
+  const solved=allFilled&&allCorrect;
+
+  // highlight cells in the active entry
+  const inActive=(r,c)=>{
+    if(!sel||!cell[r][c])return false;
+    if(dir==='across'){
+      if(r!==sel.r)return false;
+      let cc=sel.c; while(isCell(r,cc-1))cc--;
+      let ce=sel.c; while(isCell(r,ce+1))ce++;
+      return c>=cc&&c<=ce;
+    }
+    if(c!==sel.c)return false;
+    let rr=sel.r; while(isCell(rr-1,c))rr--;
+    let re=sel.r; while(isCell(re+1,c))re++;
+    return r>=rr&&r<=re;
+  };
+
+  const cellPx=Math.min(36, Math.floor(320/N));
+  return(
+    <div style={{padding:16,paddingBottom:80}} tabIndex={0} onKeyDown={onKey}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+        <button onClick={onBack} style={{background:'transparent',border:'none',color:C.muted,fontSize:18,cursor:'pointer'}}>{'<'}</button>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:1,flex:1}}>{puzzle.title}</div>
+        {solved&&<span style={{fontSize:12,fontWeight:700,color:C.green}}>SOLVED</span>}
+      </div>
+
+      <div style={{display:'flex',justifyContent:'center',marginBottom:16}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat('+N+', '+cellPx+'px)',gap:2,background:C.d4,padding:2,borderRadius:4}}>
+          {cell.map((row,r)=>row.map((x,c)=>{
+            if(!x) return <div key={r+'_'+c} style={{width:cellPx,height:cellPx,background:'transparent'}}/>;
+            const n=numAt[r+'_'+c];
+            const isSel=sel&&sel.r===r&&sel.c===c;
+            const active=inActive(r,c);
+            const val=grid[r][c];
+            const wrong=checked&&val&&val!==x.sol;
+            return(
+              <div key={r+'_'+c} onClick={()=>pick(r,c)} style={{width:cellPx,height:cellPx,background:isSel?C.teal:active?'rgba(10,191,184,.22)':C.d2,position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',borderRadius:2}}>
+                {n&&<span style={{position:'absolute',top:0,left:1,fontSize:7,color:isSel?C.dark:C.muted,fontWeight:700}}>{n}</span>}
+                <span style={{fontSize:cellPx*0.5,fontWeight:700,color:wrong?C.red:isSel?C.dark:C.text}}>{val}</span>
+              </div>
+            );
+          }))}
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
+        <button onClick={()=>setChecked(c=>!c)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>{checked?'Hide errors':'Check'}</button>
+        <button onClick={()=>{setGrid(Array.from({length:N},()=>Array(N).fill('')));setChecked(false);}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
+      </div>
+
+      <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:6}}>Across</div>
+          {across.map(e=>(
+            <div key={'a'+e.num} onClick={()=>{setSel({r:e.r,c:e.c});setDir('across');}} style={{fontSize:11,color:C.text,marginBottom:5,cursor:'pointer',lineHeight:1.3}}>
+              <span style={{color:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:C.muted}}>({e.a.length})</span>
+            </div>
+          ))}
+        </div>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:6}}>Down</div>
+          {down.map(e=>(
+            <div key={'d'+e.num} onClick={()=>{setSel({r:e.r,c:e.c});setDir('down');}} style={{fontSize:11,color:C.text,marginBottom:5,cursor:'pointer',lineHeight:1.3}}>
+              <span style={{color:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:C.muted}}>({e.a.length})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Quiz({openPlayer, openClub}){
+  const [section,setSection]=useState('quizzes'); // quizzes | crosswords
+  const [activeCross,setActiveCross]=useState(null);
   const [view,setView]=useState('list');
   const [activeQuiz,setActiveQuiz]=useState(null);
   const [format,setFormat]=useState('type');
@@ -2111,13 +2273,49 @@ function Quiz({openPlayer, openClub}){
     );
   }
 
+  if(section==='crosswords'&&activeCross){
+    return <CrosswordPlayer puzzle={activeCross} onBack={()=>setActiveCross(null)}/>;
+  }
+
   const cats=[...new Set(QUIZZES.map(q=>q.cat))];
+  const SectionToggle=(
+    <div style={{display:'flex',gap:6,marginBottom:16}}>
+      {[['quizzes','Quizzes'],['crosswords','Crosswords']].map(([id,lbl])=>(
+        <button key={id} onClick={()=>setSection(id)} style={{flex:1,padding:'8px 12px',borderRadius:9,border:'1px solid '+(section===id?C.teal:C.d4),background:section===id?'rgba(10,191,184,.1)':C.d2,color:section===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>{lbl}</button>
+      ))}
+    </div>
+  );
+
+  if(section==='crosswords'){
+    return(
+      <div style={{padding:16,paddingBottom:80}}>
+        <div style={{marginBottom:14}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PUZZLES</div>
+          <div style={{fontSize:11,color:C.muted}}>Football crosswords - tap a cell, type to fill</div>
+        </div>
+        {SectionToggle}
+        {CROSSWORDS.map((cw,i)=>(
+          <div key={i} onClick={()=>setActiveCross(cw)} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 16px',marginBottom:6,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+            <div style={{width:34,height:34,borderRadius:7,background:C.d3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill={C.teal}><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:14,color:C.white,marginBottom:1}}>{cw.title}</div>
+              <div style={{fontSize:11,color:C.muted}}>{cw.entries.length} clues &middot; {cw.size}x{cw.size}</div>
+            </div>
+            <div style={{color:C.muted,fontSize:16}}>{'>'}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return(
     <div style={{padding:16,paddingBottom:80}}>
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
         <div style={{fontSize:11,color:C.muted}}>{QUIZZES.length} quizzes - test your football knowledge</div>
       </div>
+      {SectionToggle}
       {cats.map(cat=>(
         <div key={cat} style={{marginBottom:16}}>
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:8}}>{cat}</div>
