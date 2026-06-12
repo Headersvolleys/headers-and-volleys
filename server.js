@@ -2114,7 +2114,6 @@ function Quiz({openPlayer, openClub}){
   const cats=[...new Set(QUIZZES.map(q=>q.cat))];
   return(
     <div style={{padding:16,paddingBottom:80}}>
-      {selClub&&<ClubModal team={selClub} onClose={()=>setSelClub(null)}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
         <div style={{fontSize:11,color:C.muted}}>{QUIZZES.length} quizzes - test your football knowledge</div>
