@@ -2245,21 +2245,57 @@ function CrosswordPlayer({puzzle,onBack}){
   const [sel,setSel]=useState(null); // {r,c}
   const [dir,setDir]=useState('across');
   const [checked,setChecked]=useState(false);
+  const [locked,setLocked]=useState(()=>({})); // 'r_c' -> true for correctly-completed cells
+  const [timeLeft,setTimeLeft]=useState(15*60);
+  const [timeUp,setTimeUp]=useState(false);
+
+  const isLocked=(r,c)=>!!locked[r+'_'+c];
 
   const isCell=(r,c)=>r>=0&&c>=0&&r<R&&c<Cn&&cell[r][c];
   const pick=(r,c)=>{ if(!isCell(r,c))return; if(sel&&sel.r===r&&sel.c===c){ setDir(d=>d==='across'?'down':'across'); } else { setSel({r,c}); } };
+  // entries that pass through a given cell
+  const entriesThrough=(r,c)=>{
+    const out=[];
+    [...across,...down].forEach(e=>{
+      for(let i=0;i<e.a.length;i++){
+        const er=e.dir==='across'?e.r:e.r+i, ec=e.dir==='across'?e.c+i:e.c;
+        if(er===r&&ec===c){ out.push(e); break; }
+      }
+    });
+    return out;
+  };
+  const lockCompleted=(ng,r,c)=>{
+    const newLocks={};
+    entriesThrough(r,c).forEach(e=>{
+      let correct=true;
+      for(let i=0;i<e.a.length;i++){
+        const er=e.dir==='across'?e.r:e.r+i, ec=e.dir==='across'?e.c+i:e.c;
+        if((ng[er][ec]||'')!==e.a[i]){ correct=false; break; }
+      }
+      if(correct){ for(let i=0;i<e.a.length;i++){ const er=e.dir==='across'?e.r:e.r+i, ec=e.dir==='across'?e.c+i:e.c; newLocks[er+'_'+ec]=true; } }
+    });
+    if(Object.keys(newLocks).length) setLocked(L=>({...L,...newLocks}));
+  };
   const type=(ch)=>{
-    if(!sel)return;
+    if(!sel||timeUp||isLocked(sel.r,sel.c))return;
     const up=ch.toUpperCase();
-    setGrid(g=>{ const ng=g.map(row=>row.slice()); ng[sel.r][sel.c]=up; return ng; });
-    // advance
-    const nr=dir==='across'?sel.r:sel.r+1, nc=dir==='across'?sel.c+1:sel.c;
+    const ng=grid.map(row=>row.slice()); ng[sel.r][sel.c]=up;
+    setGrid(ng);
+    lockCompleted(ng, sel.r, sel.c);
+    // advance to next non-locked cell
+    let nr=dir==='across'?sel.r:sel.r+1, nc=dir==='across'?sel.c+1:sel.c;
+    while(isCell(nr,nc)&&isLocked(nr,nc)){ nr=dir==='across'?nr:nr+1; nc=dir==='across'?nc+1:nc; }
     if(isCell(nr,nc)) setSel({r:nr,c:nc});
   };
   const back=()=>{
-    if(!sel)return;
+    if(!sel||timeUp)return;
+    if(isLocked(sel.r,sel.c)){ // skip back over locked
+      let pr=dir==='across'?sel.r:sel.r-1, pc=dir==='across'?sel.c-1:sel.c;
+      if(isCell(pr,pc)) setSel({r:pr,c:pc});
+      return;
+    }
     setGrid(g=>{ const ng=g.map(row=>row.slice()); ng[sel.r][sel.c]=''; return ng; });
-    const pr=dir==='across'?sel.r:sel.r-1, pc=dir==='across'?sel.c-1:sel.c;
+    let pr=dir==='across'?sel.r:sel.r-1, pc=dir==='across'?sel.c-1:sel.c;
     if(isCell(pr,pc)) setSel({r:pr,c:pc});
   };
   const onKey=(e)=>{
@@ -2274,6 +2310,14 @@ function CrosswordPlayer({puzzle,onBack}){
   const allFilled=cell.flatMap((row,r)=>row.map((x,c)=>x?grid[r][c]:'X')).every(v=>v!=='');
   const allCorrect=cell.every((row,r)=>row.every((x,c)=>!x||grid[r][c]===x.sol));
   const solved=allFilled&&allCorrect;
+
+  useEffect(()=>{
+    if(solved||timeUp) return;
+    const id=setInterval(()=>{ setTimeLeft(t=>{ if(t<=1){ clearInterval(id); setTimeUp(true); return 0; } return t-1; }); },1000);
+    return ()=>clearInterval(id);
+  },[solved,timeUp]);
+  const mm=String(Math.floor(timeLeft/60)).padStart(2,'0');
+  const ss=String(timeLeft%60).padStart(2,'0');
 
   // highlight cells in the active entry
   const inActive=(r,c)=>{
@@ -2296,7 +2340,9 @@ function CrosswordPlayer({puzzle,onBack}){
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
         <button onClick={onBack} style={{background:'transparent',border:'none',color:C.muted,fontSize:18,cursor:'pointer'}}>{'<'}</button>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:1,flex:1}}>{puzzle.title}</div>
-        {solved&&<span style={{fontSize:12,fontWeight:700,color:C.green}}>SOLVED</span>}
+        {solved?<span style={{fontSize:12,fontWeight:700,color:C.green}}>SOLVED</span>
+         :timeUp?<span style={{fontSize:12,fontWeight:700,color:C.red}}>TIME UP</span>
+         :<span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:timeLeft<60?C.red:C.text,letterSpacing:1}}>{mm}:{ss}</span>}
       </div>
 
       <div style={{display:'flex',justifyContent:'center',marginBottom:16,overflowX:'auto'}}>
@@ -2306,12 +2352,15 @@ function CrosswordPlayer({puzzle,onBack}){
             const n=numAt[r+'_'+c];
             const isSel=sel&&sel.r===r&&sel.c===c;
             const active=inActive(r,c);
+            const lock=isLocked(r,c);
             const val=grid[r][c];
             const wrong=checked&&val&&val!==x.sol;
+            const bg=isSel?C.teal:lock?'#fff':active?'#EAEDEF':'#fff';
+            const letterCol=lock?C.green:wrong?C.red:isSel?C.dark:'#111';
             return(
-              <div key={r+'_'+c} onClick={()=>pick(r,c)} style={{width:cellPx,height:cellPx,background:isSel?C.teal:active?'rgba(10,191,184,.25)':'#fff',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+              <div key={r+'_'+c} onClick={()=>pick(r,c)} style={{width:cellPx,height:cellPx,background:bg,position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:lock?'default':'pointer'}}>
                 {n&&<span style={{position:'absolute',top:0,left:1,fontSize:Math.max(6,cellPx*0.28),color:isSel?C.dark:'#666',fontWeight:700,lineHeight:1}}>{n}</span>}
-                <span style={{fontSize:cellPx*0.55,fontWeight:700,color:wrong?C.red:isSel?C.dark:'#111'}}>{val}</span>
+                <span style={{fontSize:cellPx*0.55,fontWeight:700,color:letterCol}}>{val}</span>
               </div>
             );
           }))}
@@ -2320,7 +2369,7 @@ function CrosswordPlayer({puzzle,onBack}){
 
       <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
         <button onClick={()=>setChecked(c=>!c)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>{checked?'Hide errors':'Check'}</button>
-        <button onClick={()=>{setGrid(Array.from({length:R},()=>Array(Cn).fill('')));setChecked(false);}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
+        <button onClick={()=>{setGrid(Array.from({length:R},()=>Array(Cn).fill('')));setChecked(false);setLocked({});}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
       </div>
 
       <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
