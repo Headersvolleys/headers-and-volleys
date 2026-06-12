@@ -294,15 +294,23 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
 // API-Football player career
 app.get('/api/af/player-career', async (req, res) => {
   try {
-    const {name, teamName, dob} = req.query;
-    if(!name) return res.json({found:false});
-    const cKey = 'afc17_'+name.toLowerCase().replace(/[^a-z]/g,'').slice(0,15)+'_'+(dob||'').replace(/-/g,'').slice(0,8);
+    const {name, teamName, dob, id} = req.query;
+    if(!name && !id) return res.json({found:false});
+    const cKey = 'afc18_'+(id?('id'+id):(name.toLowerCase().replace(/[^a-z]/g,'').slice(0,15)+'_'+(dob||'').replace(/-/g,'').slice(0,8)));
     if(cache[cKey] && Date.now()-cache[cKey].ts < 24*60*MIN) return res.json(cache[cKey].data);
 
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    let hit = null;
+
+    // Fast path: exact player id supplied (e.g. from a squad list) - no fuzzy search
+    if(id){
+      const byId = await af('/players?id='+encodeURIComponent(id)+'&season=2025', 5*MIN).catch(()=>({response:[]}));
+      hit = byId.response?.[0] || null;
+    }
+
+    if(!hit){
     const pn = da(name);
     const tn = da(teamName||'');
-    let hit = null;
 
     // Search AF by full name first (most precise)
     const byFull = await af('/players?search='+encodeURIComponent(da(name))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
@@ -355,6 +363,7 @@ app.get('/api/af/player-career', async (req, res) => {
         hit = fScored[0]?.p || null;
       }
     }
+    } // end name-search branch
 
     if(!hit) return res.json({found:false});
 
@@ -481,7 +490,7 @@ const AF_KEY = process.env.API_FOOTBALL_KEY || '';
 const AF_BASE = 'https://v3.football.api-sports.io';
 const afCache = {};
 
-async function af(endpoint, ttl) {
+async function af(endpoint, ttl, skipEmptyCache) {
   const now = Date.now();
   if (afCache[endpoint] && now - afCache[endpoint].ts < ttl) return afCache[endpoint].data;
   const r = await fetch(AF_BASE + endpoint, {
@@ -489,7 +498,10 @@ async function af(endpoint, ttl) {
   });
   if (!r.ok) throw new Error('AF API ' + r.status);
   const data = await r.json();
-  afCache[endpoint] = { data, ts: now };
+  // Don't cache an empty/rate-limited response when the caller opts out,
+  // so a transient empty result doesn't stick for the full TTL.
+  const isEmpty = !data || !Array.isArray(data.response) || data.response.length===0;
+  if (!(skipEmptyCache && isEmpty)) afCache[endpoint] = { data, ts: now };
   return data;
 }
 
@@ -610,9 +622,17 @@ app.get('/api/af/squad', async (req, res) => {
     const ranked = teams.map(t=>({t,s:sc(t.team?.name)})).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
     const teamId = ranked[0]?.t?.team?.id || null;
     if(!teamId) return res.json({ squad: [], teamId: null });
-    // Squad list comes straight from API-Football's squad endpoint (unedited).
-    const sq = await af('/players/squads?team=' + teamId, 6*60*MIN);
-    const roster = sq.response?.[0]?.players || [];
+    // Squad list from API-Football. Retry if empty (rate-limit hiccup) and
+    // do NOT let an empty response get cached as the answer.
+    const sleep = ms => new Promise(r=>setTimeout(r,ms));
+    let roster = [];
+    for(let attempt=0; attempt<3; attempt++){
+      const sq = await af('/players/squads?team=' + teamId, 6*60*MIN, true).catch(()=>({response:[]}));
+      roster = sq.response?.[0]?.players || [];
+      if(roster.length>0) break;
+      await sleep(500);
+    }
+    if(roster.length===0) return res.json({ squad: [], teamId, unavailable: true });
     // Separately fetch nationality (squad endpoint omits it) and attach by id.
     const natById = {};
     let page = 1, totalPages = 1;
@@ -2060,8 +2080,11 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
 
   const fdSquad = teamData?.squad || [];
   const afSquad = afSquadData?.squad || [];
-  const squad = afSquad.length>0 ? afSquad : fdSquad;
-  const squadLoading = afSquadLoad && tLoad;
+  // AF squad is the reliable source (has correct ids/photos). football-data
+  // /teams/:id 403s on this tier, so its squad is unreliable - only use it if
+  // AF genuinely returned players AND only as a last resort.
+  const squad = afSquad.length>0 ? afSquad : (afSquadData ? [] : fdSquad);
+  const squadLoading = afSquadLoad;
   const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
@@ -2299,7 +2322,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             const posDisplay = normPos(p.position);
             const flagUrl = flag(p.nationality);
             return(
-              <div key={i} onClick={()=>openPlayer&&openPlayer({...p,teamName:team?.name},team?.id,'squad')} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
+              <div key={i} onClick={()=>openPlayer&&openPlayer({...p,afId:p.id,teamName:team?.name},team?.id,'squad')} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
                 <PlayerThumb id={p.id||p.afId} size={34}/>
                 <div style={{flex:1,minWidth:0}}>
@@ -2973,7 +2996,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
     // Normalize name - remove accents for API search
     const ascii = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z ]/g,' ').trim();
     const searchName = ascii(player.name);
-    fetch('/api/af/player-career?name='+encodeURIComponent(searchName)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob))
+    const idParam = player?.afId ? '&id='+encodeURIComponent(player.afId) : '';
+    fetch('/api/af/player-career?name='+encodeURIComponent(searchName)+'&teamName='+encodeURIComponent(teamName)+'&dob='+encodeURIComponent(dob)+idParam)
       .then(r=>r.json())
       .then(d=>{ if(d.found) setCareer(d); setCareerLoading(false); })
       .catch(()=>setCareerLoading(false));
