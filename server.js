@@ -2258,6 +2258,14 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   finishedAll.forEach(m=>{ const ih=m.homeTeam?.id===team?.id; const oppId=ih?m.awayTeam?.id:m.homeTeam?.id; if(!top6Ids.has(oppId)) return;
     const r=resultOf(m); if(r==='W')t6w++;else if(r==='D')t6d++;else t6l++;
   });
+  // team-statistics derivations (Stats tab) - computed once, no inline IIFE
+  const ts = (teamStats && teamStats.found) ? teamStats : null;
+  const forMin = ts?.goals?.for?.minute || {};
+  const agMin = ts?.goals?.against?.minute || {};
+  const minBuckets = ['0-15','16-30','31-45','46-60','61-75','76-90'];
+  const maxMin = Math.max(1, ...minBuckets.map(b=>Math.max(forMin[b]?.total||0, agMin[b]?.total||0)));
+  const formation = (ts?.lineups && ts.lineups.length) ? [...ts.lineups].sort((a,b)=>b.played-a.played)[0] : null;
+  const fxh = ts?.fixtures || {};
   const ages=squad.map(p=>p.age).filter(a=>a!=null);
   const avgAge=ages.length? (ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1):null;
   const natCounts={};
@@ -2466,22 +2474,14 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         {view==='stats'&&<>
           {!teamStats&&<div style={{textAlign:'center',padding:30}}><Spinner size={22}/></div>}
           {teamStats&&!teamStats.found&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:20}}>Detailed stats unavailable for this club.</div>}
-          {teamStats&&teamStats.found&&(()=>{
-            const ts=teamStats;
-            const forMin=ts.goals?.for?.minute||{};
-            const agMin=ts.goals?.against?.minute||{};
-            const buckets=['0-15','16-30','31-45','46-60','61-75','76-90'];
-            const maxMin=Math.max(1,...buckets.map(b=>Math.max(forMin[b]?.total||0, agMin[b]?.total||0)));
-            const formation=ts.lineups&&ts.lineups.length?[...ts.lineups].sort((a,b)=>b.played-a.played)[0]:null;
-            const fxh=ts.fixtures||{};
-            return(<>
+          {teamStats&&teamStats.found&&<>
               {/* Goals by interval */}
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Goals by Interval</div>
               <div style={{background:C.d2,borderRadius:12,padding:'14px 12px',marginBottom:16}}>
                 <div style={{display:'flex',gap:14,marginBottom:10,fontSize:9,fontWeight:700}}>
                   <span style={{color:C.teal}}>&#9632; SCORED</span><span style={{color:C.red}}>&#9632; CONCEDED</span>
                 </div>
-                {buckets.map(b=>{
+                {minBuckets.map(b=>{
                   const f=forMin[b]?.total||0, a=agMin[b]?.total||0;
                   return(<div key={b} style={{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
                     <span style={{fontSize:9,color:C.muted,fontWeight:700,width:38}}>{b}'</span>
@@ -2565,9 +2565,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   })}
                 </div>
               </>}
-            </>);
-          })()}
-        </>}
+            </>}
 
         {/* TABLE */}
         {view==='table'&&<>
