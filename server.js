@@ -2051,6 +2051,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
+  const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
   const [squadFilter, setSquadFilter] = useState('ALL');
   const [view, setView] = useState(initialView || 'overview');
 
@@ -2078,6 +2079,41 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const tc = teamCol(code);
   const tS={padding:'6px 12px',borderRadius:7,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  // ---- Overview analytics (all derived from data already loaded) ----
+  const finishedAll = teamFixtures.filter(m=>m.status==='FINISHED' && m.score?.fullTime?.home!=null);
+  let gf=0, ga=0, cs=0, fts=0, wins=0, draws=0, losses=0, biggestWin=null;
+  finishedAll.forEach(m=>{
+    const ih=m.homeTeam?.id===team?.id;
+    const hg=m.score.fullTime.home, ag=m.score.fullTime.away;
+    const my=ih?hg:ag, opp=ih?ag:hg;
+    gf+=my; ga+=opp;
+    if(opp===0) cs++;
+    if(my===0) fts++;
+    if(my>opp) wins++; else if(my===opp) draws++; else losses++;
+    const margin=my-opp;
+    if(my>opp && (!biggestWin || margin>biggestWin.margin)) biggestWin={margin, score:my+'-'+opp, opp:ih?m.awayTeam?.name:m.homeTeam?.name};
+  });
+  const played=finishedAll.length;
+  const avgGF = played? (gf/played).toFixed(1):'-';
+  const avgGA = played? (ga/played).toFixed(1):'-';
+  const homeGames=finishedAll.filter(m=>m.homeTeam?.id===team?.id);
+  const awayGames=finishedAll.filter(m=>m.awayTeam?.id===team?.id);
+  const splitFor=(games,home)=>{ let w=0,d=0,l=0; games.forEach(m=>{const my=home?m.score.fullTime.home:m.score.fullTime.away; const opp=home?m.score.fullTime.away:m.score.fullTime.home; if(my>opp)w++;else if(my===opp)d++;else l++;}); return {w,d,l,p:games.length}; };
+  const homeRec=splitFor(homeGames,true), awayRec=splitFor(awayGames,false);
+  const last10 = finishedAll.slice(0,10).map(m=>{
+    const ih=m.homeTeam?.id===team?.id;
+    const hg=m.score.fullTime.home, ag=m.score.fullTime.away;
+    return hg===ag?'D':(ih?hg>ag:ag>hg)?'W':'L';
+  }).reverse();
+  const clubScorers=(scorersData?.scorers||[]).filter(sc=>sc.team?.id===team?.id);
+  const topScorer=[...clubScorers].sort((a,b)=>(b.goals||0)-(a.goals||0))[0]||null;
+  const topAssister=[...clubScorers].sort((a,b)=>(b.assists||0)-(a.assists||0))[0]||null;
+  const ages=squad.map(p=>p.age).filter(a=>a!=null);
+  const avgAge=ages.length? (ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1):null;
+  const natCounts={};
+  squad.forEach(p=>{ if(p.nationality){ natCounts[p.nationality]=(natCounts[p.nationality]||0)+1; } });
+  const topNats=Object.entries(natCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return(
     <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -2126,6 +2162,97 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   <div style={{fontSize:9,color:C.muted,marginTop:2}}>{l}</div>
                 </div>
               ))}
+            </div>
+          </>}
+
+          {/* Season Stats */}
+          {played>0&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>
+              {[['GOALS FOR',gf,C.text],['GOALS AGAINST',ga,C.text],['CLEAN SHEETS',cs,C.teal],['AVG SCORED',avgGF,C.text],['AVG CONCEDED',avgGA,C.text],['FAILED TO SCORE',fts,C.muted]].map(([l,v,c])=>(
+                <div key={l} style={{background:C.d2,borderRadius:9,padding:'10px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:c,lineHeight:1}}>{v}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>{l}</div>
+                </div>
+              ))}
+            </div>
+            {biggestWin&&<div style={{background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:.3}}>BIGGEST WIN</span>
+              <span style={{fontSize:12,color:C.text}}><span style={{color:C.green,fontWeight:700}}>{biggestWin.score}</span> vs {TSHORT[biggestWin.opp]||biggestWin.opp}</span>
+            </div>}
+          </>}
+
+          {/* Form & Home/Away */}
+          {last10.length>0&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Form <span style={{color:C.muted,fontWeight:600}}>&middot; last {last10.length}</span></div>
+            <div style={{background:C.d2,borderRadius:10,padding:'12px',marginBottom:8}}>
+              <div style={{display:'flex',gap:5,justifyContent:'center',marginBottom:12}}>
+                {last10.map((r,i)=>(
+                  <div key={i} style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',background:r==='W'?C.green:r==='D'?C.yellow:C.red}}>{r}</div>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                {[['HOME',homeRec],['AWAY',awayRec]].map(([lbl,rec])=>(
+                  <div key={lbl} style={{flex:1,textAlign:'center',background:C.d3,borderRadius:8,padding:'8px 4px'}}>
+                    <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.4,marginBottom:4}}>{lbl} ({rec.p})</div>
+                    <div style={{fontSize:12,fontWeight:700}}><span style={{color:C.green}}>{rec.w}W</span> <span style={{color:C.yellow}}>{rec.d}D</span> <span style={{color:C.red}}>{rec.l}L</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{marginBottom:16}}/>
+          </>}
+
+          {/* Top Performers */}
+          {(topScorer||topAssister)&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Top Performers</div>
+            <div style={{display:'flex',gap:8,marginBottom:16}}>
+              {topScorer&&<div onClick={()=>openPlayer&&openPlayer({...topScorer.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
+                <PlayerThumb id={topScorer.player?.afId||topScorer.player?.id} size={38}/>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP SCORER</div>
+                  <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topScorer.player?.name||'').split(' ').pop()}</div>
+                  <div style={{fontSize:13,color:tc,fontFamily:'Bebas Neue,sans-serif'}}>{topScorer.goals} goals</div>
+                </div>
+              </div>}
+              {topAssister&&<div onClick={()=>openPlayer&&openPlayer({...topAssister.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
+                <PlayerThumb id={topAssister.player?.afId||topAssister.player?.id} size={38}/>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP ASSISTS</div>
+                  <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topAssister.player?.name||'').split(' ').pop()}</div>
+                  <div style={{fontSize:13,color:C.orange,fontFamily:'Bebas Neue,sans-serif'}}>{topAssister.assists} assists</div>
+                </div>
+              </div>}
+            </div>
+          </>}
+
+          {/* Squad Insights */}
+          {(avgAge||topNats.length>0)&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Squad</div>
+            <div style={{background:C.d2,borderRadius:10,padding:'12px 14px',marginBottom:16}}>
+              <div style={{display:'flex',gap:8,marginBottom:topNats.length?12:0}}>
+                <div style={{flex:1,textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.text,lineHeight:1}}>{squad.length||'-'}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>PLAYERS</div>
+                </div>
+                <div style={{flex:1,textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.text,lineHeight:1}}>{avgAge||'-'}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>AVG AGE</div>
+                </div>
+                <div style={{flex:1,textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.text,lineHeight:1}}>{Object.keys(natCounts).length||'-'}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3}}>NATIONS</div>
+                </div>
+              </div>
+              {topNats.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:6,justifyContent:'center'}}>
+                {topNats.map(([nat,cnt],i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:5,background:C.d3,borderRadius:20,padding:'4px 10px'}}>
+                    {flag(nat)&&<img src={flag(nat)} style={{width:16,height:12,objectFit:'cover',borderRadius:2}} alt=""/>}
+                    <span style={{fontSize:10,color:C.text}}>{nat}</span>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:700}}>{cnt}</span>
+                  </div>
+                ))}
+              </div>}
             </div>
           </>}
 
