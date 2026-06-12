@@ -2248,6 +2248,7 @@ function CrosswordPlayer({puzzle,onBack}){
   const [locked,setLocked]=useState(()=>({})); // 'r_c' -> true for correctly-completed cells
   const [timeLeft,setTimeLeft]=useState(15*60);
   const [timeUp,setTimeUp]=useState(false);
+  const [gaveUp,setGaveUp]=useState(false);
 
   const isLocked=(r,c)=>!!locked[r+'_'+c];
 
@@ -2277,7 +2278,7 @@ function CrosswordPlayer({puzzle,onBack}){
     if(Object.keys(newLocks).length) setLocked(L=>({...L,...newLocks}));
   };
   const type=(ch)=>{
-    if(!sel||timeUp||isLocked(sel.r,sel.c))return;
+    if(!sel||(timeUp||gaveUp)||isLocked(sel.r,sel.c))return;
     const up=ch.toUpperCase();
     const ng=grid.map(row=>row.slice()); ng[sel.r][sel.c]=up;
     setGrid(ng);
@@ -2288,7 +2289,7 @@ function CrosswordPlayer({puzzle,onBack}){
     if(isCell(nr,nc)) setSel({r:nr,c:nc});
   };
   const back=()=>{
-    if(!sel||timeUp)return;
+    if(!sel||(timeUp||gaveUp))return;
     if(isLocked(sel.r,sel.c)){ // skip back over locked
       let pr=dir==='across'?sel.r:sel.r-1, pc=dir==='across'?sel.c-1:sel.c;
       if(isCell(pr,pc)) setSel({r:pr,c:pc});
@@ -2312,12 +2313,26 @@ function CrosswordPlayer({puzzle,onBack}){
   const solved=allFilled&&allCorrect;
 
   useEffect(()=>{
-    if(solved||timeUp) return;
+    if(solved||timeUp||gaveUp) return;
     const id=setInterval(()=>{ setTimeLeft(t=>{ if(t<=1){ clearInterval(id); setTimeUp(true); return 0; } return t-1; }); },1000);
     return ()=>clearInterval(id);
-  },[solved,timeUp]);
+  },[solved,timeUp,gaveUp]);
   const mm=String(Math.floor(timeLeft/60)).padStart(2,'0');
   const ss=String(timeLeft%60).padStart(2,'0');
+
+  const entrySolved=(e)=>{
+    for(let i=0;i<e.a.length;i++){ const er=e.dir==='across'?e.r:e.r+i, ec=e.dir==='across'?e.c+i:e.c; if(!locked[er+'_'+ec]) return false; }
+    return true;
+  };
+  const allEntries=[...across,...down];
+  const solvedCount=allEntries.filter(entrySolved).length;
+  const totalEntries=allEntries.length;
+  const scorePct=totalEntries?Math.round(solvedCount/totalEntries*100):0;
+  const ended=solved||timeUp||gaveUp;
+  // clue list ordering: unsolved first (keep number order), solved sink to bottom
+  const orderClues=(list)=>[...list].sort((a,b)=>{ const sa=entrySolved(a)?1:0, sb=entrySolved(b)?1:0; if(sa!==sb) return sa-sb; return (a.num||0)-(b.num||0); });
+  const acrossOrdered=orderClues(across);
+  const downOrdered=orderClues(down);
 
   // highlight cells in the active entry
   const inActive=(r,c)=>{
@@ -2342,6 +2357,7 @@ function CrosswordPlayer({puzzle,onBack}){
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.white,letterSpacing:1,flex:1}}>{puzzle.title}</div>
         {solved?<span style={{fontSize:12,fontWeight:700,color:C.green}}>SOLVED</span>
          :timeUp?<span style={{fontSize:12,fontWeight:700,color:C.red}}>TIME UP</span>
+         :gaveUp?<span style={{fontSize:12,fontWeight:700,color:C.muted}}>ENDED</span>
          :<span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:timeLeft<60?C.red:C.text,letterSpacing:1}}>{mm}:{ss}</span>}
       </div>
 
@@ -2367,27 +2383,42 @@ function CrosswordPlayer({puzzle,onBack}){
         </div>
       </div>
 
-      <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
-        <button onClick={()=>setChecked(c=>!c)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>{checked?'Hide errors':'Check'}</button>
-        <button onClick={()=>{setGrid(Array.from({length:R},()=>Array(Cn).fill('')));setChecked(false);setLocked({});}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
-      </div>
+      {ended&&
+        <div style={{background:C.d2,border:'1px solid '+(solved?C.green:C.d4),borderRadius:12,padding:'16px',marginBottom:16,textAlign:'center'}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:44,color:solved?C.green:scorePct>=50?C.yellow:C.orange,lineHeight:1}}>{scorePct}%</div>
+          <div style={{fontSize:13,color:C.text,fontWeight:700,marginTop:4}}>{solvedCount} of {totalEntries} clues solved</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>{solved?'Completed':timeUp?'Time ran out':'You gave up'}</div>
+        </div>}
+
+      {!ended&&
+        <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
+          <button onClick={()=>setChecked(c=>!c)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>{checked?'Hide errors':'Check'}</button>
+          <button onClick={()=>{setGrid(Array.from({length:R},()=>Array(Cn).fill('')));setChecked(false);setLocked({});}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Clear</button>
+          <button onClick={()=>setGaveUp(true)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+C.d4,background:C.d2,color:C.red,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12,cursor:'pointer'}}>Give Up</button>
+        </div>}
 
       <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
         <div style={{flex:1,minWidth:140}}>
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:6}}>Across</div>
-          {across.map(e=>(
-            <div key={'a'+e.num} onClick={()=>{setSel({r:e.r,c:e.c});setDir('across');}} style={{fontSize:11,color:C.text,marginBottom:5,cursor:'pointer',lineHeight:1.3}}>
-              <span style={{color:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:C.muted}}>({e.a.length})</span>
+          {acrossOrdered.map(e=>{
+            const done=entrySolved(e);
+            return(
+            <div key={'a'+e.num} onClick={()=>{if(!ended){setSel({r:e.r,c:e.c});setDir('across');}}} style={{fontSize:11,color:done?C.green:C.text,marginBottom:5,cursor:ended?'default':'pointer',lineHeight:1.3,opacity:done?0.85:1}}>
+              <span style={{color:done?C.green:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:done?C.green:C.muted}}>({e.a.length})</span>{done&&<span style={{color:C.green,fontWeight:700}}> &#10003;</span>}
             </div>
-          ))}
+            );
+          })}
         </div>
         <div style={{flex:1,minWidth:140}}>
           <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,textTransform:'uppercase',marginBottom:6}}>Down</div>
-          {down.map(e=>(
-            <div key={'d'+e.num} onClick={()=>{setSel({r:e.r,c:e.c});setDir('down');}} style={{fontSize:11,color:C.text,marginBottom:5,cursor:'pointer',lineHeight:1.3}}>
-              <span style={{color:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:C.muted}}>({e.a.length})</span>
+          {downOrdered.map(e=>{
+            const done=entrySolved(e);
+            return(
+            <div key={'d'+e.num} onClick={()=>{if(!ended){setSel({r:e.r,c:e.c});setDir('down');}}} style={{fontSize:11,color:done?C.green:C.text,marginBottom:5,cursor:ended?'default':'pointer',lineHeight:1.3,opacity:done?0.85:1}}>
+              <span style={{color:done?C.green:C.muted,fontWeight:700}}>{e.num}.</span> {e.clue} <span style={{color:done?C.green:C.muted}}>({e.a.length})</span>{done&&<span style={{color:C.green,fontWeight:700}}> &#10003;</span>}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
