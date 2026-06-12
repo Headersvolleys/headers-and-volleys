@@ -2145,7 +2145,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         </div>
         {/* Tab bar */}
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}}>
-          {['overview','squad','fixtures'].map(v=>(
+          {['overview','squad','table','fixtures'].map(v=>(
             <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>
           ))}
         </div>
@@ -2314,6 +2314,36 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
               </div>
             );
           })}
+        </>}
+
+        {/* TABLE */}
+        {view==='table'&&<>
+          <div style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'4px 8px',marginBottom:4}}>
+            {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
+          </div>
+          {(standData?.standings?.[0]?.table||[]).map(row=>{
+            const rCode=TCODE[row.team?.name]||'???';
+            const zc={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red}[row.position];
+            const isThis=row.team?.id===team?.id;
+            return(
+              <div key={row.position} onClick={()=>!isThis&&openClub&&openClub(row.team,'table')}
+                style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'8px 8px',alignItems:'center',background:isThis?tc+'22':C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(isThis?tc:(zc||C.d4)),cursor:isThis?'default':'pointer'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:isThis?tc:(zc||C.muted)}}>{row.position}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Badge code={rCode} size={17}/><span style={{fontSize:12,fontWeight:isThis?800:700,color:isThis?C.white:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
+                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
+                <div style={{fontSize:11,color:C.green,textAlign:'center',fontWeight:600}}>{row.won}</div>
+                <div style={{fontSize:11,color:C.yellow,textAlign:'center',fontWeight:600}}>{row.draw}</div>
+                <div style={{fontSize:11,color:C.red,textAlign:'center',fontWeight:600}}>{row.lost}</div>
+                <div style={{fontSize:11,color:row.goalDifference>=0?C.text:C.red,textAlign:'center'}}>{row.goalDifference>0?'+':''}{row.goalDifference}</div>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.white,textAlign:'center'}}>{row.points}</div>
+              </div>
+            );
+          })}
+          <div style={{marginTop:10,display:'flex',gap:10,flexWrap:'wrap'}}>
+            {[['Champions League',C.blue],['Europa League',C.orange],['Conference',C.yellow],['Relegation',C.red]].map(([l,c])=>(
+              <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:c}}/>{l}</div>
+            ))}
+          </div>
         </>}
 
         {/* FIXTURES */}
