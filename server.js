@@ -373,8 +373,21 @@ app.get('/api/af/player-career', async (req, res) => {
     ).filter(t=>t.from||t.to).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
     const stats = hit.statistics || [];
+    const buildDetail = (st) => ({
+      shotsTotal: st.shots?.total, shotsOn: st.shots?.on,
+      passesTotal: st.passes?.total, passesKey: st.passes?.key, passAccuracy: st.passes?.accuracy,
+      dribblesAttempts: st.dribbles?.attempts, dribblesSuccess: st.dribbles?.success,
+      tacklesTotal: st.tackles?.total, interceptions: st.tackles?.interceptions,
+      duelsTotal: st.duels?.total, duelsWon: st.duels?.won,
+      foulsDrawn: st.fouls?.drawn, foulsCommitted: st.fouls?.committed,
+      goals: st.goals?.total, assists: st.goals?.assists,
+      yellow: st.cards?.yellow, red: st.cards?.red,
+      rating: st.games?.rating ? parseFloat(st.games.rating).toFixed(2) : null,
+      minutes: st.games?.minutes,
+    });
     const mapSeason = st => ({
       season: st.league?.season,
+      leagueId: st.league?.id,
       team: st.team?.name,
       teamLogo: st.team?.id ? '/api/af/logo/'+st.team.id : null,
       league: st.league?.name,
@@ -387,21 +400,11 @@ app.get('/api/af/player-career', async (req, res) => {
       position: st.games?.position,
       yellow: st.cards?.yellow,
       red: st.cards?.red,
+      detail: buildDetail(st),
     });
-    // current-season (PL) detailed breakdown
+    // current-season (PL preferred) detailed breakdown for the default view
     const cur = stats.find(s=>s.league?.id===39) || stats[0] || {};
-    const detail = {
-      shotsTotal: cur.shots?.total, shotsOn: cur.shots?.on,
-      passesTotal: cur.passes?.total, passesKey: cur.passes?.key, passAccuracy: cur.passes?.accuracy,
-      dribblesAttempts: cur.dribbles?.attempts, dribblesSuccess: cur.dribbles?.success,
-      tacklesTotal: cur.tackles?.total, interceptions: cur.tackles?.interceptions,
-      duelsTotal: cur.duels?.total, duelsWon: cur.duels?.won,
-      foulsDrawn: cur.fouls?.drawn, foulsCommitted: cur.fouls?.committed,
-      goals: cur.goals?.total, assists: cur.goals?.assists,
-      yellow: cur.cards?.yellow, red: cur.cards?.red,
-      rating: cur.games?.rating ? parseFloat(cur.games.rating).toFixed(2) : null,
-      minutes: cur.games?.minutes,
-    };
+    const detail = buildDetail(cur);
     const seasonStats = stats.map(mapSeason).filter(s=>s.appearances!=null);
 
     const result = {found:true, player:hit.player, transfers, seasonStats, detail};
@@ -2686,6 +2689,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const team = data?.team || (player?.teamName ? {name: player.teamName, id: teamId} : null);
   const [career, setCareer] = useState(null);
   const [careerLoading, setCareerLoading] = useState(false);
+  const [selSeason, setSelSeason] = useState(null); // null = default (current/PL)
   const careerSeason = career?.seasonStats?.[0];
   const careerStat = careerSeason ? {
     goals: careerSeason.goals,
@@ -2698,6 +2702,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
           : hasVals(propStat) ? propStat
           : hasVals(careerStat) ? careerStat
           : data?.scorer || propStat || careerStat;
+
+  useEffect(()=>{ setSelSeason(null); }, [player?.name]);
 
   useEffect(()=>{
     if(!player?.name) return;
@@ -2730,8 +2736,19 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const ageVal = cp.age || (dobValid ? Math.floor((Date.now()-dobDate.getTime())/31557600000) : null);
   const heightVal = cp.height || null;
   const weightVal = cp.weight || null;
-  const detail = career?.detail || {};
-  const goalsN = Number(s?.goals)||0, minsN = Number(detail.minutes)||0;
+  // Season selector: list seasons that carry detail data, newest first
+  const allSeasons = (career?.seasonStats||[]).filter(x=>x.detail && x.appearances!=null);
+  const seasonsForSel = allSeasons.slice().sort((a,b)=>(b.season||0)-(a.season||0));
+  // the season object currently selected (or the default current/PL one)
+  const defaultSeasonObj = seasonsForSel.find(x=>x.leagueId===39) || seasonsForSel[0] || null;
+  const selSeasonObj = selSeason!=null ? seasonsForSel.find(x=>x.season===selSeason) : defaultSeasonObj;
+  const detail = (selSeasonObj?.detail) || career?.detail || {};
+  // headline stats follow the selected season when one is chosen
+  const seasonGoals = selSeasonObj ? selSeasonObj.goals : s?.goals;
+  const seasonAssists = selSeasonObj ? selSeasonObj.assists : s?.assists;
+  const seasonApps = selSeasonObj ? selSeasonObj.appearances : (s?.playedMatches ?? s?.appearances);
+  const seasonLabel = selSeasonObj ? (selSeasonObj.season+'-'+String(selSeasonObj.season+1).slice(2)+' '+(selSeasonObj.league||'')) : '2025-26 Season';
+  const goalsN = Number(seasonGoals)||0, minsN = Number(detail.minutes)||0;
   const minsPerGoal = (goalsN>0 && minsN>0) ? Math.round(minsN/goalsN) : null;
   // per-90 helpers + position-aware radar/breakdown
   const nineties = minsN>0 ? minsN/90 : 0;
@@ -2865,14 +2882,25 @@ function PlayerModal({player, teamId, onClose, openClub}){
         {loading&&<div style={{textAlign:'center',padding:40}}><Spinner size={28}/></div>}
 
         {!loading&&<>
-          {/* Season stats */}
-          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>2025-26 Season</div>
+          {/* Season stats with selector */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,gap:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>{seasonLabel}</div>
+            {seasonsForSel.length>1&&
+              <select
+                value={selSeasonObj?.season ?? ''}
+                onChange={e=>setSelSeason(Number(e.target.value))}
+                style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:7,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer',outline:'none'}}>
+                {seasonsForSel.map((sn,i)=>(
+                  <option key={i} value={sn.season}>{sn.season}-{String(sn.season+1).slice(2)} {sn.league? '('+(TSHORT[sn.team]||sn.team)+')':''}</option>
+                ))}
+              </select>}
+          </div>
           <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
-            <PlayerStatBox label="GOALS" value={s?.goals??0} col={C.text} sub={minsPerGoal?minsPerGoal+' min/goal':null}/>
-            <PlayerStatBox label="ASSISTS" value={s?.assists??0} col={C.orange}/>
-            <PlayerStatBox label="APPS" value={s?.playedMatches??s?.appearances??'-'} col={C.muted}/>
-            {xgData&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
-            {xgData&&<PlayerStatBox label="xA" value={xgData.xA} col={C.orange}/>}
+            <PlayerStatBox label="GOALS" value={seasonGoals??0} col={C.text} sub={minsPerGoal?minsPerGoal+' min/goal':null}/>
+            <PlayerStatBox label="ASSISTS" value={seasonAssists??0} col={C.orange}/>
+            <PlayerStatBox label="APPS" value={seasonApps??'-'} col={C.muted}/>
+            {xgData&&!selSeason&&<PlayerStatBox label="xG" value={xgData.xG} col={C.teal}/>}
+            {xgData&&!selSeason&&<PlayerStatBox label="xA" value={xgData.xA} col={C.orange}/>}
           </div>
 
           {/* Performance radar (per 90) */}
