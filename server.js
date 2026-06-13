@@ -1381,52 +1381,79 @@ function Table({openClub}){
   const SEASONS=[2025,2024,2023,2022,2021];
   const [season,setSeason]=useState(2025);
   const {data,loading,error}=useApi('/api/standings?season='+season, season===2025?300000:6*3600000);
-  const [selClub,setSelClub]=useState(null);
 
   const table=data?.standings?.[0]?.table||[];
-  const ZC={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red};
+  const ZC={1:C.teal,2:C.teal,3:C.teal,4:C.teal,5:C.blue,6:C.orange,18:C.red,19:C.red,20:C.red};
+  const zoneName={1:'UCL',2:'UCL',3:'UCL',4:'UCL',5:'UEL',6:'UECL',18:'REL',19:'REL',20:'REL'};
   return(
-    <div style={{padding:16,paddingBottom:80}}>
-
-      <div style={{marginBottom:14,display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:8}}>
-        <div>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>TABLE</span></div>
-          <div style={{fontSize:11,color:C.muted}}>Tap a team for squad and stats</div>
+    <div style={{paddingBottom:80}}>
+      {/* Broadcast header bar */}
+      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
+          <div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>PREMIER <span style={{color:C.teal}}>LEAGUE</span></div>
+            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Standings &middot; Tap a club</div>
+          </div>
+          <select value={season} onChange={e=>setSeason(Number(e.target.value))}
+            style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none',letterSpacing:.5}}>
+            {SEASONS.map(y=><option key={y} value={y} style={{background:C.d2,color:C.text}}>{y}-{String(y+1).slice(2)}</option>)}
+          </select>
         </div>
-        <select value={season} onChange={e=>setSeason(Number(e.target.value))}
-          style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none'}}>
-          {SEASONS.map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
-        </select>
       </div>
-      {loading&&<div style={{padding:'4px 0'}}><Skeleton h={22} w={'60%'} mb={12}/><SkeletonRows n={10} h={40}/></div>}
+
+      <div style={{padding:'12px 12px 0'}}>
+      {loading&&<div style={{padding:'4px 0'}}><SkeletonRows n={12} h={46}/></div>}
       {error&&!loading&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable for {season}-{String(season+1).slice(2)}.</div>}
       {!loading&&!error&&<>
-      <div style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'4px 10px',marginBottom:4}}>
-        {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
+      {/* column header */}
+      <div style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,padding:'0 12px 6px',alignItems:'center'}}>
+        <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:1}}>#</div>
+        <div/>
+        {['P','W','D','L','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center',letterSpacing:.5}}>{h}</div>)}
       </div>
-      <div className="hv-anim">
+      <div className="hv-stagger">
       {table.map(row=>{
         const code=TCODE[row.team?.name]||'???', zc=ZC[row.position];
+        const tint = zc?zc+'14':'transparent';
         return(
-          <div key={row.position} className="hv-press hv-card" onClick={()=>openClub&&openClub(row.team)} style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'8px 10px',alignItems:'center',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(zc||C.d4),cursor:'pointer'}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:zc||C.muted}}>{row.position}</div>
-            <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><TeamCrest code={code} logo={row.team?.crest} size={18}/><span style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
+          <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub(row.team)}
+            style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,alignItems:'center',
+              background:'linear-gradient(90deg,'+(zc?zc+'1f':'rgba(255,255,255,.02)')+' 0%, '+C.d2+' 22%)',
+              borderRadius:10,marginBottom:5,padding:'10px 12px',cursor:'pointer',
+              boxShadow:'0 1px 0 rgba(0,0,0,.3), 0 2px 8px rgba(0,0,0,.18)',
+              borderLeft:'3px solid '+(zc||'transparent')}}>
+            {/* rank chip */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <div style={{width:24,height:24,borderRadius:6,background:zc?zc:'rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:zc?C.dark:C.muted,lineHeight:1}}>{row.position}</span>
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
+              <div style={{width:26,height:26,borderRadius:'50%',background:'rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <TeamCrest code={code} logo={row.team?.crest} size={18}/>
+              </div>
+              <span style={{fontSize:13,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
+            </div>
             <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
-            <div style={{fontSize:11,color:C.green,textAlign:'center',fontWeight:600}}>{row.won}</div>
-            <div style={{fontSize:11,color:C.yellow,textAlign:'center',fontWeight:600}}>{row.draw}</div>
-            <div style={{fontSize:11,color:C.red,textAlign:'center',fontWeight:600}}>{row.lost}</div>
-            <div style={{fontSize:11,color:row.goalDifference>=0?C.text:C.red,textAlign:'center'}}>{row.goalDifference>0?'+':''}{row.goalDifference}</div>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.white,textAlign:'center'}}>{row.points}</div>
+            <div style={{fontSize:11,color:C.text,textAlign:'center'}}>{row.won}</div>
+            <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.draw}</div>
+            <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.lost}</div>
+            <div style={{fontSize:11,fontWeight:700,color:row.goalDifference>=0?C.green:C.red,textAlign:'center'}}>{row.goalDifference>0?'+':''}{row.goalDifference}</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',borderLeft:'1px solid rgba(255,255,255,.08)'}}>
+              <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:21,color:C.white,lineHeight:1}}>{row.points}</span>
+            </div>
           </div>
         );
       })}
       </div>
-      <div style={{marginTop:10,display:'flex',gap:10,flexWrap:'wrap'}}>
-        {[['Champions League',C.blue],['Europa League',C.orange],['Conference League',C.yellow],['Relegation',C.red]].map(([l,c])=>(
-          <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:c}}/>{l}</div>
+      <div style={{marginTop:14,padding:'12px',background:C.d2,borderRadius:10,display:'flex',gap:14,flexWrap:'wrap'}}>
+        {[['Champions League',C.teal],['Europa League',C.blue],['Conference',C.orange],['Relegation',C.red]].map(([l,c])=>(
+          <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:C.muted,fontWeight:600}}><div style={{width:10,height:10,borderRadius:3,background:c}}/>{l}</div>
         ))}
       </div>
       </>}
+      </div>
     </div>
   );
 }
