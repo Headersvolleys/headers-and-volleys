@@ -1007,6 +1007,22 @@ body{background:#0F2027;color:#E0FFFD;font-family:'DM Sans',sans-serif;max-width
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes hvFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes hvPop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes hvShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+@keyframes hvDraw{from{stroke-dashoffset:var(--len,300)}to{stroke-dashoffset:0}}
+.hv-anim{animation:hvFadeUp .38s cubic-bezier(.22,.61,.36,1) both}
+.hv-pop{animation:hvPop .3s cubic-bezier(.22,.61,.36,1) both}
+.hv-stagger>*{animation:hvFadeUp .4s cubic-bezier(.22,.61,.36,1) both}
+.hv-stagger>*:nth-child(1){animation-delay:.02s}.hv-stagger>*:nth-child(2){animation-delay:.06s}
+.hv-stagger>*:nth-child(3){animation-delay:.1s}.hv-stagger>*:nth-child(4){animation-delay:.14s}
+.hv-stagger>*:nth-child(5){animation-delay:.18s}.hv-stagger>*:nth-child(6){animation-delay:.22s}
+.hv-stagger>*:nth-child(7){animation-delay:.26s}.hv-stagger>*:nth-child(8){animation-delay:.3s}
+.hv-press{transition:transform .12s ease, box-shadow .2s ease, background .2s ease}
+.hv-press:active{transform:scale(.97)}
+.hv-card{transition:transform .18s ease, box-shadow .25s ease, border-color .2s ease}
+.hv-skel{background:linear-gradient(90deg,#1A3340 0%,#244554 40%,#1A3340 80%);background-size:600px 100%;animation:hvShimmer 1.3s linear infinite;border-radius:8px}
+.hv-fade-tab{animation:hvFadeUp .3s ease both}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 input[type=number]{-moz-appearance:textfield}
 </style>
@@ -1161,6 +1177,33 @@ function useCrests(){
   },[]);
 }
 function Spinner({size=36}){return <div style={{width:size,height:size,border:'3px solid '+C.d4,borderTop:'3px solid '+C.teal,borderRadius:'50%',margin:'0 auto',animation:'spin 1s linear infinite'}}/>;}
+
+function Skeleton({w='100%',h=14,r=8,mb=0,style={}}){
+  return <div className="hv-skel" style={{width:w,height:h,borderRadius:r,marginBottom:mb,...style}}/>;
+}
+function SkeletonRows({n=5,h=46,gap=8}){
+  return <div style={{display:'flex',flexDirection:'column',gap}}>{Array.from({length:n}).map((_,i)=><Skeleton key={i} h={h}/>)}</div>;
+}
+
+// Consistent inline-SVG icon set. Usage: <Icon name="chevron" size={16} color={C.muted}/>
+const ICON_PATHS={
+  chevron:'M9 6l6 6-6 6',
+  back:'M15 6l-6 6 6 6',
+  close:'M6 6l12 12M18 6L6 18',
+  trophy:'M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3',
+  ball:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 7l4 3-1.5 4.5h-5L8 10l4-3z',
+  chart:'M4 20V10M10 20V4M16 20v-7M20 20H2',
+  grid:'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+  clock:'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
+  shield:'M12 3l8 3v6c0 4-3.5 7.5-8 9-4.5-1.5-8-5-8-9V6l8-3z',
+  whistle:'M3 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0zM11 11l9-5M11 12h9',
+  star:'M12 3l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8 6.8 19l1-5.8L3.6 9l5.8-.8L12 3z',
+  fire:'M12 3c1 3-2 4-2 7a2 2 0 0 0 4 0c0-1 0-1 .5-2 1.5 1.5 2.5 3 2.5 5a5 5 0 0 1-10 0c0-4 5-6 5-10z',
+};
+function Icon({name,size=18,color=C.text,strokeWidth=2,fill='none',style={}}){
+  const d=ICON_PATHS[name]||ICON_PATHS.chevron;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill={fill==='current'?color:fill} stroke={fill==='none'?color:'none'} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}><path d={d}/></svg>;
+}
 function Tag({label,col}){const c=col==='teal'?C.teal:col==='green'?C.green:col==='red'?C.red:col==='orange'?C.orange:col==='gold'?C.gold:C.muted;return <span style={{fontSize:9,fontWeight:700,color:c,border:'1px solid '+c,borderRadius:5,padding:'2px 5px',letterSpacing:.4,whiteSpace:'nowrap'}}>{label}</span>;}
 
 function useApi(url,interval=0){
@@ -1355,16 +1398,17 @@ function Table({openClub}){
           {SEASONS.map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
         </select>
       </div>
-      {loading&&<div style={{padding:40,textAlign:'center'}}><Spinner/></div>}
+      {loading&&<div style={{padding:'4px 0'}}><Skeleton h={22} w={'60%'} mb={12}/><SkeletonRows n={10} h={40}/></div>}
       {error&&!loading&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable for {season}-{String(season+1).slice(2)}.</div>}
       {!loading&&!error&&<>
       <div style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'4px 10px',marginBottom:4}}>
         {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
       </div>
+      <div className="hv-anim">
       {table.map(row=>{
         const code=TCODE[row.team?.name]||'???', zc=ZC[row.position];
         return(
-          <div key={row.position} onClick={()=>openClub&&openClub(row.team)} style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'8px 10px',alignItems:'center',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(zc||C.d4),cursor:'pointer'}}>
+          <div key={row.position} className="hv-press hv-card" onClick={()=>openClub&&openClub(row.team)} style={{display:'grid',gridTemplateColumns:'24px 1fr 28px 28px 28px 28px 36px 46px',gap:3,padding:'8px 10px',alignItems:'center',background:C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(zc||C.d4),cursor:'pointer'}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:zc||C.muted}}>{row.position}</div>
             <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><TeamCrest code={code} logo={row.team?.crest} size={18}/><span style={{fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
             <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
@@ -1376,6 +1420,7 @@ function Table({openClub}){
           </div>
         );
       })}
+      </div>
       <div style={{marginTop:10,display:'flex',gap:10,flexWrap:'wrap'}}>
         {[['Champions League',C.blue],['Europa League',C.orange],['Conference League',C.yellow],['Relegation',C.red]].map(([l,c])=>(
           <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:c}}/>{l}</div>
@@ -2745,7 +2790,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         </div>
       </div>
 
-      <div style={{padding:16}}>
+      <div key={view} className="hv-fade-tab" style={{padding:16}}>
 
         {/* OVERVIEW */}
         {view==='overview'&&<>
@@ -3607,7 +3652,13 @@ function PlayerRadar({series}){
   // bottom labels grow taller with more series; widen the bottom margin
   const extraBottom = multi ? (valid.length-1)*9 : 0;
   return(
-    <svg viewBox={'-58 -6 '+(size+116)+' '+(size+20+extraBottom)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
+    <svg className="hv-pop" viewBox={'-58 -6 '+(size+116)+' '+(size+20+extraBottom)} style={{width:'100%',maxWidth:340,display:'block',margin:'0 auto'}}>
+      <defs>
+        <radialGradient id="hvRadarGrad" cx="50%" cy="50%" r="65%">
+          <stop offset="0%" stopColor={valid[0].color} stopOpacity="0.45"/>
+          <stop offset="100%" stopColor={valid[0].color} stopOpacity="0.12"/>
+        </radialGradient>
+      </defs>
       {rings.map((rr,ri)=>(
         <polygon key={ri} points={axes0.map((_,i)=>{const p=pt(i,R*rr);return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')}
           fill="none" stroke={ri===rings.length-1?'rgba(120,170,180,.55)':'rgba(120,170,180,.32)'} strokeWidth={ri===rings.length-1?1.4:1}/>
@@ -3618,7 +3669,7 @@ function PlayerRadar({series}){
         const pts=polyFor(s.axes);
         return <polygon key={'p'+si} points={pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')} fill={s.color+'1c'} stroke={s.color} strokeWidth="2" strokeLinejoin="round"/>;
       })}
-      <polygon points={polyFor(axes0).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')} fill={multi?valid[0].color+'1c':valid[0].color+'33'} stroke={valid[0].color} strokeWidth="2" strokeLinejoin="round"/>
+      <polygon points={polyFor(axes0).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')} fill={multi?valid[0].color+'1c':'url(#hvRadarGrad)'} stroke={valid[0].color} strokeWidth="2" strokeLinejoin="round"/>
       {valid.slice(1).map((s,si)=>polyFor(s.axes).map((p,i)=><circle key={'c'+si+'_'+i} cx={p[0]} cy={p[1]} r="2.5" fill={s.color}/>))}
       {polyFor(axes0).map((p,i)=><circle key={'c0_'+i} cx={p[0]} cy={p[1]} r="2.5" fill={valid[0].color}/>)}
       {axes0.map((ax,i)=>{
@@ -4604,7 +4655,7 @@ function App(){
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,background:'transparent',border:'none',cursor:'pointer',padding:'6px 2px',position:'relative'}}>
+          <button key={t.id} className="hv-press" onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,background:'transparent',border:'none',cursor:'pointer',padding:'6px 2px',position:'relative'}}>
             {tab===t.id&&<div style={{position:'absolute',top:0,left:'20%',right:'20%',height:2,borderRadius:'0 0 2px 2px',background:t.id==='live'?C.orange:C.teal}}/>}
             <svg width={18} height={18} viewBox="0 0 24 24" fill={tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted}><path d={t.path}/></svg>
             <span style={{fontSize:8,fontWeight:tab===t.id?700:500,color:tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted,letterSpacing:.3}}>{t.label}</span>
