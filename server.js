@@ -472,31 +472,52 @@ app.get('/api/draft-photo', async (req, res) => {
     const {name, club} = req.query;
     if(!name) return res.json({found:false});
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const cKey = 'draftphoto_'+da(name).replace(/ /g,'').slice(0,20);
+    const cKey = 'draftphoto2_'+da(name).replace(/ /g,'').slice(0,20);
     if(cache[cKey] && Date.now()-cache[cKey].ts < 30*24*60*MIN) return res.json(cache[cKey].data);
 
+    // club code -> recognisable club name token(s) for verification
+    const CLUBNAME = {
+      ARS:'arsenal',CHE:'chelsea',LIV:'liverpool',MCI:'manchester city',MUN:'manchester united',
+      TOT:'tottenham',NEW:'newcastle',AVL:'aston villa',EVE:'everton',BRE:'brentford',
+      NFO:'nottingham',WOL:'wolves',
+      RMA:'real madrid',BAR:'barcelona',ATM:'atletico',
+      INT:'inter',MIL:'milan',JUV:'juventus',NAP:'napoli',
+      BAY:'bayern',BVB:'dortmund',PSG:'paris',
+    };
+    const wantClub = da(CLUBNAME[club]||'');
     const pn = da(name);
-    const lastName = name.split(' ').pop();
-    // Search by last name (AF search works best on a single token), no league filter
-    const r1 = await af('/players/profiles?search='+encodeURIComponent(da(lastName)), 24*60*MIN).catch(()=>({response:[]}));
-    let pool = r1.response||[];
-    // Fallback to legacy players search if profiles endpoint yields nothing
+    const pnNoSpace = pn.replace(/ /g,'');
+    const lastName = da(name.split(' ').pop());
+
+    // Use the players endpoint (gives team via statistics) for club verification
+    const r = await af('/players?search='+encodeURIComponent(lastName)+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
+    let pool = r.response||[];
     if(!pool.length){
-      const r2 = await af('/players?search='+encodeURIComponent(da(lastName))+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
-      pool = (r2.response||[]).map(x=>({player:x.player}));
+      const r2 = await af('/players?search='+encodeURIComponent(pn.split(' ')[0])+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
+      pool = r2.response||[];
     }
+
     const scored = pool.map(p => {
       const fn = da(p.player?.name||'');
       const ffn = da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
-      let score = 0;
-      if(fn===pn || ffn===pn) score += 20;
-      else if(fn.replace(/ /g,'')===pn.replace(/ /g,'')) score += 16;
-      else if(pn.split(' ').every(w => w.length<3 || fn.includes(w) || ffn.includes(w))) score += 10;
-      else if(fn.includes(pn.slice(0,7)) || pn.includes(fn.slice(0,7))) score += 5;
-      return {p, score};
-    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+      const fnNoSpace = fn.replace(/ /g,''), ffnNoSpace = ffn.replace(/ /g,'');
+      const teams = (p.statistics||[]).map(st=>da(st.team?.name||''));
+      let nameScore = 0;
+      if(fn===pn || ffn===pn) nameScore = 100;                       // exact full-name
+      else if(fnNoSpace===pnNoSpace || ffnNoSpace===pnNoSpace) nameScore = 90;
+      else if(pn.split(' ').length>1 && pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) nameScore = 70; // all name words present
+      else if(da(p.player?.lastname||'')===pn || fn.split(' ').pop()===pn) nameScore = 50; // surname-only (needs club to confirm)
+      else nameScore = 0;
+      // club verification
+      let clubScore = 0;
+      if(wantClub && teams.some(t=>t.includes(wantClub)||wantClub.split(' ').every(w=>t.includes(w)))) clubScore = 40;
+      return {p, score:nameScore+clubScore, nameScore, clubScore};
+    });
 
-    const best = scored[0]?.p?.player;
+    // Confident match required: strong full-name match, OR surname match confirmed by club
+    const ok = scored.filter(x => x.nameScore>=90 || (x.nameScore>=50 && x.clubScore>0))
+                     .sort((a,b)=>b.score-a.score);
+    const best = ok[0]?.p?.player;
     const result = best?.photo ? {found:true, photo:best.photo, id:best.id} : {found:false};
     cache[cKey] = {data:result, ts:Date.now()};
     res.json(result);
@@ -2842,35 +2863,32 @@ function DraftGame({onExit}){
       {/* live pitch */}
       <div style={{margin:'4px 16px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'14px 6px',border:'1px solid rgba(255,255,255,.08)'}}>
         {liveLines.map((line,li)=>(
-          <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<liveLines.length-1?14:0}}>
-            {line.map((s)=>{
-              const lg=s.player&&s.player.isLegend;
-              const ring=s.player?(lg?'#FFD700':C.teal):s.current?C.yellow:'rgba(255,255,255,.3)';
-              return(
-              <div key={s.idx} className={s.player?'hv-pop':''} style={{textAlign:'center',width:62}}>
-                <div style={{width:36,height:36,borderRadius:'50%',margin:'0 auto 3px',display:'flex',alignItems:'center',justifyContent:'center',
-                  background:s.player?(lg?'#3d1466':C.d2):'transparent',
-                  boxShadow:lg?'0 0 8px rgba(255,210,80,.6)':'none',
-                  border:'2px '+(s.player?'solid '+ring:s.current?'solid '+C.yellow:'dashed rgba(255,255,255,.3)')}}>
-                  <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:s.player?15:11,color:s.player?(lg?'#FFD700':C.teal):s.current?C.yellow:'rgba(255,255,255,.4)'}}>{s.player?s.player.r:s.pos}</span>
-                </div>
-                <div style={{fontSize:9,color:s.player?'#fff':'rgba(255,255,255,.45)',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.player?s.player.n.split(' ').pop():s.label.split(' ')[0]}</div>
+          <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<liveLines.length-1?12:0}}>
+            {line.map((s)=>(
+              <div key={s.idx} className={s.player?'hv-pop':''} style={{width:'calc('+(100/Math.max(line.length,1))+'% - 4px)',maxWidth:84,display:'flex',justifyContent:'center'}}>
+                {s.player
+                  ? <PlayerCard player={s.player} w={64}/>
+                  : <div style={{textAlign:'center',paddingTop:18}}>
+                      <div style={{width:34,height:34,borderRadius:'50%',margin:'0 auto 3px',display:'flex',alignItems:'center',justifyContent:'center',border:'2px '+(s.current?'solid '+C.yellow:'dashed rgba(255,255,255,.3)')}}>
+                        <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:11,color:s.current?C.yellow:'rgba(255,255,255,.4)'}}>{s.pos}</span>
+                      </div>
+                      <div style={{fontSize:8,color:'rgba(255,255,255,.45)',fontWeight:700}}>{s.label.split(' ')[0]}</div>
+                    </div>}
               </div>
-              );
-            })}            ))}
+            ))}
           </div>
         ))}
       </div>
       <div style={{padding:'14px 0 0'}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.yellow,letterSpacing:1,textTransform:'uppercase',marginBottom:4,padding:'0 16px'}}>Now picking &middot; {slot.label}</div>
-        <div className="hv-stagger" style={{display:'flex',gap:12,marginTop:10,overflowX:'auto',padding:'4px 16px 8px',WebkitOverflowScrolling:'touch'}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.yellow,letterSpacing:1,textTransform:'uppercase',marginBottom:4,padding:'0 12px'}}>Now picking &middot; {slot.label}</div>
+        <div className="hv-stagger" style={{display:'flex',gap:5,marginTop:8,padding:'4px 8px 8px',justifyContent:'space-between'}}>
           {opts.map((p,i)=>(
-            <div key={i} className="hv-press" onClick={()=>pick(p)} style={{flexShrink:0,cursor:'pointer'}}>
-              <PlayerCard player={{...p, pos:slot.pos}} w={132}/>
+            <div key={i} className="hv-press" onClick={()=>pick(p)} style={{flex:1,minWidth:0,cursor:'pointer'}}>
+              <PlayerCard player={{...p, pos:slot.pos}} w={66}/>
             </div>
           ))}
         </div>
-        <div style={{fontSize:10,color:C.muted,textAlign:'center',marginTop:4}}>Swipe to see all 5 &middot; tap a card to pick</div>
+        <div style={{fontSize:10,color:C.muted,textAlign:'center',marginTop:2}}>Tap a card to pick</div>
       </div>
     </div>
   );
