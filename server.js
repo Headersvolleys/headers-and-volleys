@@ -466,6 +466,43 @@ app.get('/api/af/player-career', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message, found:false}); }
 });
 
+// Resolve a draft player's photo by name (any league), cached hard since photos never change.
+app.get('/api/draft-photo', async (req, res) => {
+  try {
+    const {name, club} = req.query;
+    if(!name) return res.json({found:false});
+    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    const cKey = 'draftphoto_'+da(name).replace(/ /g,'').slice(0,20);
+    if(cache[cKey] && Date.now()-cache[cKey].ts < 30*24*60*MIN) return res.json(cache[cKey].data);
+
+    const pn = da(name);
+    const lastName = name.split(' ').pop();
+    // Search by last name (AF search works best on a single token), no league filter
+    const r1 = await af('/players/profiles?search='+encodeURIComponent(da(lastName)), 24*60*MIN).catch(()=>({response:[]}));
+    let pool = r1.response||[];
+    // Fallback to legacy players search if profiles endpoint yields nothing
+    if(!pool.length){
+      const r2 = await af('/players?search='+encodeURIComponent(da(lastName))+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
+      pool = (r2.response||[]).map(x=>({player:x.player}));
+    }
+    const scored = pool.map(p => {
+      const fn = da(p.player?.name||'');
+      const ffn = da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
+      let score = 0;
+      if(fn===pn || ffn===pn) score += 20;
+      else if(fn.replace(/ /g,'')===pn.replace(/ /g,'')) score += 16;
+      else if(pn.split(' ').every(w => w.length<3 || fn.includes(w) || ffn.includes(w))) score += 10;
+      else if(fn.includes(pn.slice(0,7)) || pn.includes(fn.slice(0,7))) score += 5;
+      return {p, score};
+    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+
+    const best = scored[0]?.p?.player;
+    const result = best?.photo ? {found:true, photo:best.photo, id:best.id} : {found:false};
+    cache[cKey] = {data:result, ts:Date.now()};
+    res.json(result);
+  } catch(e) { res.status(500).json({error:e.message, found:false}); }
+});
+
 // Understat xG by player name
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
@@ -2513,36 +2550,94 @@ function CrosswordPlayer({puzzle,onBack}){
 }
 
 // ===== THE DRAFT =====
+// Each player: {n:name, c:clubCode, r:overall}. Stats (PAC/SHO/PAS/DRI) derived from overall+position.
 const DRAFT_POOL={
   GK:[
-    {n:'Alisson',c:'LIV',r:89},{n:'Ederson',c:'MCI',r:88},{n:'David Raya',c:'ARS',r:86},
-    {n:'Onana',c:'MUN',r:83},{n:'Pickford',c:'EVE',r:84},{n:'Sanchez',c:'CHE',r:82},
-    {n:'Vicario',c:'TOT',r:83},{n:'Pope',c:'NEW',r:83},{n:'Martinez',c:'AVL',r:86},
-    {n:'Flekken',c:'BRE',r:80},{n:'Areola',c:'WHU',r:80},{n:'Sels',c:'NFO',r:82},
+    {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'Ederson',c:'MCI',r:88,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
+    {n:'Onana',c:'MUN',r:83,nat:'Cameroon'},{n:'Pickford',c:'EVE',r:84,nat:'England'},{n:'Sanchez',c:'CHE',r:82,nat:'Spain'},
+    {n:'Vicario',c:'TOT',r:83,nat:'Italy'},{n:'Pope',c:'NEW',r:83,nat:'England'},{n:'Martinez',c:'AVL',r:86,nat:'Argentina'},
+    {n:'Sels',c:'NFO',r:82,nat:'Belgium'},
+    {n:'Courtois',c:'RMA',r:89,nat:'Belgium'},{n:'Ter Stegen',c:'BAR',r:87,nat:'Germany'},{n:'Oblak',c:'ATM',r:87,nat:'Slovenia'},
+    {n:'Maignan',c:'MIL',r:87,nat:'France'},{n:'Donnarumma',c:'PSG',r:88,nat:'Italy'},{n:'Neuer',c:'BAY',r:86,nat:'Germany'},
+    {n:'Sommer',c:'INT',r:84,nat:'Switzerland'},{n:'Di Gregorio',c:'JUV',r:82,nat:'Italy'},
   ],
   DEF:[
-    {n:'Van Dijk',c:'LIV',r:89},{n:'Saliba',c:'ARS',r:87},{n:'Gabriel',c:'ARS',r:86},
-    {n:'Dias',c:'MCI',r:88},{n:'Stones',c:'MCI',r:85},{n:'Gvardiol',c:'MCI',r:85},
-    {n:'Trippier',c:'NEW',r:83},{n:'Alexander-Arnold',c:'LIV',r:86},{n:'Robertson',c:'LIV',r:85},
-    {n:'White',c:'ARS',r:84},{n:'Cucurella',c:'CHE',r:83},{n:'James',c:'CHE',r:84},
-    {n:'Konsa',c:'AVL',r:82},{n:'Botman',c:'NEW',r:83},{n:'Romero',c:'TOT',r:85},
-    {n:'Van de Ven',c:'TOT',r:83},{n:'Dunk',c:'BHA',r:81},{n:'Mings',c:'AVL',r:80},
+    {n:'Van Dijk',c:'LIV',r:89,nat:'Netherlands'},{n:'Saliba',c:'ARS',r:87,nat:'France'},{n:'Gabriel',c:'ARS',r:86,nat:'Brazil'},
+    {n:'Dias',c:'MCI',r:88,nat:'Portugal'},{n:'Gvardiol',c:'MCI',r:85,nat:'Croatia'},{n:'Trippier',c:'NEW',r:83,nat:'England'},
+    {n:'Alexander-Arnold',c:'LIV',r:86,nat:'England'},{n:'Robertson',c:'LIV',r:85,nat:'Scotland'},{n:'White',c:'ARS',r:84,nat:'England'},
+    {n:'Cucurella',c:'CHE',r:83,nat:'Spain'},{n:'James',c:'CHE',r:84,nat:'England'},{n:'Romero',c:'TOT',r:85,nat:'Argentina'},
+    {n:'Van de Ven',c:'TOT',r:83,nat:'Netherlands'},
+    {n:'Rudiger',c:'RMA',r:87,nat:'Germany'},{n:'Carvajal',c:'RMA',r:86,nat:'Spain'},{n:'Cubarsi',c:'BAR',r:84,nat:'Spain'},
+    {n:'Kounde',c:'BAR',r:85,nat:'France'},{n:'Bastoni',c:'INT',r:86,nat:'Italy'},{n:'Bremer',c:'JUV',r:85,nat:'Brazil'},
+    {n:'Hakimi',c:'PSG',r:86,nat:'Morocco'},{n:'Theo Hernandez',c:'MIL',r:85,nat:'France'},{n:'Davies',c:'BAY',r:84,nat:'Canada'},
+    {n:'Kim Min-jae',c:'BAY',r:84,nat:'South Korea'},{n:'Tah',c:'BAY',r:84,nat:'Germany'},{n:'Schlotterbeck',c:'BVB',r:83,nat:'Germany'},
   ],
   MID:[
-    {n:'Rodri',c:'MCI',r:91},{n:'De Bruyne',c:'MCI',r:90},{n:'Odegaard',c:'ARS',r:87},
-    {n:'Rice',c:'ARS',r:86},{n:'Mac Allister',c:'LIV',r:85},{n:'Szoboszlai',c:'LIV',r:84},
-    {n:'Fernandes',c:'MUN',r:86},{n:'Palmer',c:'CHE',r:87},{n:'Maddison',c:'TOT',r:84},
-    {n:'Bellingham',c:'RMA',r:90},{n:'Caicedo',c:'CHE',r:84},{n:'Gravenberch',c:'LIV',r:84},
-    {n:'Tielemans',c:'AVL',r:82},{n:'Gibbs-White',c:'NFO',r:82},{n:'Wharton',c:'CRY',r:80},
+    {n:'Rodri',c:'MCI',r:91,nat:'Spain'},{n:'De Bruyne',c:'MCI',r:90,nat:'Belgium'},{n:'Odegaard',c:'ARS',r:87,nat:'Norway'},
+    {n:'Rice',c:'ARS',r:86,nat:'England'},{n:'Mac Allister',c:'LIV',r:85,nat:'Argentina'},{n:'Szoboszlai',c:'LIV',r:84,nat:'Hungary'},
+    {n:'Fernandes',c:'MUN',r:86,nat:'Portugal'},{n:'Palmer',c:'CHE',r:87,nat:'England'},{n:'Maddison',c:'TOT',r:84,nat:'England'},
+    {n:'Caicedo',c:'CHE',r:84,nat:'Ecuador'},{n:'Gravenberch',c:'LIV',r:84,nat:'Netherlands'},
+    {n:'Bellingham',c:'RMA',r:90,nat:'England'},{n:'Valverde',c:'RMA',r:88,nat:'Uruguay'},{n:'Tchouameni',c:'RMA',r:85,nat:'France'},
+    {n:'Pedri',c:'BAR',r:87,nat:'Spain'},{n:'Gavi',c:'BAR',r:84,nat:'Spain'},{n:'De Jong',c:'BAR',r:86,nat:'Netherlands'},
+    {n:'Barella',c:'INT',r:86,nat:'Italy'},{n:'Calhanoglu',c:'INT',r:85,nat:'Turkey'},{n:'Vitinha',c:'PSG',r:85,nat:'Portugal'},
+    {n:'Wirtz',c:'BAY',r:88,nat:'Germany'},{n:'Musiala',c:'BAY',r:88,nat:'Germany'},{n:'Kimmich',c:'BAY',r:86,nat:'Germany'},
+    {n:'Reijnders',c:'MIL',r:84,nat:'Netherlands'},
   ],
   FWD:[
-    {n:'Haaland',c:'MCI',r:91},{n:'Salah',c:'LIV',r:89},{n:'Saka',c:'ARS',r:87},
-    {n:'Son',c:'TOT',r:86},{n:'Foden',c:'MCI',r:87},{n:'Watkins',c:'AVL',r:85},
-    {n:'Isak',c:'NEW',r:86},{n:'Mbeumo',c:'BRE',r:83},{n:'Jackson',c:'CHE',r:81},
-    {n:'Gakpo',c:'LIV',r:83},{n:'Bowen',c:'WHU',r:83},{n:'Cunha',c:'WOL',r:83},
-    {n:'Mitoma',c:'BHA',r:82},{n:'Nunez',c:'LIV',r:82},{n:'Eze',c:'CRY',r:83},
+    {n:'Haaland',c:'MCI',r:91,nat:'Norway'},{n:'Salah',c:'LIV',r:89,nat:'Egypt'},{n:'Saka',c:'ARS',r:87,nat:'England'},
+    {n:'Son',c:'TOT',r:86,nat:'South Korea'},{n:'Foden',c:'MCI',r:87,nat:'England'},{n:'Watkins',c:'AVL',r:85,nat:'England'},
+    {n:'Isak',c:'NEW',r:86,nat:'Sweden'},{n:'Gakpo',c:'LIV',r:83,nat:'Netherlands'},{n:'Cunha',c:'WOL',r:83,nat:'Brazil'},
+    {n:'Mbeumo',c:'BRE',r:83,nat:'Cameroon'},
+    {n:'Vinicius',c:'RMA',r:90,nat:'Brazil'},{n:'Mbappe',c:'RMA',r:91,nat:'France'},{n:'Rodrygo',c:'RMA',r:86,nat:'Brazil'},
+    {n:'Lewandowski',c:'BAR',r:88,nat:'Poland'},{n:'Raphinha',c:'BAR',r:87,nat:'Brazil'},{n:'Yamal',c:'BAR',r:87,nat:'Spain'},
+    {n:'Lautaro',c:'INT',r:88,nat:'Argentina'},{n:'Thuram',c:'INT',r:85,nat:'France'},{n:'Vlahovic',c:'JUV',r:84,nat:'Serbia'},
+    {n:'Osimhen',c:'NAP',r:88,nat:'Nigeria'},{n:'Leao',c:'MIL',r:86,nat:'Portugal'},{n:'Kane',c:'BAY',r:90,nat:'England'},
+    {n:'Olise',c:'BAY',r:85,nat:'France'},{n:'Dembele',c:'PSG',r:86,nat:'France'},
   ],
 };
+// Legends pool (isLegend). Photos use the gold silhouette, not API photos.
+const DRAFT_LEGENDS={
+  GK:[
+    {n:'Yashin',c:'URS',r:90,nat:'Russia'},{n:'Buffon',c:'ITA',r:91,nat:'Italy'},{n:'Casillas',c:'ESP',r:90,nat:'Spain'},
+    {n:'Kahn',c:'GER',r:90,nat:'Germany'},{n:'Schmeichel',c:'DEN',r:89,nat:'Denmark'},
+  ],
+  DEF:[
+    {n:'Maldini',c:'ITA',r:93,nat:'Italy'},{n:'Cafu',c:'BRA',r:90,nat:'Brazil'},{n:'Roberto Carlos',c:'BRA',r:91,nat:'Brazil'},
+    {n:'Beckenbauer',c:'GER',r:93,nat:'Germany'},{n:'Baresi',c:'ITA',r:91,nat:'Italy'},{n:'Nesta',c:'ITA',r:90,nat:'Italy'},
+    {n:'Ramos',c:'ESP',r:89,nat:'Spain'},{n:'Puyol',c:'ESP',r:88,nat:'Spain'},
+  ],
+  MID:[
+    {n:'Maradona',c:'ARG',r:97,nat:'Argentina'},{n:'Zidane',c:'FRA',r:96,nat:'France'},{n:'Cruyff',c:'NED',r:95,nat:'Netherlands'},
+    {n:'Ronaldinho',c:'BRA',r:94,nat:'Brazil'},{n:'Iniesta',c:'ESP',r:92,nat:'Spain'},{n:'Xavi',c:'ESP',r:91,nat:'Spain'},
+    {n:'Gerrard',c:'ENG',r:90,nat:'England'},{n:'Zico',c:'BRA',r:92,nat:'Brazil'},{n:'Platini',c:'FRA',r:93,nat:'France'},
+  ],
+  FWD:[
+    {n:'Pele',c:'BRA',r:97,nat:'Brazil'},{n:'Ronaldo',c:'BRA',r:95,nat:'Brazil'},{n:'Messi',c:'ARG',r:97,nat:'Argentina'},
+    {n:'Cristiano',c:'POR',r:95,nat:'Portugal'},{n:'Van Basten',c:'NED',r:93,nat:'Netherlands'},{n:'Henry',c:'FRA',r:92,nat:'France'},
+    {n:'Romario',c:'BRA',r:92,nat:'Brazil'},{n:'Eusebio',c:'POR',r:92,nat:'Portugal'},{n:'Bergkamp',c:'NED',r:90,nat:'Netherlands'},
+  ],
+};
+// Derive 4 sub-stats from overall + position group (deterministic-ish, position-weighted).
+function deriveStats(p, group){
+  const r=p.r;
+  const clamp=v=>Math.max(40,Math.min(99,Math.round(v)));
+  // archetype weightings per group: [PAC,SHO,PAS,DRI] offsets from overall
+  const W={
+    GK:[-18,-30,-8,-22],
+    DEF:[-2,-16,-4,-8],
+    MID:[-3,-6,4,2],
+    FWD:[3,4,-3,4],
+  }[group]||[0,0,0,0];
+  // small per-player jitter seeded by name length so it is stable per render set
+  const seed=(p.n.charCodeAt(0)+p.n.length*3)%7-3;
+  return {
+    PAC:clamp(r+W[0]+seed),
+    SHO:clamp(r+W[1]-seed),
+    PAS:clamp(r+W[2]+(seed>0?1:-1)),
+    DRI:clamp(r+W[3]+seed),
+  };
+}
+
 // 4-3-3 slots
 const DRAFT_SLOTS=[
   {pos:'GK',label:'Goalkeeper',group:'GK'},
@@ -2569,14 +2664,92 @@ function draftGrade(avg){
 }
 function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 
+function DraftPhoto({player, size}){
+  const [photo,setPhoto]=useState(null);
+  const [err,setErr]=useState(false);
+  useEffect(()=>{
+    if(player.isLegend){ return; }
+    let on=true;
+    fetch('/api/draft-photo?name='+encodeURIComponent(player.n)+'&club='+encodeURIComponent(player.c||''))
+      .then(r=>r.json()).then(d=>{ if(on&&d.found&&d.photo) setPhoto(d.photo); else if(on) setErr(true); })
+      .catch(()=>{ if(on) setErr(true); });
+    return ()=>{on=false;};
+  },[player.n]);
+  if(player.isLegend){
+    return <img src="/legend-silhouette.png" alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
+  }
+  if(photo&&!err){
+    return <img src={photo} onError={()=>setErr(true)} alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
+  }
+  // fallback while loading or if not found: subtle initial
+  return <div style={{width:size,height:size,display:'flex',alignItems:'center',justifyContent:'center'}}>
+    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:size*0.4,color:'rgba(255,255,255,.35)'}}>{player.n.split(' ').pop().slice(0,1)}</span>
+  </div>;
+}
+
+function PlayerCard({player, w}){
+  const W=w||150;
+  const leg=player.isLegend;
+  const st=player.stats||deriveStats(player, player.group||'MID');
+  // theme
+  const frame=leg?'linear-gradient(160deg,#e9b3ff 0%,#9b4dff 40%,#5a1e9e 100%)':'linear-gradient(160deg,#7fd0ff 0%,#2a7fd0 45%,#10406e 100%)';
+  const body=leg?'linear-gradient(165deg,#3d1466 0%,#5a1e9e 45%,#2a0d4d 100%)':'linear-gradient(165deg,#1c5d96 0%,#0e3a63 55%,#0a2c4d 100%)';
+  const accent=leg?'#ffe9b8':'#fff';
+  const sub=leg?'#f0d2ff':'#bfe2ff';
+  const H=W*1.5;
+  return(
+    <div style={{width:W,borderRadius:W*0.09,padding:2,background:frame,boxShadow:leg?'0 8px 26px rgba(140,60,220,.5)':'0 8px 22px rgba(20,90,160,.4)'}}>
+      <div style={{borderRadius:W*0.08,height:H,position:'relative',overflow:'hidden',background:body}}>
+        {leg&&<div style={{position:'absolute',inset:0,background:'linear-gradient(115deg,rgba(255,255,255,0) 33%,rgba(255,255,255,.32) 48%,rgba(255,255,255,0) 60%)'}}/>}
+        <div style={{position:'absolute',top:0,left:0,right:0,height:'55%',background:'linear-gradient(120deg,rgba(255,255,255,.16),rgba(255,255,255,0) 60%)'}}/>
+        {/* photo layer */}
+        <div style={{position:'absolute',top:W*0.16,left:0,right:0,bottom:'34%',display:'flex',justifyContent:'center',alignItems:'flex-end',overflow:'hidden'}}>
+          <DraftPhoto player={player} size={W*0.82}/>
+        </div>
+        {/* rating block */}
+        <div style={{position:'absolute',top:W*0.07,left:W*0.08,textAlign:'center',lineHeight:1}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.21,color:accent,textShadow:leg?'0 0 8px rgba(255,210,120,.6)':'none'}}>{player.r}</div>
+          <div style={{fontSize:W*0.07,fontWeight:700,color:sub,letterSpacing:1,marginTop:1}}>{player.pos||''}</div>
+          <div style={{width:W*0.13,height:1,background:'rgba(255,255,255,.4)',margin:(W*0.03)+'px auto'}}/>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:3}}>
+            {player.nat&&flag(player.nat)&&<img src={flag(player.nat)} alt="" style={{width:W*0.1,height:W*0.075,objectFit:'cover',borderRadius:1}}/>}
+            <span style={{fontSize:W*0.062,color:sub,fontWeight:700}}>{player.c}</span>
+          </div>
+        </div>
+        {leg&&<div style={{position:'absolute',top:W*0.06,right:W*0.07,color:'#ffe9b8',fontSize:W*0.1,textShadow:'0 0 6px rgba(255,210,120,.8)'}}>&#9733;</div>}
+        {/* name */}
+        <div style={{position:'absolute',bottom:'27%',left:0,right:0,textAlign:'center',padding:'0 4px'}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.15,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'none'}}>{player.n.split(' ').pop()}</div>
+        </div>
+        {/* stats */}
+        <div style={{position:'absolute',bottom:W*0.06,left:W*0.08,right:W*0.08,display:'flex',justifyContent:'space-between',borderTop:'1px solid rgba(255,255,255,.18)',paddingTop:W*0.04}}>
+          {[['PAC',st.PAC],['SHO',st.SHO],['PAS',st.PAS],['DRI',st.DRI]].map(([k,v])=>(
+            <div key={k} style={{textAlign:'center'}}>
+              <div style={{fontSize:W*0.082,fontWeight:800,color:accent}}>{v}</div>
+              <div style={{fontSize:W*0.05,color:sub,fontWeight:700,letterSpacing:.5}}>{k}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DraftGame({onExit}){
   const buildOptions=()=>{
-    const usedGroups={GK:[],DEF:[],MID:[],FWD:[]};
+    const used={GK:[],DEF:[],MID:[],FWD:[]};
     return DRAFT_SLOTS.map(slot=>{
-      const avail=DRAFT_POOL[slot.group].filter(p=>!usedGroups[slot.group].includes(p.n));
-      const opts=shuffle(avail).slice(0,5);
-      usedGroups[slot.group].push(...opts.map(p=>p.n));
-      return opts;
+      const g=slot.group;
+      const cur=DRAFT_POOL[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:false}));
+      const leg=DRAFT_LEGENDS[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:true}));
+      // build 5 options: usually 1 legend slot if available (~55% chance), rest current
+      const opts=[];
+      if(leg.length && Math.random()<0.55){ opts.push(shuffle(leg)[0]); }
+      const remaining=shuffle(cur).slice(0,5-opts.length);
+      opts.push(...remaining);
+      const shuffled=shuffle(opts).map(p=>({...p, stats:deriveStats(p,g), group:g}));
+      used[g].push(...shuffled.map(p=>p.n));
+      return shuffled;
     });
   };
   const [options]=useState(buildOptions);
@@ -2585,7 +2758,7 @@ function DraftGame({onExit}){
   const step=picks.length;
   const done=step>=DRAFT_SLOTS.length;
 
-  const pick=(p)=>{ if(done)return; setPicks(ps=>[...ps,p]); };
+  const pick=(p)=>{ if(done)return; const slot=DRAFT_SLOTS[picks.length]; setPicks(ps=>[...ps,{...p,pos:slot.pos}]); };
   const replay=()=>{ setPicks([]); setSeed(s=>s+1); };
 
   if(done){
@@ -2606,19 +2779,28 @@ function DraftGame({onExit}){
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:60,color:grade.c,lineHeight:.9}}>{grade.g}</div>
           <div style={{fontSize:14,color:C.text,fontWeight:700,marginTop:4}}>Team Rating {avg.toFixed(1)}</div>
         </div>
+        {/* card showcase */}
+        <div style={{display:'flex',gap:12,overflowX:'auto',padding:'0 16px 14px',WebkitOverflowScrolling:'touch'}}>
+          {picks.map((p,i)=>(
+            <div key={i} style={{flexShrink:0}}><PlayerCard player={p} w={120}/></div>
+          ))}
+        </div>
         {/* pitch */}
         <div style={{margin:'0 16px',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'18px 8px',border:'1px solid rgba(255,255,255,.08)'}}>
           {lines.map((line,li)=>(
             <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?20:0}}>
-              {line.map((p,i)=>(
+              {line.map((p,i)=>{
+                const lg=p.isLegend;
+                return(
                 <div key={i} style={{textAlign:'center',width:72}}>
-                  <div style={{width:42,height:42,borderRadius:'50%',background:C.d2,border:'2px solid '+C.teal,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px'}}>
-                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.teal}}>{p.r}</span>
+                  <div style={{width:42,height:42,borderRadius:'50%',background:lg?'#3d1466':C.d2,border:'2px solid '+(lg?'#FFD700':C.teal),boxShadow:lg?'0 0 8px rgba(255,210,80,.6)':'none',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px'}}>
+                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:lg?'#FFD700':C.teal}}>{p.r}</span>
                   </div>
                   <div style={{fontSize:10,color:'#fff',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.n.split(' ').pop()}</div>
                   <div style={{fontSize:8,color:'rgba(255,255,255,.6)',fontWeight:700}}>{p.pos} &middot; {p.c}</div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>
@@ -2661,36 +2843,34 @@ function DraftGame({onExit}){
       <div style={{margin:'4px 16px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'14px 6px',border:'1px solid rgba(255,255,255,.08)'}}>
         {liveLines.map((line,li)=>(
           <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<liveLines.length-1?14:0}}>
-            {line.map((s)=>(
+            {line.map((s)=>{
+              const lg=s.player&&s.player.isLegend;
+              const ring=s.player?(lg?'#FFD700':C.teal):s.current?C.yellow:'rgba(255,255,255,.3)';
+              return(
               <div key={s.idx} className={s.player?'hv-pop':''} style={{textAlign:'center',width:62}}>
                 <div style={{width:36,height:36,borderRadius:'50%',margin:'0 auto 3px',display:'flex',alignItems:'center',justifyContent:'center',
-                  background:s.player?C.d2:'transparent',
-                  border:'2px '+(s.player?'solid '+C.teal:s.current?'solid '+C.yellow:'dashed rgba(255,255,255,.3)')}}>
-                  <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:s.player?15:11,color:s.player?C.teal:s.current?C.yellow:'rgba(255,255,255,.4)'}}>{s.player?s.player.r:s.pos}</span>
+                  background:s.player?(lg?'#3d1466':C.d2):'transparent',
+                  boxShadow:lg?'0 0 8px rgba(255,210,80,.6)':'none',
+                  border:'2px '+(s.player?'solid '+ring:s.current?'solid '+C.yellow:'dashed rgba(255,255,255,.3)')}}>
+                  <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:s.player?15:11,color:s.player?(lg?'#FFD700':C.teal):s.current?C.yellow:'rgba(255,255,255,.4)'}}>{s.player?s.player.r:s.pos}</span>
                 </div>
                 <div style={{fontSize:9,color:s.player?'#fff':'rgba(255,255,255,.45)',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.player?s.player.n.split(' ').pop():s.label.split(' ')[0]}</div>
               </div>
-            ))}
+              );
+            })}            ))}
           </div>
         ))}
       </div>
-      <div style={{padding:'14px 16px 0'}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.yellow,letterSpacing:1,textTransform:'uppercase',marginBottom:4}}>Now picking &middot; {slot.label}</div>
-        <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8,marginTop:8}}>
+      <div style={{padding:'14px 0 0'}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.yellow,letterSpacing:1,textTransform:'uppercase',marginBottom:4,padding:'0 16px'}}>Now picking &middot; {slot.label}</div>
+        <div className="hv-stagger" style={{display:'flex',gap:12,marginTop:10,overflowX:'auto',padding:'4px 16px 8px',WebkitOverflowScrolling:'touch'}}>
           {opts.map((p,i)=>(
-            <div key={i} className="hv-press" onClick={()=>pick(p)}
-              style={{display:'flex',alignItems:'center',gap:12,background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 14px',cursor:'pointer'}}>
-              <div style={{width:40,height:40,borderRadius:'50%',background:C.d3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.teal}}>{p.r}</span>
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:700,color:C.white}}>{p.n}</div>
-                <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{p.c}</div>
-              </div>
-              <div style={{color:C.muted,fontSize:18}}>{'>'}</div>
+            <div key={i} className="hv-press" onClick={()=>pick(p)} style={{flexShrink:0,cursor:'pointer'}}>
+              <PlayerCard player={{...p, pos:slot.pos}} w={132}/>
             </div>
           ))}
         </div>
+        <div style={{fontSize:10,color:C.muted,textAlign:'center',marginTop:4}}>Swipe to see all 5 &middot; tap a card to pick</div>
       </div>
     </div>
   );
