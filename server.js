@@ -8,6 +8,14 @@ const BASE = 'https://api.football-data.org/v4';
 app.use(cors());
 app.use(express.json());
 
+// Serve the legend silhouette image (committed to repo root alongside server.js)
+const path = require('path');
+app.get('/legend-silhouette.png', (req, res) => {
+  res.sendFile(path.join(__dirname, 'legend-silhouette.png'), (err) => {
+    if (err && !res.headersSent) res.status(404).send('not found');
+  });
+});
+
 // Cache
 const cache = {};
 async function fd(endpoint, ttl) {
@@ -472,7 +480,7 @@ app.get('/api/draft-photo', async (req, res) => {
     const {name, club} = req.query;
     if(!name) return res.json({found:false});
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const cKey = 'draftphoto2_'+da(name).replace(/ /g,'').slice(0,20);
+    const cKey = 'draftphoto3_'+da(name).replace(/ /g,'').slice(0,20);
     if(cache[cKey] && Date.now()-cache[cKey].ts < 30*24*60*MIN) return res.json(cache[cKey].data);
 
     // club code -> recognisable club name token(s) for verification
@@ -506,16 +514,17 @@ app.get('/api/draft-photo', async (req, res) => {
       if(fn===pn || ffn===pn) nameScore = 100;                       // exact full-name
       else if(fnNoSpace===pnNoSpace || ffnNoSpace===pnNoSpace) nameScore = 90;
       else if(pn.split(' ').length>1 && pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) nameScore = 70; // all name words present
-      else if(da(p.player?.lastname||'')===pn || fn.split(' ').pop()===pn) nameScore = 50; // surname-only (needs club to confirm)
+      else if(da(p.player?.lastname||'')===pn || fn.split(' ').pop()===pn) nameScore = 50; // surname matches
+      else if(fn.includes(pn) || ffn.includes(pn) || pn.includes(fn.split(' ').pop())) nameScore = 30; // loose contains
       else nameScore = 0;
-      // club verification
+      // club verification (used to RANK among candidates, not to gate)
       let clubScore = 0;
       if(wantClub && teams.some(t=>t.includes(wantClub)||wantClub.split(' ').every(w=>t.includes(w)))) clubScore = 40;
       return {p, score:nameScore+clubScore, nameScore, clubScore};
     });
 
-    // Confident match required: strong full-name match, OR surname match confirmed by club
-    const ok = scored.filter(x => x.nameScore>=90 || (x.nameScore>=50 && x.clubScore>0))
+    // Loosened: any reasonable name match qualifies; club match just ranks it higher.
+    const ok = scored.filter(x => x.nameScore>=30)
                      .sort((a,b)=>b.score-a.score);
     const best = ok[0]?.p?.player;
     const result = best?.photo ? {found:true, photo:best.photo, id:best.id} : {found:false};
