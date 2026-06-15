@@ -2512,7 +2512,61 @@ function CrosswordPlayer({puzzle,onBack}){
   );
 }
 
-function Quiz({openPlayer, openClub}){
+function MiniGames({openPlayer, openClub}){
+  const [game,setGame]=useState(null); // null = hub, 'quiz' = quiz/crossword section
+
+  if(game==='quiz') return <Quiz openPlayer={openPlayer} openClub={openClub} onExit={()=>setGame(null)}/>;
+
+  const tiles=[
+    {id:'quiz', title:'Quiz & Crosswords', sub:'Trivia and football crosswords', grad:'linear-gradient(135deg,#0B6E69 0%,#0ABFB8 100%)', icon:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'},
+  ];
+  const soon=[
+    {title:'Higher or Lower', sub:'Guess the bigger stat'},
+    {title:'Guess the Player', sub:'Clues reveal one by one'},
+    {title:'Beat the Clock', sub:'Rapid-fire questions'},
+  ];
+
+  return(
+    <div style={{paddingBottom:80}}>
+      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
+        <div style={{paddingLeft:8}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MINI <span style={{color:C.teal}}>GAMES</span></div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Play &middot; test your knowledge</div>
+        </div>
+      </div>
+
+      <div style={{padding:16}}>
+        <div className="hv-stagger" style={{display:'grid',gridTemplateColumns:'1fr',gap:10}}>
+          {tiles.map(t=>(
+            <div key={t.id} className="hv-press" onClick={()=>setGame(t.id)}
+              style={{borderRadius:14,padding:'18px 16px',cursor:'pointer',background:t.grad,position:'relative',overflow:'hidden',boxShadow:'0 4px 16px rgba(0,0,0,.25)',minHeight:96,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+              <svg width={40} height={40} viewBox="0 0 24 24" fill="rgba(255,255,255,.9)" style={{position:'absolute',top:14,right:14,opacity:.85}}><path d={t.icon}/></svg>
+              <div style={{position:'absolute',right:-20,bottom:-20,width:90,height:90,borderRadius:'50%',background:'rgba(255,255,255,.08)'}}/>
+              <div style={{marginTop:'auto',position:'relative'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:'#fff',letterSpacing:1,lineHeight:1}}>{t.title}</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,.85)',marginTop:3,fontWeight:600}}>{t.sub}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:1.5,textTransform:'uppercase',margin:'22px 0 10px'}}>Coming Soon</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          {soon.map((s,i)=>(
+            <div key={i} style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'14px 12px',opacity:.55}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:2}}>{s.title}</div>
+              <div style={{fontSize:10,color:C.muted}}>{s.sub}</div>
+              <div style={{fontSize:8,fontWeight:700,color:C.teal,letterSpacing:1,marginTop:8,textTransform:'uppercase'}}>Soon</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Quiz({openPlayer, openClub, onExit}){
   const [section,setSection]=useState('quizzes'); // quizzes | crosswords
   const [activeCross,setActiveCross]=useState(null);
   const [view,setView]=useState('list');
@@ -2591,6 +2645,7 @@ function Quiz({openPlayer, openClub}){
   if(section==='crosswords'){
     return(
       <div style={{padding:16,paddingBottom:80}}>
+        {onExit&&<button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:10,display:'flex',alignItems:'center',gap:4}}>{'<'} Mini Games</button>}
         <div style={{marginBottom:14}}>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PUZZLES</div>
           <div style={{fontSize:11,color:C.muted}}>Football crosswords - tap a cell, type to fill</div>
@@ -2613,6 +2668,7 @@ function Quiz({openPlayer, openClub}){
   }
   return(
     <div style={{padding:16,paddingBottom:80}}>
+      {onExit&&<button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:10,display:'flex',alignItems:'center',gap:4}}>{'<'} Mini Games</button>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>QUIZ</div>
         <div style={{fontSize:11,color:C.muted}}>{QUIZZES.length} quizzes - test your football knowledge</div>
@@ -3542,7 +3598,7 @@ const TABS=[
   {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
-  {id:'quiz',label:'Quiz',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'}
+  {id:'games',label:'Games',path:'M7 6h10a5 5 0 0 1 5 5v2a4 4 0 0 1-7.2 2.4l-.3-.4H9.5l-.3.4A4 4 0 0 1 2 13v-2a5 5 0 0 1 5-5zm-1 4v1.5H4.5V13H6v1.5h1.5V13H9v-1.5H7.5V10H6zm10.5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'}
 ];
 
 
@@ -4678,7 +4734,7 @@ function App(){
         {tab==='fixtures'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
-        {tab==='quiz'&&<Quiz openPlayer={openPlayer} openClub={openClub}/>}
+        {tab==='games'&&<MiniGames openPlayer={openPlayer} openClub={openClub}/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
