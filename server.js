@@ -478,6 +478,39 @@ app.get('/api/af/player-career', async (req, res) => {
 
 
 // Understat xG by player name
+// ONE-TIME: resolve real AF player IDs for the full draft pool (full-name search). Delete after use.
+app.get('/api/draft-id-dump', async (req, res) => {
+  try {
+    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    const L = { ARS:39,AVL:39,BRE:39,CHE:39,CRY:39,EVE:39,LIV:39,MCI:39,MUN:39,NEW:39,NFO:39,TOT:39,WHU:39,
+      ATB:140,ATM:140,BAR:140,RMA:140, ATA:135,INT:135,JUV:135,MIL:135,NAP:135,ROM:135,
+      BAY:78,BVB:78,RBL:78, PSG:61 };
+    const PLAYERS = [['Alisson','LIV'],['Ederson','MCI'],['David Raya','ARS'],['Onana','MUN'],['Pickford','EVE'],['Sanchez','CHE'],['Vicario','TOT'],['Pope','NEW'],['Martinez','AVL'],['Sels','NFO'],['Sanchez Flekken','BRE'],['Henderson','CRY'],['Courtois','RMA'],['Ter Stegen','BAR'],['Oblak','ATM'],['Maignan','MIL'],['Donnarumma','PSG'],['Neuer','BAY'],['Sommer','INT'],['Di Gregorio','JUV'],['Meret','NAP'],['Kobel','BVB'],['Van Dijk','LIV'],['Saliba','ARS'],['Gabriel','ARS'],['Dias','MCI'],['Gvardiol','MCI'],['Trippier','NEW'],['Alexander-Arnold','LIV'],['Robertson','LIV'],['White','ARS'],['Cucurella','CHE'],['James','CHE'],['Romero','TOT'],['Van de Ven','TOT'],['Konate','LIV'],['Stones','MCI'],['Burn','NEW'],['Mings','AVL'],['Tarkowski','EVE'],['Colwill','CHE'],['Guehi','CRY'],['Botman','NEW'],['Rudiger','RMA'],['Carvajal','RMA'],['Cubarsi','BAR'],['Kounde','BAR'],['Bastoni','INT'],['Bremer','JUV'],['Hakimi','PSG'],['Theo Hernandez','MIL'],['Davies','BAY'],['Kim Min-jae','BAY'],['Tah','BAY'],['Schlotterbeck','BVB'],['Araujo','BAR'],['Balde','BAR'],['Dimarco','INT'],['Di Lorenzo','NAP'],['Bensebaini','BVB'],['Marquinhos','PSG'],['Pavard','INT'],['Mendes','PSG'],['Rodri','MCI'],['De Bruyne','MCI'],['Odegaard','ARS'],['Rice','ARS'],['Mac Allister','LIV'],['Szoboszlai','LIV'],['Fernandes','MUN'],['Palmer','CHE'],['Maddison','TOT'],['Caicedo','CHE'],['Gravenberch','LIV'],['Wharton','CRY'],['Bruno Guimaraes','NEW'],['Tonali','NEW'],['Onana','AVL'],['Mainoo','MUN'],['Eze','CRY'],['Rogers','AVL'],['Bellingham','RMA'],['Valverde','RMA'],['Tchouameni','RMA'],['Pedri','BAR'],['Gavi','BAR'],['De Jong','BAR'],['Barella','INT'],['Calhanoglu','INT'],['Vitinha','PSG'],['Wirtz','BAY'],['Musiala','BAY'],['Kimmich','BAY'],['Reijnders','MIL'],['McTominay','NAP'],['Lobotka','NAP'],['Pellegrini','ROM'],['Koopmeiners','JUV'],['Olise','BAY'],['Fabian Ruiz','PSG'],['Zubimendi','ARS'],['Ugarte','MUN'],['Frattesi','INT'],['Brandt','BVB'],['Haaland','MCI'],['Salah','LIV'],['Saka','ARS'],['Son','TOT'],['Foden','MCI'],['Watkins','AVL'],['Isak','NEW'],['Gakpo','LIV'],['Cunha','MUN'],['Mbeumo','MUN'],['Jackson','CHE'],['Nkunku','CHE'],['Wood','NFO'],['Mateta','CRY'],['Bowen','WHU'],['Garnacho','MUN'],['Rashford','MUN'],['Diaz','LIV'],['Vinicius','RMA'],['Mbappe','RMA'],['Rodrygo','RMA'],['Lewandowski','BAR'],['Raphinha','BAR'],['Yamal','BAR'],['Lautaro','INT'],['Thuram','INT'],['Vlahovic','JUV'],['Osimhen','NAP'],['Leao','MIL'],['Kane','BAY'],['Dembele','PSG'],['Kvaratskhelia','PSG'],['Griezmann','ATM'],['Williams','ATB'],['Openda','RBL'],['Adeyemi','BVB'],['Guirassy','BVB'],['Retegui','ATA'],['Gonzalez','JUV'],['Barcola','PSG'],['Marmoush','MCI']];
+    const out = {}; const misses = [];
+    for(const [name, club] of PLAYERS){
+      const pn = da(name);
+      const lg = L[club] || 39;
+      let pool = [];
+      // try full name first, then surname
+      try { const r = await af('/players?search='+encodeURIComponent(pn)+'&league='+lg+'&season=2025', 86400000); pool = r.response||[]; } catch(e){}
+      if(!pool.length){ const last=da(name.split(' ').pop()); try { const r2 = await af('/players?search='+encodeURIComponent(last)+'&league='+lg+'&season=2025', 86400000); pool = r2.response||[]; } catch(e){} }
+      let best=null,bestScore=-1;
+      for(const p of pool){
+        const fn=da(p.player?.name||''); const ffn=da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
+        let sc=0;
+        if(fn===pn||ffn===pn) sc=100;
+        else if(fn.replace(/ /g,'')===pn.replace(/ /g,'')||ffn.replace(/ /g,'')===pn.replace(/ /g,'')) sc=92;
+        else if(pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) sc=75;
+        else if(da(p.player?.lastname||'')===da(name.split(' ').pop())) sc=45;
+        else sc=10;
+        if(sc>bestScore){bestScore=sc;best=p.player;}
+      }
+      if(best&&best.id&&bestScore>=45){ out[name]=best.id; } else { misses.push(name); }
+    }
+    res.json({count:Object.keys(out).length, total:PLAYERS.length, misses, ids:out});
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
   const now = Date.now();
@@ -2537,48 +2570,65 @@ const DRAFT_IDS={
 
 const DRAFT_POOL={
   GK:[
-    {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'Ederson',c:'MCI',r:88,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
-    {n:'Onana',c:'MUN',r:83,nat:'Cameroon'},{n:'Pickford',c:'EVE',r:84,nat:'England'},{n:'Sanchez',c:'CHE',r:82,nat:'Spain'},
-    {n:'Vicario',c:'TOT',r:83,nat:'Italy'},{n:'Pope',c:'NEW',r:83,nat:'England'},{n:'Martinez',c:'AVL',r:86,nat:'Argentina'},
-    {n:'Sels',c:'NFO',r:82,nat:'Belgium'},
-    {n:'Courtois',c:'RMA',r:89,nat:'Belgium'},{n:'Ter Stegen',c:'BAR',r:87,nat:'Germany'},{n:'Oblak',c:'ATM',r:87,nat:'Slovenia'},
-    {n:'Maignan',c:'MIL',r:87,nat:'France'},{n:'Donnarumma',c:'PSG',r:88,nat:'Italy'},{n:'Neuer',c:'BAY',r:86,nat:'Germany'},
-    {n:'Sommer',c:'INT',r:84,nat:'Switzerland'},{n:'Di Gregorio',c:'JUV',r:82,nat:'Italy'},
+    {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'Ederson',c:'MCI',r:87,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
+    {n:'Onana',c:'MUN',r:82,nat:'Cameroon'},{n:'Pickford',c:'EVE',r:84,nat:'England'},{n:'Sanchez',c:'CHE',r:82,nat:'Spain'},
+    {n:'Vicario',c:'TOT',r:83,nat:'Italy'},{n:'Pope',c:'NEW',r:82,nat:'England'},{n:'Martinez',c:'AVL',r:85,nat:'Argentina'},
+    {n:'Sels',c:'NFO',r:82,nat:'Belgium'},{n:'Sanchez Flekken',c:'BRE',r:79,nat:'Germany'},{n:'Henderson',c:'CRY',r:79,nat:'England'},
+    {n:'Courtois',c:'RMA',r:88,nat:'Belgium'},{n:'Ter Stegen',c:'BAR',r:86,nat:'Germany'},{n:'Oblak',c:'ATM',r:86,nat:'Slovenia'},
+    {n:'Maignan',c:'MIL',r:86,nat:'France'},{n:'Donnarumma',c:'PSG',r:87,nat:'Italy'},{n:'Neuer',c:'BAY',r:85,nat:'Germany'},
+    {n:'Sommer',c:'INT',r:83,nat:'Switzerland'},{n:'Di Gregorio',c:'JUV',r:82,nat:'Italy'},{n:'Meret',c:'NAP',r:81,nat:'Italy'},
+    {n:'Kobel',c:'BVB',r:84,nat:'Switzerland'},
   ],
   DEF:[
-    {n:'Van Dijk',c:'LIV',r:89,nat:'Netherlands'},{n:'Saliba',c:'ARS',r:87,nat:'France'},{n:'Gabriel',c:'ARS',r:86,nat:'Brazil'},
-    {n:'Dias',c:'MCI',r:88,nat:'Portugal'},{n:'Gvardiol',c:'MCI',r:85,nat:'Croatia'},{n:'Trippier',c:'NEW',r:83,nat:'England'},
-    {n:'Alexander-Arnold',c:'LIV',r:86,nat:'England'},{n:'Robertson',c:'LIV',r:85,nat:'Scotland'},{n:'White',c:'ARS',r:84,nat:'England'},
-    {n:'Cucurella',c:'CHE',r:83,nat:'Spain'},{n:'James',c:'CHE',r:84,nat:'England'},{n:'Romero',c:'TOT',r:85,nat:'Argentina'},
-    {n:'Van de Ven',c:'TOT',r:83,nat:'Netherlands'},
-    {n:'Rudiger',c:'RMA',r:87,nat:'Germany'},{n:'Carvajal',c:'RMA',r:86,nat:'Spain'},{n:'Cubarsi',c:'BAR',r:84,nat:'Spain'},
-    {n:'Kounde',c:'BAR',r:85,nat:'France'},{n:'Bastoni',c:'INT',r:86,nat:'Italy'},{n:'Bremer',c:'JUV',r:85,nat:'Brazil'},
-    {n:'Hakimi',c:'PSG',r:86,nat:'Morocco'},{n:'Theo Hernandez',c:'MIL',r:85,nat:'France'},{n:'Davies',c:'BAY',r:84,nat:'Canada'},
-    {n:'Kim Min-jae',c:'BAY',r:84,nat:'South Korea'},{n:'Tah',c:'BAY',r:84,nat:'Germany'},{n:'Schlotterbeck',c:'BVB',r:83,nat:'Germany'},
+    {n:'Van Dijk',c:'LIV',r:88,nat:'Netherlands'},{n:'Saliba',c:'ARS',r:87,nat:'France'},{n:'Gabriel',c:'ARS',r:86,nat:'Brazil'},
+    {n:'Dias',c:'MCI',r:87,nat:'Portugal'},{n:'Gvardiol',c:'MCI',r:85,nat:'Croatia'},{n:'Trippier',c:'NEW',r:82,nat:'England'},
+    {n:'Alexander-Arnold',c:'LIV',r:86,nat:'England'},{n:'Robertson',c:'LIV',r:84,nat:'Scotland'},{n:'White',c:'ARS',r:84,nat:'England'},
+    {n:'Cucurella',c:'CHE',r:83,nat:'Spain'},{n:'James',c:'CHE',r:83,nat:'England'},{n:'Romero',c:'TOT',r:85,nat:'Argentina'},
+    {n:'Van de Ven',c:'TOT',r:83,nat:'Netherlands'},{n:'Konate',c:'LIV',r:83,nat:'France'},{n:'Stones',c:'MCI',r:84,nat:'England'},
+    {n:'Burn',c:'NEW',r:79,nat:'England'},{n:'Mings',c:'AVL',r:79,nat:'England'},{n:'Tarkowski',c:'EVE',r:80,nat:'England'},
+    {n:'Colwill',c:'CHE',r:80,nat:'England'},{n:'Guehi',c:'CRY',r:82,nat:'England'},{n:'Botman',c:'NEW',r:81,nat:'Netherlands'},
+    {n:'Rudiger',c:'RMA',r:86,nat:'Germany'},{n:'Carvajal',c:'RMA',r:85,nat:'Spain'},{n:'Cubarsi',c:'BAR',r:84,nat:'Spain'},
+    {n:'Kounde',c:'BAR',r:85,nat:'France'},{n:'Bastoni',c:'INT',r:86,nat:'Italy'},{n:'Bremer',c:'JUV',r:84,nat:'Brazil'},
+    {n:'Hakimi',c:'PSG',r:85,nat:'Morocco'},{n:'Theo Hernandez',c:'MIL',r:84,nat:'France'},{n:'Davies',c:'BAY',r:83,nat:'Canada'},
+    {n:'Kim Min-jae',c:'BAY',r:83,nat:'South Korea'},{n:'Tah',c:'BAY',r:83,nat:'Germany'},{n:'Schlotterbeck',c:'BVB',r:82,nat:'Germany'},
+    {n:'Araujo',c:'BAR',r:84,nat:'Uruguay'},{n:'Balde',c:'BAR',r:81,nat:'Spain'},{n:'Dimarco',c:'INT',r:84,nat:'Italy'},
+    {n:'Di Lorenzo',c:'NAP',r:83,nat:'Italy'},{n:'Bensebaini',c:'BVB',r:79,nat:'Algeria'},{n:'Marquinhos',c:'PSG',r:85,nat:'Brazil'},
+    {n:'Pavard',c:'INT',r:82,nat:'France'},{n:'Mendes',c:'PSG',r:83,nat:'Portugal'},
   ],
   MID:[
-    {n:'Rodri',c:'MCI',r:91,nat:'Spain'},{n:'De Bruyne',c:'MCI',r:90,nat:'Belgium'},{n:'Odegaard',c:'ARS',r:87,nat:'Norway'},
+    {n:'Rodri',c:'MCI',r:90,nat:'Spain'},{n:'De Bruyne',c:'MCI',r:88,nat:'Belgium'},{n:'Odegaard',c:'ARS',r:87,nat:'Norway'},
     {n:'Rice',c:'ARS',r:86,nat:'England'},{n:'Mac Allister',c:'LIV',r:85,nat:'Argentina'},{n:'Szoboszlai',c:'LIV',r:84,nat:'Hungary'},
-    {n:'Fernandes',c:'MUN',r:86,nat:'Portugal'},{n:'Palmer',c:'CHE',r:87,nat:'England'},{n:'Maddison',c:'TOT',r:84,nat:'England'},
-    {n:'Caicedo',c:'CHE',r:84,nat:'Ecuador'},{n:'Gravenberch',c:'LIV',r:84,nat:'Netherlands'},
-    {n:'Bellingham',c:'RMA',r:90,nat:'England'},{n:'Valverde',c:'RMA',r:88,nat:'Uruguay'},{n:'Tchouameni',c:'RMA',r:85,nat:'France'},
-    {n:'Pedri',c:'BAR',r:87,nat:'Spain'},{n:'Gavi',c:'BAR',r:84,nat:'Spain'},{n:'De Jong',c:'BAR',r:86,nat:'Netherlands'},
+    {n:'Fernandes',c:'MUN',r:86,nat:'Portugal'},{n:'Palmer',c:'CHE',r:86,nat:'England'},{n:'Maddison',c:'TOT',r:83,nat:'England'},
+    {n:'Caicedo',c:'CHE',r:84,nat:'Ecuador'},{n:'Gravenberch',c:'LIV',r:84,nat:'Netherlands'},{n:'Wharton',c:'CRY',r:80,nat:'England'},
+    {n:'Bruno Guimaraes',c:'NEW',r:84,nat:'Brazil'},{n:'Tonali',c:'NEW',r:83,nat:'Italy'},{n:'Onana',c:'AVL',r:80,nat:'Belgium'},
+    {n:'Mainoo',c:'MUN',r:80,nat:'England'},{n:'Eze',c:'CRY',r:83,nat:'England'},{n:'Rogers',c:'AVL',r:81,nat:'England'},
+    {n:'Bellingham',c:'RMA',r:89,nat:'England'},{n:'Valverde',c:'RMA',r:87,nat:'Uruguay'},{n:'Tchouameni',c:'RMA',r:85,nat:'France'},
+    {n:'Pedri',c:'BAR',r:87,nat:'Spain'},{n:'Gavi',c:'BAR',r:83,nat:'Spain'},{n:'De Jong',c:'BAR',r:85,nat:'Netherlands'},
     {n:'Barella',c:'INT',r:86,nat:'Italy'},{n:'Calhanoglu',c:'INT',r:85,nat:'Turkey'},{n:'Vitinha',c:'PSG',r:85,nat:'Portugal'},
-    {n:'Wirtz',c:'BAY',r:88,nat:'Germany'},{n:'Musiala',c:'BAY',r:88,nat:'Germany'},{n:'Kimmich',c:'BAY',r:86,nat:'Germany'},
-    {n:'Reijnders',c:'MIL',r:84,nat:'Netherlands'},
+    {n:'Wirtz',c:'BAY',r:87,nat:'Germany'},{n:'Musiala',c:'BAY',r:87,nat:'Germany'},{n:'Kimmich',c:'BAY',r:85,nat:'Germany'},
+    {n:'Reijnders',c:'MIL',r:83,nat:'Netherlands'},{n:'McTominay',c:'NAP',r:83,nat:'Scotland'},{n:'Lobotka',c:'NAP',r:83,nat:'Slovakia'},
+    {n:'Pellegrini',c:'ROM',r:81,nat:'Italy'},{n:'Koopmeiners',c:'JUV',r:82,nat:'Netherlands'},{n:'Olise',c:'BAY',r:85,nat:'France'},
+    {n:'Fabian Ruiz',c:'PSG',r:84,nat:'Spain'},{n:'Zubimendi',c:'ARS',r:84,nat:'Spain'},{n:'Ugarte',c:'MUN',r:80,nat:'Uruguay'},
+    {n:'Frattesi',c:'INT',r:81,nat:'Italy'},{n:'Brandt',c:'BVB',r:82,nat:'Germany'},
   ],
   FWD:[
     {n:'Haaland',c:'MCI',r:91,nat:'Norway'},{n:'Salah',c:'LIV',r:89,nat:'Egypt'},{n:'Saka',c:'ARS',r:87,nat:'England'},
-    {n:'Son',c:'TOT',r:86,nat:'South Korea'},{n:'Foden',c:'MCI',r:87,nat:'England'},{n:'Watkins',c:'AVL',r:85,nat:'England'},
-    {n:'Isak',c:'NEW',r:86,nat:'Sweden'},{n:'Gakpo',c:'LIV',r:83,nat:'Netherlands'},{n:'Cunha',c:'WOL',r:83,nat:'Brazil'},
-    {n:'Mbeumo',c:'BRE',r:83,nat:'Cameroon'},
-    {n:'Vinicius',c:'RMA',r:90,nat:'Brazil'},{n:'Mbappe',c:'RMA',r:91,nat:'France'},{n:'Rodrygo',c:'RMA',r:86,nat:'Brazil'},
-    {n:'Lewandowski',c:'BAR',r:88,nat:'Poland'},{n:'Raphinha',c:'BAR',r:87,nat:'Brazil'},{n:'Yamal',c:'BAR',r:87,nat:'Spain'},
-    {n:'Lautaro',c:'INT',r:88,nat:'Argentina'},{n:'Thuram',c:'INT',r:85,nat:'France'},{n:'Vlahovic',c:'JUV',r:84,nat:'Serbia'},
-    {n:'Osimhen',c:'NAP',r:88,nat:'Nigeria'},{n:'Leao',c:'MIL',r:86,nat:'Portugal'},{n:'Kane',c:'BAY',r:90,nat:'England'},
-    {n:'Olise',c:'BAY',r:85,nat:'France'},{n:'Dembele',c:'PSG',r:86,nat:'France'},
+    {n:'Son',c:'TOT',r:85,nat:'South Korea'},{n:'Foden',c:'MCI',r:86,nat:'England'},{n:'Watkins',c:'AVL',r:84,nat:'England'},
+    {n:'Isak',c:'NEW',r:86,nat:'Sweden'},{n:'Gakpo',c:'LIV',r:83,nat:'Netherlands'},{n:'Cunha',c:'MUN',r:82,nat:'Brazil'},
+    {n:'Mbeumo',c:'MUN',r:83,nat:'Cameroon'},{n:'Jackson',c:'CHE',r:81,nat:'Senegal'},{n:'Nkunku',c:'CHE',r:82,nat:'France'},
+    {n:'Wood',c:'NFO',r:80,nat:'New Zealand'},{n:'Mateta',c:'CRY',r:80,nat:'France'},{n:'Bowen',c:'WHU',r:82,nat:'England'},
+    {n:'Garnacho',c:'MUN',r:80,nat:'Argentina'},{n:'Rashford',c:'MUN',r:82,nat:'England'},{n:'Diaz',c:'LIV',r:84,nat:'Colombia'},
+    {n:'Vinicius',c:'RMA',r:90,nat:'Brazil'},{n:'Mbappe',c:'RMA',r:91,nat:'France'},{n:'Rodrygo',c:'RMA',r:85,nat:'Brazil'},
+    {n:'Lewandowski',c:'BAR',r:87,nat:'Poland'},{n:'Raphinha',c:'BAR',r:86,nat:'Brazil'},{n:'Yamal',c:'BAR',r:87,nat:'Spain'},
+    {n:'Lautaro',c:'INT',r:87,nat:'Argentina'},{n:'Thuram',c:'INT',r:85,nat:'France'},{n:'Vlahovic',c:'JUV',r:83,nat:'Serbia'},
+    {n:'Osimhen',c:'NAP',r:86,nat:'Nigeria'},{n:'Leao',c:'MIL',r:85,nat:'Portugal'},{n:'Kane',c:'BAY',r:90,nat:'England'},
+    {n:'Dembele',c:'PSG',r:87,nat:'France'},{n:'Kvaratskhelia',c:'PSG',r:86,nat:'Georgia'},{n:'Griezmann',c:'ATM',r:85,nat:'France'},
+    {n:'Williams',c:'ATB',r:84,nat:'Spain'},{n:'Openda',c:'RBL',r:81,nat:'Belgium'},{n:'Adeyemi',c:'BVB',r:81,nat:'Germany'},
+    {n:'Guirassy',c:'BVB',r:83,nat:'Guinea'},{n:'Retegui',c:'ATA',r:83,nat:'Italy'},{n:'Gonzalez',c:'JUV',r:81,nat:'Argentina'},
+    {n:'Barcola',c:'PSG',r:83,nat:'France'},{n:'Marmoush',c:'MCI',r:82,nat:'Egypt'},
   ],
 };
+
 // Legends pool (isLegend). Photos use the gold silhouette, not API photos.
 const DRAFT_LEGENDS={
   GK:[
