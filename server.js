@@ -480,7 +480,7 @@ app.get('/api/draft-photo', async (req, res) => {
     const {name, club} = req.query;
     if(!name) return res.json({found:false});
     const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const cKey = 'draftphoto3_'+da(name).replace(/ /g,'').slice(0,20);
+    const cKey = 'draftphoto5_'+da(name).replace(/ /g,'').slice(0,20);
     if(cache[cKey] && Date.now()-cache[cKey].ts < 30*24*60*MIN) return res.json(cache[cKey].data);
 
     // club code -> recognisable club name token(s) for verification
@@ -497,11 +497,23 @@ app.get('/api/draft-photo', async (req, res) => {
     const pnNoSpace = pn.replace(/ /g,'');
     const lastName = da(name.split(' ').pop());
 
-    // Use the players endpoint (gives team via statistics) for club verification
-    const r = await af('/players?search='+encodeURIComponent(lastName)+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
-    let pool = r.response||[];
-    if(!pool.length){
-      const r2 = await af('/players?search='+encodeURIComponent(pn.split(' ')[0])+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
+    // club code -> AF league id (required by /players?search on this plan)
+    const CLUBLEAGUE = {
+      ARS:39,CHE:39,LIV:39,MCI:39,MUN:39,TOT:39,NEW:39,AVL:39,EVE:39,BRE:39,NFO:39,WOL:39,
+      RMA:140,BAR:140,ATM:140,
+      INT:135,MIL:135,JUV:135,NAP:135,
+      BAY:78,BVB:78,
+      PSG:61,
+    };
+    const leagueId = CLUBLEAGUE[club] || 39;
+
+    // /players?search requires a league on this plan. Search the player's league.
+    let pool = [];
+    const r = await af('/players?search='+encodeURIComponent(lastName)+'&league='+leagueId+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
+    pool = r.response||[];
+    // fallback: try full first token if surname gave nothing
+    if(!pool.length && pn.split(' ')[0]!==lastName){
+      const r2 = await af('/players?search='+encodeURIComponent(pn.split(' ')[0])+'&league='+leagueId+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
       pool = r2.response||[];
     }
 
@@ -528,6 +540,15 @@ app.get('/api/draft-photo', async (req, res) => {
                      .sort((a,b)=>b.score-a.score);
     const best = ok[0]?.p?.player;
     const result = best?.photo ? {found:true, photo:best.photo, id:best.id} : {found:false};
+    if(req.query.debug){
+      return res.json({
+        query:{name, club, lastName, leagueId},
+        poolSize: pool.length,
+        firstFew: pool.slice(0,5).map(p=>({name:p.player?.name, id:p.player?.id, photo:p.player?.photo})),
+        topMatch: ok[0]?{name:ok[0].p.player?.name, score:ok[0].score}:null,
+        result
+      });
+    }
     cache[cKey] = {data:result, ts:Date.now()};
     res.json(result);
   } catch(e) { res.status(500).json({error:e.message, found:false}); }
