@@ -475,84 +475,6 @@ app.get('/api/af/player-career', async (req, res) => {
 });
 
 // Resolve a draft player's photo by name (any league), cached hard since photos never change.
-app.get('/api/draft-photo', async (req, res) => {
-  try {
-    const {name, club} = req.query;
-    if(!name) return res.json({found:false});
-    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const cKey = 'draftphoto5_'+da(name).replace(/ /g,'').slice(0,20);
-    if(cache[cKey] && Date.now()-cache[cKey].ts < 30*24*60*MIN) return res.json(cache[cKey].data);
-
-    // club code -> recognisable club name token(s) for verification
-    const CLUBNAME = {
-      ARS:'arsenal',CHE:'chelsea',LIV:'liverpool',MCI:'manchester city',MUN:'manchester united',
-      TOT:'tottenham',NEW:'newcastle',AVL:'aston villa',EVE:'everton',BRE:'brentford',
-      NFO:'nottingham',WOL:'wolves',
-      RMA:'real madrid',BAR:'barcelona',ATM:'atletico',
-      INT:'inter',MIL:'milan',JUV:'juventus',NAP:'napoli',
-      BAY:'bayern',BVB:'dortmund',PSG:'paris',
-    };
-    const wantClub = da(CLUBNAME[club]||'');
-    const pn = da(name);
-    const pnNoSpace = pn.replace(/ /g,'');
-    const lastName = da(name.split(' ').pop());
-
-    // club code -> AF league id (required by /players?search on this plan)
-    const CLUBLEAGUE = {
-      ARS:39,CHE:39,LIV:39,MCI:39,MUN:39,TOT:39,NEW:39,AVL:39,EVE:39,BRE:39,NFO:39,WOL:39,
-      RMA:140,BAR:140,ATM:140,
-      INT:135,MIL:135,JUV:135,NAP:135,
-      BAY:78,BVB:78,
-      PSG:61,
-    };
-    const leagueId = CLUBLEAGUE[club] || 39;
-
-    // /players?search requires a league on this plan. Search the player's league.
-    let pool = [];
-    const r = await af('/players?search='+encodeURIComponent(lastName)+'&league='+leagueId+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
-    pool = r.response||[];
-    // fallback: try full first token if surname gave nothing
-    if(!pool.length && pn.split(' ')[0]!==lastName){
-      const r2 = await af('/players?search='+encodeURIComponent(pn.split(' ')[0])+'&league='+leagueId+'&season=2025', 24*60*MIN).catch(()=>({response:[]}));
-      pool = r2.response||[];
-    }
-
-    const scored = pool.map(p => {
-      const fn = da(p.player?.name||'');
-      const ffn = da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
-      const fnNoSpace = fn.replace(/ /g,''), ffnNoSpace = ffn.replace(/ /g,'');
-      const teams = (p.statistics||[]).map(st=>da(st.team?.name||''));
-      let nameScore = 0;
-      if(fn===pn || ffn===pn) nameScore = 100;                       // exact full-name
-      else if(fnNoSpace===pnNoSpace || ffnNoSpace===pnNoSpace) nameScore = 90;
-      else if(pn.split(' ').length>1 && pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) nameScore = 70; // all name words present
-      else if(da(p.player?.lastname||'')===pn || fn.split(' ').pop()===pn) nameScore = 50; // surname matches
-      else if(fn.includes(pn) || ffn.includes(pn) || pn.includes(fn.split(' ').pop())) nameScore = 30; // loose contains
-      else nameScore = 0;
-      // club verification (used to RANK among candidates, not to gate)
-      let clubScore = 0;
-      if(wantClub && teams.some(t=>t.includes(wantClub)||wantClub.split(' ').every(w=>t.includes(w)))) clubScore = 40;
-      return {p, score:nameScore+clubScore, nameScore, clubScore};
-    });
-
-    // Loosened: any reasonable name match qualifies; club match just ranks it higher.
-    const ok = scored.filter(x => x.nameScore>=30)
-                     .sort((a,b)=>b.score-a.score);
-    const best = ok[0]?.p?.player;
-    const result = best?.photo ? {found:true, photo:best.photo, id:best.id} : {found:false};
-    if(req.query.debug){
-      return res.json({
-        query:{name, club, lastName, leagueId},
-        poolSize: pool.length,
-        firstFew: pool.slice(0,5).map(p=>({name:p.player?.name, id:p.player?.id, photo:p.player?.photo})),
-        topMatch: ok[0]?{name:ok[0].p.player?.name, score:ok[0].score}:null,
-        result
-      });
-    }
-    cache[cKey] = {data:result, ts:Date.now()};
-    res.json(result);
-  } catch(e) { res.status(500).json({error:e.message, found:false}); }
-});
 
 // Understat xG by player name
 app.get('/api/xg/player-search', async (req, res) => {
@@ -2602,6 +2524,30 @@ function CrosswordPlayer({puzzle,onBack}){
 
 // ===== THE DRAFT =====
 // Each player: {n:name, c:clubCode, r:overall}. Stats (PAC/SHO/PAS/DRI) derived from overall+position.
+// AF player IDs for direct, deterministic photo URLs (media.api-sports.io/football/players/{id}.png).
+// No name matching at runtime. Players absent here fall back to a silhouette.
+// Add more IDs as you confirm them in API-Football.
+const DRAFT_IDS={
+  // GK
+  'Alisson':290,'Ederson':617,'David Raya':2935,'Onana':2204,'Pickford':153,'Martinez':747,
+  'Courtois':730,'Ter Stegen':47,'Oblak':731,'Maignan':25931,'Donnarumma':505,'Neuer':165,'Sommer':14,
+  // DEF
+  'Van Dijk':290292,'Saliba':161904,'Gabriel':2767,'Dias':567,'Gvardiol':283566,
+  'Alexander-Arnold':18748,'Robertson':2938,'White':19150,'Cucurella':2934,'James':2929,'Romero':19470,
+  'Rudiger':159,'Carvajal':729,'Cubarsi':396565,'Kounde':2295,'Bastoni':30421,'Hakimi':22197,
+  'Davies':1116,'Kim Min-jae':2599,
+  // MID
+  'Rodri':632,'De Bruyne':629,'Odegaard':1460,'Rice':19182,'Mac Allister':5994,'Szoboszlai':2598,
+  'Fernandes':633,'Palmer':153636,'Maddison':18764,'Caicedo':99174,'Gravenberch':16308,
+  'Bellingham':150688,'Valverde':2855,'Tchouameni':22219,'Pedri':47380,'Gavi':325772,'De Jong':1466,
+  'Barella':30420,'Calhanoglu':190,'Vitinha':161900,'Wirtz':171420,'Musiala':161519,'Kimmich':161,
+  // FWD
+  'Haaland':1100,'Salah':306,'Saka':1465,'Son':186,'Foden':617521,'Watkins':18741,'Isak':70120,
+  'Gakpo':6906,'Mbeumo':18785,'Vinicius':1452,'Mbappe':278,'Rodrygo':2864,'Lewandowski':521,
+  'Raphinha':583,'Yamal':400229,'Lautaro':30422,'Thuram':5550,'Vlahovic':30381,'Osimhen':1158,
+  'Leao':1467,'Kane':184,'Olise':18984,'Dembele':266,
+};
+
 const DRAFT_POOL={
   GK:[
     {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'Ederson',c:'MCI',r:88,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
@@ -2716,23 +2662,15 @@ function draftGrade(avg){
 function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 
 function DraftPhoto({player, size}){
-  const [photo,setPhoto]=useState(null);
   const [err,setErr]=useState(false);
-  useEffect(()=>{
-    if(player.isLegend){ return; }
-    let on=true;
-    fetch('/api/draft-photo?name='+encodeURIComponent(player.n)+'&club='+encodeURIComponent(player.c||''))
-      .then(r=>r.json()).then(d=>{ if(on&&d.found&&d.photo) setPhoto(d.photo); else if(on) setErr(true); })
-      .catch(()=>{ if(on) setErr(true); });
-    return ()=>{on=false;};
-  },[player.n]);
   if(player.isLegend){
     return <img src="/legend-silhouette.png" alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
   }
-  if(photo&&!err){
-    return <img src={photo} onError={()=>setErr(true)} alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
+  const id=DRAFT_IDS[player.n];
+  if(id && !err){
+    return <img src={'https://media.api-sports.io/football/players/'+id+'.png'} onError={()=>setErr(true)} alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
   }
-  // fallback while loading or if not found: subtle initial
+  // no id, or image failed: silhouette-style initial fallback
   return <div style={{width:size,height:size,display:'flex',alignItems:'center',justifyContent:'center'}}>
     <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:size*0.4,color:'rgba(255,255,255,.35)'}}>{player.n.split(' ').pop().slice(0,1)}</span>
   </div>;
