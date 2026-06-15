@@ -476,48 +476,6 @@ app.get('/api/af/player-career', async (req, res) => {
 
 // Resolve a draft player's photo by name (any league), cached hard since photos never change.
 
-// ONE-TIME: resolve real AF player IDs for the draft pool. Visit /api/draft-id-dump once,
-// paste the JSON back, then this route can be deleted.
-app.get('/api/draft-id-dump', async (req, res) => {
-  try {
-    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const L = { ARS:39,CHE:39,LIV:39,MCI:39,MUN:39,TOT:39,NEW:39,AVL:39,EVE:39,BRE:39,NFO:39,WOL:39,
-      RMA:140,BAR:140,ATM:140, INT:135,MIL:135,JUV:135,NAP:135, BAY:78,BVB:78, PSG:61 };
-    // name, club for every current pool player
-    const PLAYERS = [
-      ['Alisson','LIV'],['Ederson','MCI'],['David Raya','ARS'],['Onana','MUN'],['Pickford','EVE'],['Sanchez','CHE'],['Vicario','TOT'],['Pope','NEW'],['Martinez','AVL'],['Sels','NFO'],['Courtois','RMA'],['Ter Stegen','BAR'],['Oblak','ATM'],['Maignan','MIL'],['Donnarumma','PSG'],['Neuer','BAY'],['Sommer','INT'],['Di Gregorio','JUV'],
-      ['Van Dijk','LIV'],['Saliba','ARS'],['Gabriel','ARS'],['Dias','MCI'],['Gvardiol','MCI'],['Trippier','NEW'],['Alexander-Arnold','LIV'],['Robertson','LIV'],['White','ARS'],['Cucurella','CHE'],['James','CHE'],['Romero','TOT'],['Van de Ven','TOT'],['Rudiger','RMA'],['Carvajal','RMA'],['Cubarsi','BAR'],['Kounde','BAR'],['Bastoni','INT'],['Bremer','JUV'],['Hakimi','PSG'],['Theo Hernandez','MIL'],['Davies','BAY'],['Kim Min-jae','BAY'],['Tah','BAY'],['Schlotterbeck','BVB'],
-      ['Rodri','MCI'],['De Bruyne','MCI'],['Odegaard','ARS'],['Rice','ARS'],['Mac Allister','LIV'],['Szoboszlai','LIV'],['Fernandes','MUN'],['Palmer','CHE'],['Maddison','TOT'],['Caicedo','CHE'],['Gravenberch','LIV'],['Bellingham','RMA'],['Valverde','RMA'],['Tchouameni','RMA'],['Pedri','BAR'],['Gavi','BAR'],['De Jong','BAR'],['Barella','INT'],['Calhanoglu','INT'],['Vitinha','PSG'],['Wirtz','BAY'],['Musiala','BAY'],['Kimmich','BAY'],['Reijnders','MIL'],
-      ['Haaland','MCI'],['Salah','LIV'],['Saka','ARS'],['Son','TOT'],['Foden','MCI'],['Watkins','AVL'],['Isak','NEW'],['Gakpo','LIV'],['Cunha','WOL'],['Mbeumo','BRE'],['Vinicius','RMA'],['Mbappe','RMA'],['Rodrygo','RMA'],['Lewandowski','BAR'],['Raphinha','BAR'],['Yamal','BAR'],['Lautaro','INT'],['Thuram','INT'],['Vlahovic','JUV'],['Osimhen','NAP'],['Leao','MIL'],['Kane','BAY'],['Olise','BAY'],['Dembele','PSG'],
-    ];
-    const out = {}; const misses = [];
-    for(const [name, club] of PLAYERS){
-      const last = da(name.split(' ').pop());
-      const lg = L[club] || 39;
-      let pool = [];
-      try {
-        const r = await af('/players?search='+encodeURIComponent(last)+'&league='+lg+'&season=2025', 24*60*60000);
-        pool = r.response||[];
-      } catch(e){}
-      // pick best by full-name closeness
-      const pn = da(name);
-      let best=null, bestScore=-1;
-      for(const p of pool){
-        const fn = da(p.player?.name||'');
-        const ffn = da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
-        let sc=0;
-        if(fn===pn||ffn===pn) sc=100;
-        else if(fn.replace(/ /g,'')===pn.replace(/ /g,'')) sc=90;
-        else if(pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) sc=70;
-        else if(da(p.player?.lastname||'')===last) sc=50;
-        else sc=20;
-        if(sc>bestScore){ bestScore=sc; best=p.player; }
-      }
-      if(best&&best.id){ out[name]=best.id; } else { misses.push(name); }
-    }
-    res.json({ count:Object.keys(out).length, misses, ids: out });
-  } catch(e){ res.status(500).json({error:e.message}); }
-});
 
 // Understat xG by player name
 app.get('/api/xg/player-search', async (req, res) => {
@@ -2571,24 +2529,10 @@ function CrosswordPlayer({puzzle,onBack}){
 // No name matching at runtime. Players absent here fall back to a silhouette.
 // Add more IDs as you confirm them in API-Football.
 const DRAFT_IDS={
-  // GK
-  'Alisson':290,'Ederson':617,'David Raya':2935,'Onana':2204,'Pickford':153,'Martinez':747,
-  'Courtois':730,'Ter Stegen':47,'Oblak':731,'Maignan':25931,'Donnarumma':505,'Neuer':165,'Sommer':14,
-  // DEF
-  'Van Dijk':290292,'Saliba':161904,'Gabriel':2767,'Dias':567,'Gvardiol':283566,
-  'Alexander-Arnold':18748,'Robertson':2938,'White':19150,'Cucurella':2934,'James':2929,'Romero':19470,
-  'Rudiger':159,'Carvajal':729,'Cubarsi':396565,'Kounde':2295,'Bastoni':30421,'Hakimi':22197,
-  'Davies':1116,'Kim Min-jae':2599,
-  // MID
-  'Rodri':632,'De Bruyne':629,'Odegaard':1460,'Rice':19182,'Mac Allister':5994,'Szoboszlai':2598,
-  'Fernandes':633,'Palmer':153636,'Maddison':18764,'Caicedo':99174,'Gravenberch':16308,
-  'Bellingham':150688,'Valverde':2855,'Tchouameni':22219,'Pedri':47380,'Gavi':325772,'De Jong':1466,
-  'Barella':30420,'Calhanoglu':190,'Vitinha':161900,'Wirtz':171420,'Musiala':161519,'Kimmich':161,
-  // FWD
-  'Haaland':1100,'Salah':306,'Saka':1465,'Son':186,'Foden':617521,'Watkins':18741,'Isak':70120,
-  'Gakpo':6906,'Mbeumo':18785,'Vinicius':1452,'Mbappe':278,'Rodrygo':2864,'Lewandowski':521,
-  'Raphinha':583,'Yamal':400229,'Lautaro':30422,'Thuram':5550,'Vlahovic':30381,'Osimhen':1158,
-  'Leao':1467,'Kane':184,'Olise':18984,'Dembele':266,
+  'Alisson':280,'Ederson':617,'David Raya':19465,'Onana':526,'Pickford':2932,'Sanchez':18959,'Vicario':31354,'Pope':18911,'Martinez':2467,'Sels':2919,'Courtois':730,'Ter Stegen':127,'Oblak':29,'Maignan':22221,'Donnarumma':1622,'Neuer':497,'Sommer':2802,'Di Gregorio':30670,
+  'Van Dijk':290,'Saliba':22090,'Gabriel':643,'Dias':95,'Gvardiol':129033,'Trippier':169,'Robertson':289,'White':18746,'Cucurella':47380,'James':19329,'Romero':30776,'Rudiger':2285,'Carvajal':733,'Cubarsi':396623,'Kounde':1257,'Bastoni':31009,'Bremer':30497,'Hakimi':9,'Davies':509,'Schlotterbeck':26242,
+  'Rodri':44,'Rice':2937,'Mac Allister':6716,'Szoboszlai':1096,'Fernandes':1485,'Palmer':152982,'Maddison':18784,'Caicedo':116117,'Gravenberch':542,'Bellingham':129718,'Valverde':756,'Tchouameni':1271,'Pedri':133609,'Gavi':296667,'De Jong':538,'Barella':30558,'Calhanoglu':1640,'Vitinha':128384,'Musiala':181812,'Kimmich':502,
+  'Haaland':1100,'Salah':306,'Saka':1460,'Foden':631,'Watkins':19366,'Isak':2864,'Gakpo':247,'Cunha':1165,'Mbeumo':20589,'Vinicius':762,'Mbappe':278,'Rodrygo':10009,'Lewandowski':521,'Raphinha':1496,'Yamal':386828,'Lautaro':217,'Thuram':116,'Vlahovic':30415,'Leao':22236,'Kane':184,'Olise':19617,'Dembele':153,
 };
 
 const DRAFT_POOL={
