@@ -2512,13 +2512,170 @@ function CrosswordPlayer({puzzle,onBack}){
   );
 }
 
+// ===== THE DRAFT =====
+const DRAFT_POOL={
+  GK:[
+    {n:'Alisson',c:'LIV',r:89},{n:'Ederson',c:'MCI',r:88},{n:'David Raya',c:'ARS',r:86},
+    {n:'Onana',c:'MUN',r:83},{n:'Pickford',c:'EVE',r:84},{n:'Sanchez',c:'CHE',r:82},
+    {n:'Vicario',c:'TOT',r:83},{n:'Pope',c:'NEW',r:83},{n:'Martinez',c:'AVL',r:86},
+    {n:'Flekken',c:'BRE',r:80},{n:'Areola',c:'WHU',r:80},{n:'Sels',c:'NFO',r:82},
+  ],
+  DEF:[
+    {n:'Van Dijk',c:'LIV',r:89},{n:'Saliba',c:'ARS',r:87},{n:'Gabriel',c:'ARS',r:86},
+    {n:'Dias',c:'MCI',r:88},{n:'Stones',c:'MCI',r:85},{n:'Gvardiol',c:'MCI',r:85},
+    {n:'Trippier',c:'NEW',r:83},{n:'Alexander-Arnold',c:'LIV',r:86},{n:'Robertson',c:'LIV',r:85},
+    {n:'White',c:'ARS',r:84},{n:'Cucurella',c:'CHE',r:83},{n:'James',c:'CHE',r:84},
+    {n:'Konsa',c:'AVL',r:82},{n:'Botman',c:'NEW',r:83},{n:'Romero',c:'TOT',r:85},
+    {n:'Van de Ven',c:'TOT',r:83},{n:'Dunk',c:'BHA',r:81},{n:'Mings',c:'AVL',r:80},
+  ],
+  MID:[
+    {n:'Rodri',c:'MCI',r:91},{n:'De Bruyne',c:'MCI',r:90},{n:'Odegaard',c:'ARS',r:87},
+    {n:'Rice',c:'ARS',r:86},{n:'Mac Allister',c:'LIV',r:85},{n:'Szoboszlai',c:'LIV',r:84},
+    {n:'Fernandes',c:'MUN',r:86},{n:'Palmer',c:'CHE',r:87},{n:'Maddison',c:'TOT',r:84},
+    {n:'Bellingham',c:'RMA',r:90},{n:'Caicedo',c:'CHE',r:84},{n:'Gravenberch',c:'LIV',r:84},
+    {n:'Tielemans',c:'AVL',r:82},{n:'Gibbs-White',c:'NFO',r:82},{n:'Wharton',c:'CRY',r:80},
+  ],
+  FWD:[
+    {n:'Haaland',c:'MCI',r:91},{n:'Salah',c:'LIV',r:89},{n:'Saka',c:'ARS',r:87},
+    {n:'Son',c:'TOT',r:86},{n:'Foden',c:'MCI',r:87},{n:'Watkins',c:'AVL',r:85},
+    {n:'Isak',c:'NEW',r:86},{n:'Mbeumo',c:'BRE',r:83},{n:'Jackson',c:'CHE',r:81},
+    {n:'Gakpo',c:'LIV',r:83},{n:'Bowen',c:'WHU',r:83},{n:'Cunha',c:'WOL',r:83},
+    {n:'Mitoma',c:'BHA',r:82},{n:'Nunez',c:'LIV',r:82},{n:'Eze',c:'CRY',r:83},
+  ],
+};
+// 4-3-3 slots
+const DRAFT_SLOTS=[
+  {pos:'GK',label:'Goalkeeper',group:'GK'},
+  {pos:'LB',label:'Left Back',group:'DEF'},
+  {pos:'CB',label:'Centre Back',group:'DEF'},
+  {pos:'CB',label:'Centre Back',group:'DEF'},
+  {pos:'RB',label:'Right Back',group:'DEF'},
+  {pos:'CM',label:'Midfielder',group:'MID'},
+  {pos:'CM',label:'Midfielder',group:'MID'},
+  {pos:'CM',label:'Midfielder',group:'MID'},
+  {pos:'LW',label:'Left Wing',group:'FWD'},
+  {pos:'ST',label:'Striker',group:'FWD'},
+  {pos:'RW',label:'Right Wing',group:'FWD'},
+];
+function draftGrade(avg){
+  if(avg>=88) return {g:'A+',c:'#FFD700'};
+  if(avg>=86) return {g:'A',c:'#00E676'};
+  if(avg>=84) return {g:'B+',c:'#00E676'};
+  if(avg>=82) return {g:'B',c:'#0ABFB8'};
+  if(avg>=80) return {g:'C+',c:'#0ABFB8'};
+  if(avg>=78) return {g:'C',c:'#FFD600'};
+  if(avg>=75) return {g:'D',c:'#FF8000'};
+  return {g:'E',c:'#FF3D3D'};
+}
+function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+
+function DraftGame({onExit}){
+  const buildOptions=()=>{
+    const usedGroups={GK:[],DEF:[],MID:[],FWD:[]};
+    return DRAFT_SLOTS.map(slot=>{
+      const avail=DRAFT_POOL[slot.group].filter(p=>!usedGroups[slot.group].includes(p.n));
+      const opts=shuffle(avail).slice(0,5);
+      usedGroups[slot.group].push(...opts.map(p=>p.n));
+      return opts;
+    });
+  };
+  const [options]=useState(buildOptions);
+  const [picks,setPicks]=useState([]); // chosen player per slot
+  const [seed,setSeed]=useState(0); // for replay
+  const step=picks.length;
+  const done=step>=DRAFT_SLOTS.length;
+
+  const pick=(p)=>{ if(done)return; setPicks(ps=>[...ps,p]); };
+  const replay=()=>{ setPicks([]); setSeed(s=>s+1); };
+
+  if(done){
+    const avg=picks.reduce((s,p)=>s+p.r,0)/picks.length;
+    const grade=draftGrade(avg);
+    // group picks for pitch display
+    const byLine={GK:[],DEF:[],MID:[],FWD:[]};
+    DRAFT_SLOTS.forEach((slot,i)=>byLine[slot.group].push({...picks[i],pos:slot.pos}));
+    const lines=[byLine.FWD,byLine.MID,byLine.DEF,byLine.GK];
+    return(
+      <div style={{paddingBottom:80}}>
+        <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+          <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>YOUR XI</div>
+        </div>
+        {/* rating banner */}
+        <div style={{margin:16,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+grade.c+'55'}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:60,color:grade.c,lineHeight:.9}}>{grade.g}</div>
+          <div style={{fontSize:14,color:C.text,fontWeight:700,marginTop:4}}>Team Rating {avg.toFixed(1)}</div>
+        </div>
+        {/* pitch */}
+        <div style={{margin:'0 16px',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'18px 8px',border:'1px solid rgba(255,255,255,.08)'}}>
+          {lines.map((line,li)=>(
+            <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?20:0}}>
+              {line.map((p,i)=>(
+                <div key={i} style={{textAlign:'center',width:72}}>
+                  <div style={{width:42,height:42,borderRadius:'50%',background:C.d2,border:'2px solid '+C.teal,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px'}}>
+                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.teal}}>{p.r}</span>
+                  </div>
+                  <div style={{fontSize:10,color:'#fff',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.n.split(' ').pop()}</div>
+                  <div style={{fontSize:8,color:'rgba(255,255,255,.6)',fontWeight:700}}>{p.pos} &middot; {p.c}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{padding:16}}>
+          <button onClick={replay} className="hv-press" style={{width:'100%',padding:'13px',borderRadius:10,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:'pointer'}}>Draft Again</button>
+        </div>
+      </div>
+    );
+  }
+
+  const slot=DRAFT_SLOTS[step];
+  const opts=options[step];
+  return(
+    <div style={{paddingBottom:80}}>
+      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+        <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
+        <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Pick {step+1} of {DRAFT_SLOTS.length}</div>
+      </div>
+      {/* progress */}
+      <div style={{display:'flex',gap:3,padding:'12px 16px'}}>
+        {DRAFT_SLOTS.map((s,i)=>(
+          <div key={i} style={{flex:1,height:4,borderRadius:2,background:i<step?C.teal:i===step?C.teal+'88':C.d4}}/>
+        ))}
+      </div>
+      <div style={{padding:'4px 16px 0'}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:1,textTransform:'uppercase',marginBottom:4}}>Now picking</div>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.white,letterSpacing:.5,marginBottom:14}}>{slot.label}</div>
+        <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8}}>
+          {opts.map((p,i)=>(
+            <div key={i} className="hv-press" onClick={()=>pick(p)}
+              style={{display:'flex',alignItems:'center',gap:12,background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 14px',cursor:'pointer'}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:C.d3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.teal}}>{p.r}</span>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:C.white}}>{p.n}</div>
+                <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{p.c}</div>
+              </div>
+              <div style={{color:C.muted,fontSize:18}}>{'>'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MiniGames({openPlayer, openClub}){
   const [game,setGame]=useState(null); // null = hub, else section id
 
   if(game==='quizzes') return <Quiz openPlayer={openPlayer} openClub={openClub} initialSection="quizzes" onExit={()=>setGame(null)}/>;
   if(game==='crosswords') return <Quiz openPlayer={openPlayer} openClub={openClub} initialSection="crosswords" onExit={()=>setGame(null)}/>;
+  if(game==='draft') return <DraftGame onExit={()=>setGame(null)}/>;
 
   const tiles=[
+    {id:'draft', title:'The Draft', sub:'Build your dream XI, get a rating', grad:'linear-gradient(135deg,#5B2C8E 0%,#A77BFF 100%)', icon:'M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z'},
     {id:'quizzes', title:'Quiz', sub:'Test your football trivia', grad:'linear-gradient(135deg,#0B6E69 0%,#0ABFB8 100%)', icon:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'},
     {id:'crosswords', title:'Crosswords', sub:'Football crossword puzzles', grad:'linear-gradient(135deg,#1C3F66 0%,#2979FF 100%)', icon:'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'},
   ];
