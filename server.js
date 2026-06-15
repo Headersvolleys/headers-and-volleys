@@ -2709,48 +2709,55 @@ function DraftPhoto({player, size}){
 }
 
 function PlayerCard({player, w}){
-  const W=w||150;
   const leg=player.isLegend;
+  const baseW=w||150;
+  const W=leg?Math.round(baseW*1.12):baseW; // legends slightly larger to stand out
   const st=player.stats||deriveStats(player, player.group||'MID');
-  // theme
-  const frame=leg?'linear-gradient(160deg,#e9b3ff 0%,#9b4dff 40%,#5a1e9e 100%)':'linear-gradient(160deg,#7fd0ff 0%,#2a7fd0 45%,#10406e 100%)';
-  const body=leg?'linear-gradient(165deg,#3d1466 0%,#5a1e9e 45%,#2a0d4d 100%)':'linear-gradient(165deg,#1c5d96 0%,#0e3a63 55%,#0a2c4d 100%)';
+  const H=W*1.46;
   const accent=leg?'#ffe9b8':'#fff';
   const sub=leg?'#f0d2ff':'#bfe2ff';
-  const H=W*1.5;
+  const body=leg?'#3d1268':'#0e3f6b';
+  const topbar=leg?'#e9c25a':'#3aa0e0';
+  const frame=leg?'linear-gradient(#ffe9a8,#caa23f)':'#1a6fb0';
+  const pat=leg?'repeating-linear-gradient(45deg,rgba(255,220,150,.06) 0 10px,rgba(255,255,255,0) 10px 20px)':'repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 10px,rgba(255,255,255,0) 10px 20px)';
+  const clip=leg?'polygon(50% 0,100% 6%,100% 90%,84% 100%,16% 100%,0 90%,0 6%)':'none';
+  const showStats=W>=92; // hide stat row on tiny pitch/option cards
+  const statMargin=leg?W*0.15:W*0.08;
   return(
-    <div style={{width:W,borderRadius:W*0.09,padding:2,background:frame,boxShadow:leg?'0 8px 26px rgba(140,60,220,.5)':'0 8px 22px rgba(20,90,160,.4)'}}>
-      <div style={{borderRadius:W*0.08,height:H,position:'relative',overflow:'hidden',background:body}}>
-        {leg&&<div style={{position:'absolute',inset:0,background:'linear-gradient(115deg,rgba(255,255,255,0) 33%,rgba(255,255,255,.32) 48%,rgba(255,255,255,0) 60%)'}}/>}
-        <div style={{position:'absolute',top:0,left:0,right:0,height:'55%',background:'linear-gradient(120deg,rgba(255,255,255,.16),rgba(255,255,255,0) 60%)'}}/>
-        {/* photo layer */}
-        <div style={{position:'absolute',top:W*0.16,left:0,right:0,bottom:'34%',display:'flex',justifyContent:'center',alignItems:'flex-end',overflow:'hidden'}}>
-          <DraftPhoto player={player} size={W*0.82}/>
-        </div>
-        {/* rating block */}
-        <div style={{position:'absolute',top:W*0.07,left:W*0.08,textAlign:'center',lineHeight:1}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.21,color:accent,textShadow:leg?'0 0 8px rgba(255,210,120,.6)':'none'}}>{player.r}</div>
-          <div style={{fontSize:W*0.07,fontWeight:700,color:sub,letterSpacing:1,marginTop:1}}>{player.pos||''}</div>
-          <div style={{width:W*0.13,height:1,background:'rgba(255,255,255,.4)',margin:(W*0.03)+'px auto'}}/>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:3}}>
-            {player.nat&&flag(player.nat)&&<img src={flag(player.nat)} alt="" style={{width:W*0.1,height:W*0.075,objectFit:'cover',borderRadius:1}}/>}
-            <span style={{fontSize:W*0.062,color:sub,fontWeight:700}}>{player.c}</span>
+    <div style={{width:W,margin:'0 auto',borderRadius:leg?0:W*0.08,padding:3,background:frame,clipPath:clip,boxShadow:leg?'0 0 13px rgba(180,90,255,.4)':'0 6px 16px rgba(20,90,160,.35)'}}>
+      <div style={{height:H,display:'flex',flexDirection:'column',overflow:'hidden',background:body,backgroundImage:pat,borderTop:(W*0.03)+'px solid '+topbar,borderRadius:leg?0:W*0.06,clipPath:clip,position:'relative'}}>
+        {leg&&<div style={{position:'absolute',top:3,left:3,right:3,bottom:3,border:'1px solid rgba(255,220,150,.35)',clipPath:clip,pointerEvents:'none'}}/>}
+        {/* top row: rating | figure | star */}
+        <div style={{display:'flex',alignItems:'flex-start',padding:(W*0.07)+'px '+(W*0.08)+'px 0'}}>
+          <div style={{textAlign:'center',lineHeight:1.05,minWidth:W*0.22}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.2,color:accent,textShadow:leg?'0 0 8px rgba(255,210,120,.6)':'none'}}>{player.r}</div>
+            <div style={{fontSize:W*0.066,fontWeight:700,color:sub}}>{player.pos||''}</div>
+            {player.nat&&flag(player.nat)&&<img src={flag(player.nat)} alt="" style={{width:W*0.1,height:W*0.072,objectFit:'cover',borderRadius:1,marginTop:W*0.02}}/>}
+            <div style={{fontSize:W*0.058,fontWeight:700,color:sub}}>{player.c}</div>
           </div>
+          <div style={{flex:1,display:'flex',justifyContent:'center',alignItems:'center'}}>
+            <div style={{width:W*0.56,height:W*0.56,borderRadius:'50%',overflow:'hidden',background:leg?'rgba(255,220,150,.08)':'rgba(255,255,255,.06)',border:leg?'1px solid rgba(255,220,150,.25)':'none',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+              <DraftPhoto player={player} size={W*0.56}/>
+            </div>
+          </div>
+          <div style={{minWidth:W*0.22,textAlign:'right'}}>{leg&&<span style={{color:'#ffe9b8',fontSize:W*0.1,textShadow:'0 0 6px rgba(255,210,120,.8)'}}>&#9733;</span>}</div>
         </div>
-        {leg&&<div style={{position:'absolute',top:W*0.06,right:W*0.07,color:'#ffe9b8',fontSize:W*0.1,textShadow:'0 0 6px rgba(255,210,120,.8)'}}>&#9733;</div>}
+        <div style={{flex:1}}/>
         {/* name */}
-        <div style={{position:'absolute',bottom:'27%',left:0,right:0,textAlign:'center',padding:'0 4px'}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.15,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'none'}}>{player.n.split(' ').pop()}</div>
+        <div style={{textAlign:'center',paddingBottom:W*0.03}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.14,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',padding:'0 6px',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'none'}}>{player.n.split(' ').pop()}</div>
         </div>
         {/* stats */}
-        <div style={{position:'absolute',bottom:W*0.06,left:W*0.08,right:W*0.08,display:'flex',justifyContent:'space-between',borderTop:'1px solid rgba(255,255,255,.18)',paddingTop:W*0.04}}>
+        {showStats&&
+        <div style={{display:'flex',justifyContent:'space-between',margin:'0 '+statMargin+'px '+(W*0.08)+'px',borderTop:'1px solid '+(leg?'rgba(255,220,150,.3)':'rgba(255,255,255,.18)'),paddingTop:W*0.035}}>
           {[['PAC',st.PAC],['SHO',st.SHO],['PAS',st.PAS],['DRI',st.DRI]].map(([k,v])=>(
-            <div key={k} style={{textAlign:'center'}}>
+            <div key={k} style={{textAlign:'center',flex:1}}>
               <div style={{fontSize:W*0.082,fontWeight:800,color:accent}}>{v}</div>
-              <div style={{fontSize:W*0.05,color:sub,fontWeight:700,letterSpacing:.5}}>{k}</div>
+              <div style={{fontSize:W*0.048,color:sub,fontWeight:700}}>{k}</div>
             </div>
           ))}
-        </div>
+        </div>}
+        {!showStats&&<div style={{paddingBottom:W*0.06}}/>}
       </div>
     </div>
   );
