@@ -2631,23 +2631,52 @@ function DraftGame({onExit}){
 
   const slot=DRAFT_SLOTS[step];
   const opts=options[step];
+  // live pitch: map every slot to filled pick or empty, grouped into lines
+  const slotView=DRAFT_SLOTS.map((s,i)=>({...s, idx:i, player:picks[i]||null, current:i===step}));
+  const lineOf=(g)=>slotView.filter(s=>s.group===g);
+  const liveLines=[lineOf('FWD'),lineOf('MID'),lineOf('DEF'),lineOf('GK')];
+  const runningAvg=picks.length?(picks.reduce((s,p)=>s+p.r,0)/picks.length):0;
   return(
     <div style={{paddingBottom:80}}>
       <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
         <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
-        <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Pick {step+1} of {DRAFT_SLOTS.length}</div>
+        <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
+          <div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
+            <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Pick {step+1} of {DRAFT_SLOTS.length}</div>
+          </div>
+          {picks.length>0&&<div style={{textAlign:'right'}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{runningAvg.toFixed(1)}</div>
+            <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:1}}>AVG</div>
+          </div>}
+        </div>
       </div>
       {/* progress */}
-      <div style={{display:'flex',gap:3,padding:'12px 16px'}}>
+      <div style={{display:'flex',gap:3,padding:'10px 16px 6px'}}>
         {DRAFT_SLOTS.map((s,i)=>(
           <div key={i} style={{flex:1,height:4,borderRadius:2,background:i<step?C.teal:i===step?C.teal+'88':C.d4}}/>
         ))}
       </div>
-      <div style={{padding:'4px 16px 0'}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:1,textTransform:'uppercase',marginBottom:4}}>Now picking</div>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.white,letterSpacing:.5,marginBottom:14}}>{slot.label}</div>
-        <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8}}>
+      {/* live pitch */}
+      <div style={{margin:'4px 16px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'14px 6px',border:'1px solid rgba(255,255,255,.08)'}}>
+        {liveLines.map((line,li)=>(
+          <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<liveLines.length-1?14:0}}>
+            {line.map((s)=>(
+              <div key={s.idx} className={s.player?'hv-pop':''} style={{textAlign:'center',width:62}}>
+                <div style={{width:36,height:36,borderRadius:'50%',margin:'0 auto 3px',display:'flex',alignItems:'center',justifyContent:'center',
+                  background:s.player?C.d2:'transparent',
+                  border:'2px '+(s.player?'solid '+C.teal:s.current?'solid '+C.yellow:'dashed rgba(255,255,255,.3)')}}>
+                  <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:s.player?15:11,color:s.player?C.teal:s.current?C.yellow:'rgba(255,255,255,.4)'}}>{s.player?s.player.r:s.pos}</span>
+                </div>
+                <div style={{fontSize:9,color:s.player?'#fff':'rgba(255,255,255,.45)',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.player?s.player.n.split(' ').pop():s.label.split(' ')[0]}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{padding:'14px 16px 0'}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.yellow,letterSpacing:1,textTransform:'uppercase',marginBottom:4}}>Now picking &middot; {slot.label}</div>
+        <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8,marginTop:8}}>
           {opts.map((p,i)=>(
             <div key={i} className="hv-press" onClick={()=>pick(p)}
               style={{display:'flex',alignItems:'center',gap:12,background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'13px 14px',cursor:'pointer'}}>
