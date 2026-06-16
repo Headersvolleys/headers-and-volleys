@@ -2843,16 +2843,47 @@ function DraftGame({onExit}){
     while(out.length<n && pool.length){ const i=weightedPick(pool); out.push(pool[i]); pool.splice(i,1); }
     return out;
   };
+  // which player positions are eligible for each slot pos (strict), plus a fallback chain for top-up
+  const SLOT_ELIGIBLE={
+    GK:['GK'],
+    LB:['LB'], RB:['RB'], CB:['CB'],
+    LWB:['LWB','LB'], RWB:['RWB','RB'],
+    CDM:['CDM'], CM:['CM'], CAM:['CAM'],
+    LW:['LW'], RW:['RW'], ST:['ST'],
+  };
+  const SLOT_FALLBACK={
+    GK:['GK'],
+    LB:['LB','LWB','CB'], RB:['RB','RWB','CB'], CB:['CB','RB','LB'],
+    LWB:['LWB','LB','CB'], RWB:['RWB','RB','CB'],
+    CDM:['CDM','CM','CB'], CM:['CM','CDM','CAM'], CAM:['CAM','CM','LW','RW'],
+    LW:['LW','RW','ST','CAM'], RW:['RW','LW','ST','CAM'], ST:['ST','LW','RW','CAM'],
+  };
+  const playerPositions=(p)=>(DRAFT_POS[p.n]||'').split('/');
+  const eligibleFor=(p, posList)=>{ const pp=playerPositions(p); return pp.some(x=>posList.includes(x)); };
   const buildOptions=(slots)=>{
     const used={GK:[],DEF:[],MID:[],FWD:[]};
     return slots.map(slot=>{
       const g=slot.group;
-      const cur=DRAFT_POOL[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:false}));
-      const leg=DRAFT_LEGENDS[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:true}));
+      const avail=DRAFT_POOL[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:false}));
+      const legAll=DRAFT_LEGENDS[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:true}));
       const opts=[];
-      if(leg.length && Math.random()<0.18){ opts.push(weightedSample(leg,1)[0]); }
-      const remaining=weightedSample(cur,5-opts.length);
-      opts.push(...remaining);
+      // legend chance (legends have no DRAFT_POS, so allow any in-group legend)
+      if(legAll.length && Math.random()<0.18){ opts.push(weightedSample(legAll,1)[0]); }
+      // strict-eligible pool for this slot
+      const strict=avail.filter(p=>eligibleFor(p, SLOT_ELIGIBLE[slot.pos]||[slot.pos]));
+      opts.push(...weightedSample(strict, 5-opts.length));
+      // top up from fallback chain if short of 5
+      if(opts.length<5){
+        const chosen=new Set(opts.map(p=>p.n));
+        const fb=avail.filter(p=>!chosen.has(p.n) && eligibleFor(p, SLOT_FALLBACK[slot.pos]||[slot.pos]));
+        opts.push(...weightedSample(fb, 5-opts.length));
+      }
+      // last resort: any remaining in group
+      if(opts.length<5){
+        const chosen=new Set(opts.map(p=>p.n));
+        const rest=avail.filter(p=>!chosen.has(p.n));
+        opts.push(...weightedSample(rest, 5-opts.length));
+      }
       const shuffled=shuffle(opts).map(p=>({...p, stats:deriveStats(p,g), group:g}));
       used[g].push(...shuffled.map(p=>p.n));
       return shuffled;
