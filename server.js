@@ -3201,13 +3201,8 @@ function Quiz({openPlayer, openClub, onExit, initialSection}){
   }
 
   const cats=[...new Set(QUIZZES.map(q=>q.cat))];
-  const SectionToggle=(
-    <div style={{display:'flex',gap:6,marginBottom:16}}>
-      {[['quizzes','Quizzes'],['crosswords','Crosswords']].map(([id,lbl])=>(
-        <button key={id} onClick={()=>setSection(id)} style={{flex:1,padding:'8px 12px',borderRadius:9,border:'1px solid '+(section===id?C.teal:C.d4),background:section===id?'rgba(10,191,184,.1)':C.d2,color:section===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>{lbl}</button>
-      ))}
-    </div>
-  );
+  // Each mini-game tile locks to its own section; no cross-mode toggle.
+  const SectionToggle=null;
 
   if(section==='crosswords'){
     return(
