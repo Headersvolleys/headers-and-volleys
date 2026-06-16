@@ -2527,6 +2527,8 @@ const DRAFT_IDS={
   'Van Dijk':290,'Saliba':22090,'Gabriel':643,'Dias':95,'Gvardiol':129033,'Trippier':169,'Robertson':289,'White':18746,'Cucurella':47380,'James':19329,'Romero':30776,'Van de Ven':152849,'Konate':1145,'Stones':626,'Burn':18961,'Mings':19179,'Tarkowski':2936,'Colwill':152953,'Guehi':67971,'Botman':38734,'Rudiger':2285,'Carvajal':733,'Cubarsi':396623,'Kounde':1257,'Bastoni':31009,'Bremer':30497,'Hakimi':9,'Davies':509,'Schlotterbeck':26242,'Araujo':101814,'Balde':161928,'Dimarco':31010,'Di Lorenzo':31042,'Bensebaini':2194,'Marquinhos':257,'Pavard':2725,'Mendes':263482,'Aina':2771,'Munoz':13736,'Lacroix':20995,'Kerkez':206254,'Frimpong':152654,'Murillo':363695,'Gabriel Magalhaes':22224,'Livramento':158694,'Hall':148099,'Pau Torres':46815,'Digne':2724,'Estupinan':46731,'Tomori':19209,'Calafiori':157052,'Timber':38746,'Acerbi':1836,'Gatti':268341,'Buongiorno':31226,'Ryerson':24845,'Anton':25368,'Upamecano':1149,
   'Rodri':44,'Rice':2937,'Mac Allister':6716,'Szoboszlai':1096,'Fernandes':1485,'Palmer':152982,'Maddison':18784,'Caicedo':116117,'Gravenberch':542,'Wharton':288102,'Bruno Guimaraes':10135,'Tonali':31146,'Amadou Onana':162714,'Mainoo':284322,'Rogers':19170,'Bellingham':129718,'Valverde':756,'Tchouameni':1271,'Pedri':133609,'Gavi':296667,'De Jong':538,'Barella':30558,'Calhanoglu':1640,'Vitinha':128384,'Musiala':181812,'Kimmich':502,'McTominay':903,'Lobotka':47439,'Pellegrini':782,'Koopmeiners':36899,'Olise':19617,'Fabian Ruiz':328,'Zubimendi':47315,'Ugarte':51494,'Frattesi':31173,'Brandt':984,'Sangare':22149,'Anderson':138908,'Smith Rowe':1161,'Andreas Pereira':899,'Garner':895,'Kluivert':792,'Sarr':2218,'Merino':47311,'Modric':754,'Mkhitaryan':1457,'Locatelli':30533,'Anguissa':3406,'Sabitzer':1159,'Goretzka':511,'Casado':329728,
   'Haaland':1100,'Salah':306,'Saka':1460,'Foden':631,'Watkins':19366,'Isak':2864,'Gakpo':247,'Cunha':1165,'Mbeumo':20589,'Wood':18889,'Mateta':25927,'Bowen':19428,'Garnacho':284324,'Vinicius':762,'Mbappe':278,'Rodrygo':10009,'Lewandowski':521,'Raphinha':1496,'Yamal':386828,'Lautaro':217,'Thuram':116,'Vlahovic':30415,'Leao':22236,'Kane':184,'Dembele':153,'Kvaratskhelia':483,'Griezmann':56,'Williams':47294,'Openda':86,'Adeyemi':7334,'Guirassy':21393,'Barcola':161904,'Marmoush':81573,'Wissa':20649,'Schade':178077,'Welbeck':1469,'Mitoma':106835,'Joao Pedro':10329,'Pedro Neto':1864,'Solanke':18883,'Kudus':15911,'Elanga':153430,'Semenyo':19281,'Nketiah':1468,'Julian Alvarez':6009,'Ferran Torres':931,'Nico Williams':183799,'Oyarzabal':47323,'Gimenez':94562,'Pulisic':17,'Chiesa':30410,'Lookman':18767,'Gyokeres':18979,'Beto':125743,'Ekitike':174565,
+  // resolved misses (confident only)
+  'De Bruyne':629,'Son':186,'Wirtz':171420,'Rashford':909,'Kim Min-jae':2599,'Loftus-Cheek':536,
 };
 
 
@@ -2703,53 +2705,72 @@ function DraftPhoto({player, size}){
 function PlayerCard({player, w}){
   const leg=player.isLegend;
   const baseW=w||150;
-  const W=leg?Math.round(baseW*1.12):baseW; // legends slightly larger to stand out
+  const W=leg?Math.round(baseW*1.12):baseW;
   const st=player.stats||deriveStats(player, player.group||'MID');
   const H=W*1.46;
-  const accent=leg?'#ffe9b8':'#fff';
+  const accent=leg?'#ffe9b8':'#ffffff';
   const sub=leg?'#f0d2ff':'#bfe2ff';
-  const body=leg?'#3d1268':'#0e3f6b';
-  const topbar=leg?'#e9c25a':'#3aa0e0';
-  const frame=leg?'linear-gradient(#ffe9a8,#caa23f)':'#1a6fb0';
-  const pat=leg?'repeating-linear-gradient(45deg,rgba(255,220,150,.06) 0 10px,rgba(255,255,255,0) 10px 20px)':'repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 10px,rgba(255,255,255,0) 10px 20px)';
-  const clip=leg?'polygon(50% 0,100% 6%,100% 90%,84% 100%,16% 100%,0 90%,0 6%)':'none';
-  const showStats=W>=92; // hide stat row on tiny pitch/option cards
-  const statMargin=leg?W*0.15:W*0.08;
+  const body=leg
+    ? 'linear-gradient(165deg,#3d1268 0%,#5a1e9e 45%,#2a0d4d 100%)'
+    : 'radial-gradient(120% 80% at 50% 18%,#2a86e8 0%,#13478f 45%,#071f48 100%)';
+  // frames: gold for legend, silver for current
+  const frame=leg?'linear-gradient(#ffe9a8,#caa23f)':'linear-gradient(160deg,#f5f9ff,#aebfcf 45%,#6d7f92)';
+  const topbar=leg?'linear-gradient(90deg,#caa23f,#ffe9a8,#caa23f)':'linear-gradient(90deg,#cfe6ff,#8fbfe8,#cfe6ff)';
+  const trim=leg?'rgba(255,220,150,.35)':'rgba(210,228,245,.4)';
+  const clip='polygon(50% 0,100% 6%,100% 90%,84% 100%,16% 100%,0 90%,0 6%)'; // both tiers angular now
+  const showStats=W>=92;
+  const statMargin=W*0.15;
+  const glowShadow=leg?'0 0 13px rgba(180,90,255,.4)':'0 0 12px rgba(40,140,235,.4)';
   return(
-    <div style={{width:W,margin:'0 auto',borderRadius:leg?0:W*0.08,padding:3,background:frame,clipPath:clip,boxShadow:leg?'0 0 13px rgba(180,90,255,.4)':'0 6px 16px rgba(20,90,160,.35)'}}>
-      <div style={{height:H,display:'flex',flexDirection:'column',overflow:'hidden',background:body,backgroundImage:pat,borderTop:(W*0.03)+'px solid '+topbar,borderRadius:leg?0:W*0.06,clipPath:clip,position:'relative'}}>
-        {leg&&<div style={{position:'absolute',top:3,left:3,right:3,bottom:3,border:'1px solid rgba(255,220,150,.35)',clipPath:clip,pointerEvents:'none'}}/>}
-        {/* top row: rating | figure | star */}
-        <div style={{display:'flex',alignItems:'flex-start',padding:(W*0.07)+'px '+(W*0.08)+'px 0'}}>
-          <div style={{textAlign:'center',lineHeight:1.05,minWidth:W*0.22}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.2,color:accent,textShadow:leg?'0 0 8px rgba(255,210,120,.6)':'none'}}>{player.r}</div>
-            <div style={{fontSize:W*0.066,fontWeight:700,color:sub}}>{player.pos||''}</div>
-            {player.nat&&flag(player.nat)&&<img src={flag(player.nat)} alt="" style={{width:W*0.1,height:W*0.072,objectFit:'cover',borderRadius:1,marginTop:W*0.02}}/>}
-            <div style={{fontSize:W*0.058,fontWeight:700,color:sub}}>{player.c}</div>
-          </div>
-          <div style={{flex:1,display:'flex',justifyContent:'center',alignItems:'center'}}>
-            <div style={{width:W*0.56,height:W*0.56,borderRadius:'50%',overflow:'hidden',background:leg?'rgba(255,220,150,.08)':'rgba(255,255,255,.06)',border:leg?'1px solid rgba(255,220,150,.25)':'none',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-              <DraftPhoto player={player} size={W*0.56}/>
-            </div>
-          </div>
-          <div style={{minWidth:W*0.22,textAlign:'right'}}>{leg&&<span style={{color:'#ffe9b8',fontSize:W*0.1,textShadow:'0 0 6px rgba(255,210,120,.8)'}}>&#9733;</span>}</div>
-        </div>
-        <div style={{flex:1}}/>
-        {/* name */}
-        <div style={{textAlign:'center',paddingBottom:W*0.03}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.14,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',padding:'0 6px',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'none'}}>{player.n.split(' ').pop()}</div>
-        </div>
-        {/* stats */}
-        {showStats&&
-        <div style={{display:'flex',justifyContent:'space-between',margin:'0 '+statMargin+'px '+(W*0.08)+'px',borderTop:'1px solid '+(leg?'rgba(255,220,150,.3)':'rgba(255,255,255,.18)'),paddingTop:W*0.035}}>
-          {[['PAC',st.PAC],['SHO',st.SHO],['PAS',st.PAS],['DRI',st.DRI]].map(([k,v])=>(
-            <div key={k} style={{textAlign:'center',flex:1}}>
-              <div style={{fontSize:W*0.082,fontWeight:800,color:accent}}>{v}</div>
-              <div style={{fontSize:W*0.048,color:sub,fontWeight:700}}>{k}</div>
-            </div>
-          ))}
+    <div style={{width:W,margin:'0 auto',padding:3,background:frame,clipPath:clip,boxShadow:glowShadow}}>
+      <div style={{height:H,display:'flex',flexDirection:'column',overflow:'hidden',background:body,clipPath:clip,position:'relative'}}>
+        {/* electric light shards (current only) */}
+        {!leg&&<div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
+          <div style={{position:'absolute',top:-20,left:'8%',width:W*0.22,height:'150%',background:'linear-gradient(rgba(120,200,255,.28),rgba(120,200,255,0))',transform:'rotate(20deg)'}}/>
+          <div style={{position:'absolute',top:-20,left:'26%',width:W*0.09,height:'150%',background:'linear-gradient(rgba(150,220,255,.42),rgba(150,220,255,0))',transform:'rotate(20deg)'}}/>
+          <div style={{position:'absolute',top:-20,right:'14%',width:W*0.28,height:'150%',background:'linear-gradient(rgba(120,200,255,.2),rgba(120,200,255,0))',transform:'rotate(20deg)'}}/>
+          <div style={{position:'absolute',top:-20,right:'4%',width:W*0.06,height:'150%',background:'linear-gradient(rgba(180,235,255,.5),rgba(180,235,255,0))',transform:'rotate(20deg)'}}/>
         </div>}
-        {!showStats&&<div style={{paddingBottom:W*0.06}}/>}
+        {/* legend gloss sweep */}
+        {leg&&<div style={{position:'absolute',inset:0,background:'linear-gradient(115deg,rgba(255,255,255,0) 33%,rgba(255,255,255,.3) 48%,rgba(255,255,255,0) 60%)',pointerEvents:'none'}}/>}
+        {/* top sheen + bar */}
+        <div style={{position:'absolute',top:0,left:0,right:0,height:'48%',background:'linear-gradient(120deg,rgba(255,255,255,.16),rgba(255,255,255,0) 65%)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',top:0,left:0,right:0,height:Math.max(3,W*0.03),background:topbar}}/>
+        <div style={{position:'absolute',top:3,left:3,right:3,bottom:3,border:'1px solid '+trim,clipPath:clip,pointerEvents:'none'}}/>
+
+        <div style={{position:'relative',height:'100%',display:'flex',flexDirection:'column'}}>
+          {/* top row */}
+          <div style={{display:'flex',alignItems:'flex-start',padding:(W*0.07)+'px '+(W*0.08)+'px 0'}}>
+            <div style={{textAlign:'center',lineHeight:1.05,minWidth:W*0.22}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.2,color:accent,textShadow:leg?'0 0 8px rgba(255,210,120,.6)':'0 1px 4px rgba(0,40,90,.6)'}}>{player.r}</div>
+              <div style={{fontSize:W*0.066,fontWeight:700,color:sub}}>{player.pos||''}</div>
+              {player.nat&&flag(player.nat)&&<img src={flag(player.nat)} alt="" style={{width:W*0.1,height:W*0.072,objectFit:'cover',borderRadius:1,marginTop:W*0.02}}/>}
+              <div style={{fontSize:W*0.058,fontWeight:700,color:sub}}>{player.c}</div>
+            </div>
+            <div style={{flex:1,display:'flex',justifyContent:'center',alignItems:'center'}}>
+              <div style={{width:W*0.56,height:W*0.56,borderRadius:'50%',overflow:'hidden',background:leg?'rgba(255,220,150,.08)':'rgba(255,255,255,.07)',border:'1px solid '+trim,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+                <DraftPhoto player={player} size={W*0.56}/>
+              </div>
+            </div>
+            <div style={{minWidth:W*0.22,textAlign:'right'}}>{leg&&<span style={{color:'#ffe9b8',fontSize:W*0.1,textShadow:'0 0 6px rgba(255,210,120,.8)'}}>&#9733;</span>}</div>
+          </div>
+          <div style={{flex:1}}/>
+          {/* name */}
+          <div style={{textAlign:'center',paddingBottom:W*0.03}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.14,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',padding:'0 6px',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'0 1px 6px rgba(0,40,90,.7)'}}>{player.n.split(' ').pop()}</div>
+          </div>
+          {/* stats */}
+          {showStats&&
+          <div style={{display:'flex',justifyContent:'space-between',margin:'0 '+statMargin+'px '+(W*0.08)+'px',borderTop:'1px solid '+trim,paddingTop:W*0.035}}>
+            {[['PAC',st.PAC],['SHO',st.SHO],['PAS',st.PAS],['DRI',st.DRI]].map(([k,v])=>(
+              <div key={k} style={{textAlign:'center',flex:1}}>
+                <div style={{fontSize:W*0.082,fontWeight:800,color:accent}}>{v}</div>
+                <div style={{fontSize:W*0.048,color:sub,fontWeight:700}}>{k}</div>
+              </div>
+            ))}
+          </div>}
+          {!showStats&&<div style={{paddingBottom:W*0.06}}/>}
+        </div>
       </div>
     </div>
   );
