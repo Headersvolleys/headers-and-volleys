@@ -471,45 +471,6 @@ app.get('/api/af/player-career', async (req, res) => {
 
 // Understat xG by player name
 
-// ONE-TIME: resolve the remaining missing draft IDs via full-name search. Delete after use.
-app.get('/api/draft-id-fix', async (req, res) => {
-  try {
-    const da = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    const L = { ARS:39,AVL:39,BRE:39,CHE:39,CRY:39,EVE:39,LIV:39,MCI:39,MUN:39,NEW:39,NFO:39,TOT:39,WHU:39,BHA:39,BOU:39,FUL:39,
-      ATB:140,ATM:140,BAR:140,RMA:140,RSO:140, ATA:135,INT:135,JUV:135,MIL:135,NAP:135,ROM:135,LAZ:135,
-      BAY:78,BVB:78,RBL:78, PSG:61,MAR:61 };
-    // [poolName, club, fullSearchName]
-    const TARGETS = [
-      ['Alexander-Arnold','LIV','trent alexander arnold'],['Theo Hernandez','MIL','theo hernandez'],
-      ['Tah','BAY','jonathan tah'],['Odegaard','ARS','martin odegaard'],['Eze','CRY','eberechi eze'],
-      ['Reijnders','MIL','tijjani reijnders'],['Gibbs-White','NFO','morgan gibbs white'],
-      ['Khephren Thuram','JUV','khephren thuram'],['Gross','BVB','pascal gross'],['Jackson','CHE','nicolas jackson'],
-      ['Nkunku','CHE','christopher nkunku'],['Diaz','LIV','luis diaz'],['Osimhen','NAP','victor osimhen'],
-      ['Retegui','ATA','mateo retegui'],['Gonzalez','JUV','nico gonzalez'],['Sarabia','WHU','pablo sarabia'],
-      ['Sorloth','ATM','alexander sorloth'],['Bono','ATB','bono'],['Sanchez Flekken','BRE','flekken'],
-    ];
-    const out={}; const misses=[];
-    for(const [poolName, club, full] of TARGETS){
-      const lg=L[club]||39;
-      const pn=da(full);
-      let pool=[];
-      try{ const r=await af('/players?search='+encodeURIComponent(pn)+'&league='+lg+'&season=2025',86400000); pool=r.response||[]; }catch(e){}
-      if(!pool.length){ const last=da(full.split(' ').pop()); try{ const r2=await af('/players?search='+encodeURIComponent(last)+'&league='+lg+'&season=2025',86400000); pool=r2.response||[]; }catch(e){} }
-      let best=null,bs=-1;
-      for(const p of pool){
-        const fn=da(p.player?.name||''); const ffn=da((p.player?.firstname||'')+' '+(p.player?.lastname||''));
-        let sc=0;
-        if(fn===pn||ffn===pn) sc=100;
-        else if(fn.replace(/ /g,'')===pn.replace(/ /g,'')||ffn.replace(/ /g,'')===pn.replace(/ /g,'')) sc=92;
-        else if(pn.split(' ').every(w=>w.length<3||fn.includes(w)||ffn.includes(w))) sc=78;
-        else sc=10;
-        if(sc>bs){bs=sc;best=p.player;}
-      }
-      if(best&&best.id&&bs>=78){ out[poolName]=best.id; } else { misses.push(poolName); }
-    }
-    res.json({count:Object.keys(out).length, misses, ids:out});
-  } catch(e){ res.status(500).json({error:e.message}); }
-});
 
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
