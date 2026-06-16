@@ -10,6 +10,10 @@ app.use(express.json());
 
 // Cache
 const cache = {};
+
+// Current season (football-data.org and API-Football both use the START year, e.g. 2025 = 2025-26 season).
+// When the new season's data is live in the APIs, change this ONE number.
+const SEASON = 2025;
 async function fd(endpoint, ttl) {
   const now = Date.now();
   if (cache[endpoint] && now - cache[endpoint].ts < ttl) return cache[endpoint].data;
@@ -85,7 +89,7 @@ app.get('/api/news', async (req, res) => {
 });
 
 app.get('/api/matches', async (req, res) => {
-  try { res.json(await fd('/competitions/PL/matches?season=2025', 5*MIN)); }
+  try { res.json(await fd('/competitions/PL/matches?season='+SEASON+'', 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/matches/live', async (req, res) => {
@@ -99,7 +103,7 @@ app.get('/api/matches/today', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/standings', async (req, res) => {
-  const season = req.query.season || '2025';
+  const season = req.query.season || String(SEASON);
   try {
     res.json(await fd('/competitions/PL/standings?season='+season, 60*MIN));
   } catch(e) {
@@ -127,7 +131,7 @@ app.get('/api/standings', async (req, res) => {
 app.get('/api/scorers', async (req, res) => {
   try {
     const limit = req.query.limit || 50;
-    res.json(await fd('/competitions/PL/scorers?season=2025&limit='+limit, 10*MIN));
+    res.json(await fd('/competitions/PL/scorers?season='+SEASON+'&limit='+limit, 10*MIN));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 // Single match with goals, cards, lineups
@@ -142,13 +146,13 @@ app.get('/api/team/:id', async (req, res) => {
 });
 // Team matches for form
 app.get('/api/team/:id/matches', async (req, res) => {
-  try { res.json(await fd(`/teams/${req.params.id}/matches?competitions=PL&season=2025&status=FINISHED`, 5*MIN)); }
+  try { res.json(await fd(`/teams/${req.params.id}/matches?competitions=PL&season=${SEASON}&status=FINISHED`, 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 // Player profile
 app.get('/api/player/:teamId/:playerId', async (req, res) => {
   try {
-    const scorersData = await fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN);
+    const scorersData = await fd('/competitions/PL/scorers?season='+SEASON+'&limit=100', 10*MIN);
     const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
     const pid = String(req.params.playerId);
     const qname = norm(req.query.name||'');
@@ -185,7 +189,7 @@ app.get('/api/player/:teamId/:playerId', async (req, res) => {
     // Fallback: not in top-scorers feed. Pull full stats from API-Football by id.
     if(!scorerOut && /^\d+$/.test(pid)){
       try {
-        const ap = await af('/players?id=' + pid + '&season=2025', 30*MIN);
+        const ap = await af('/players?id=' + pid + '&season='+SEASON+'', 30*MIN);
         const row = ap.response?.[0];
         if(row){
           const g = (row.statistics||[]).find(s=>s.league?.id===39) || row.statistics?.[0] || {};
@@ -265,11 +269,11 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
     };
 
     // football-data scorers (have fd id, name, team name)
-    const scorersData = await fd('/competitions/PL/scorers?season=2025&limit=100', 10*MIN);
+    const scorersData = await fd('/competitions/PL/scorers?season='+SEASON+'&limit=100', 10*MIN);
     const scorers = scorersData.scorers || [];
 
     // AF teams list, to resolve fd team name -> AF team id
-    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
+    const teamsData = await af('/teams?league=39&season='+SEASON+'', 6*60*MIN);
     const afTeams = teamsData.response || [];
     const teamScore = (afName, target) => {
       const fn = EXPAND[tnorm(afName)] || tnorm(afName);
@@ -417,7 +421,7 @@ app.get('/api/af/player-career', async (req, res) => {
 
     // Fast path: exact player id supplied (e.g. from a squad list) - no fuzzy search
     if(id){
-      const byId = await af('/players?id='+encodeURIComponent(id)+'&season=2025', 5*MIN).catch(()=>({response:[]}));
+      const byId = await af('/players?id='+encodeURIComponent(id)+'&season='+SEASON+'', 5*MIN).catch(()=>({response:[]}));
       hit = byId.response?.[0] || null;
     }
 
@@ -426,11 +430,11 @@ app.get('/api/af/player-career', async (req, res) => {
     const tn = da(teamName||'');
 
     // Search AF by full name first (most precise)
-    const byFull = await af('/players?search='+encodeURIComponent(da(name))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
+    const byFull = await af('/players?search='+encodeURIComponent(da(name))+'&league=39&season='+SEASON+'', 5*MIN).catch(()=>({response:[]}));
     // Then by last name as fallback
     const lastName = name.split(' ').pop();
     const byLast = lastName !== name
-      ? await af('/players?search='+encodeURIComponent(da(lastName))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}))
+      ? await af('/players?search='+encodeURIComponent(da(lastName))+'&league=39&season='+SEASON+'', 5*MIN).catch(()=>({response:[]}))
       : {response:[]};
 
     const all = [...(byFull.response||[]), ...(byLast.response||[])];
@@ -461,7 +465,7 @@ app.get('/api/af/player-career', async (req, res) => {
     if(!hit) {
       const firstName = name.split(' ')[0];
       if(firstName !== lastName && firstName.length > 3) {
-        const byFirst = await af('/players?search='+encodeURIComponent(da(firstName))+'&league=39&season=2025', 5*MIN).catch(()=>({response:[]}));
+        const byFirst = await af('/players?search='+encodeURIComponent(da(firstName))+'&league=39&season='+SEASON+'', 5*MIN).catch(()=>({response:[]}));
         const fScored = (byFirst.response||[]).map(p => {
           const fn = da(p.player?.name||'');
           const pt = da(p.statistics?.[0]?.team?.name||'');
@@ -499,7 +503,7 @@ app.get('/api/af/player-career', async (req, res) => {
     const pid = hit.player?.id;
     let stats = hit.statistics || [];
     if(pid){
-      const SEASONS = [2025, 2024, 2023, 2022];
+      const SEASONS = [SEASON, SEASON-1, SEASON-2, SEASON-3];
       const haveSeasons = new Set(stats.map(s=>s.league?.season));
       const need = SEASONS.filter(y=>!haveSeasons.has(y));
       const extra = await Promise.all(need.map(y =>
@@ -574,7 +578,7 @@ app.get('/api/xg/player-search', async (req, res) => {
     if (cache[cKey] && now - cache[cKey].ts < 30*MIN) {
       players = cache[cKey].data.players;
     } else {
-      const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+      const d = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
       players = (d.players||[]).map(p => ({
         id: p.id, name: p.player_name, team: p.team_title,
         games: +p.games, mins: +p.time, goals: +p.goals,
@@ -602,7 +606,7 @@ app.get('/api/h2h/:id', async (req, res) => {
 });
 // All PL teams
 app.get('/api/teams', async (req, res) => {
-  try { res.json(await fd('/competitions/PL/teams?season=2025', 60*MIN)); }
+  try { res.json(await fd('/competitions/PL/teams?season='+SEASON+'', 60*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -669,7 +673,7 @@ app.get('/api/af/events/:fixtureId', async (req, res) => {
 app.get('/api/af/fixture', async (req, res) => {
   try {
     const {date} = req.query;
-    const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
+    const data = await af('/fixtures?league=39&season='+SEASON+'&date=' + date, 60*MIN);
     res.json(data);
   } catch(e) { res.status(500).json({error: e.message}); }
 });
@@ -678,7 +682,7 @@ app.get('/api/af/fixture', async (req, res) => {
 app.get('/api/af/lookup', async (req, res) => {
   try {
     const {home, away, date} = req.query;
-    const data = await af('/fixtures?league=39&season=2025&date=' + date, 60*MIN);
+    const data = await af('/fixtures?league=39&season='+SEASON+'&date=' + date, 60*MIN);
     const fixtures = data.response || [];
     const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
     const EXPAND = {
@@ -718,7 +722,7 @@ app.get('/api/af/lookup', async (req, res) => {
 // All PL fixtures for 2025 season
 app.get('/api/af/fixtures', async (req, res) => {
   try {
-    const data = await af('/fixtures?league=39&season=2025', 60*MIN);
+    const data = await af('/fixtures?league=39&season='+SEASON+'', 60*MIN);
     res.json(data);
   } catch(e) { res.status(500).json({error: e.message}); }
 });
@@ -738,7 +742,7 @@ app.get('/api/af/squad', async (req, res) => {
       'brighton':'brighton hove albion','leeds':'leeds united',
     };
     const target = EXPAND[norm(name)] || norm(name);
-    const teamsData = await af('/teams?league=39&season=2025', 6*60*MIN);
+    const teamsData = await af('/teams?league=39&season='+SEASON+'', 6*60*MIN);
     const teams = teamsData.response || [];
     const sc = (afName) => {
       const fn = EXPAND[norm(afName)] || norm(afName);
@@ -780,7 +784,7 @@ app.get('/api/af/squad', async (req, res) => {
     const natById = {};
     let page = 1, totalPages = 1;
     do {
-      const pd = await af('/players?team=' + teamId + '&season=2025&page=' + page, 6*60*MIN);
+      const pd = await af('/players?team=' + teamId + '&season='+SEASON+'&page=' + page, 6*60*MIN);
       (pd.response||[]).forEach(r=>{ const pl=r.player||{}; if(pl.id) natById[pl.id]=pl.nationality||null; });
       totalPages = pd.paging?.total || 1;
       page++;
@@ -794,7 +798,7 @@ app.get('/api/af/squad', async (req, res) => {
 app.get('/api/team-stats', async (req, res) => {
   try {
     const name = req.query.name || '';
-    const season = req.query.season || '2025';
+    const season = req.query.season || String(SEASON);
     const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').replace(/\b(fc|afc|cf)\b/g,'').replace(/\s+/g,' ').trim();
     const EXPAND = {
       'man utd':'manchester united','man united':'manchester united','man city':'manchester city',
@@ -847,8 +851,8 @@ app.get('/api/team-stats', async (req, res) => {
 app.get('/api/gk-cleansheets', async (req, res) => {
   try {
     const [matchesData, teamsData] = await Promise.all([
-      fd('/competitions/PL/matches?season=2025&status=FINISHED', 5*MIN),
-      fd('/competitions/PL/teams?season=2025', 60*MIN),
+      fd('/competitions/PL/matches?season='+SEASON+'&status=FINISHED', 5*MIN),
+      fd('/competitions/PL/teams?season='+SEASON+'', 60*MIN),
     ]);
     const matches = matchesData.matches || [];
     const teams = teamsData.teams || [];
@@ -931,7 +935,7 @@ app.get('/api/xg/players', async (req, res) => {
   const now = Date.now();
   if (cache[key] && now - cache[key].ts < 30*MIN) return res.json(cache[key].data);
   try {
-    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const d = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
     const players = (d.players || []).map(p => ({
       id: p.id, name: p.player_name, team: p.team_title,
       games: +p.games, mins: +p.time, goals: +p.goals,
@@ -952,7 +956,7 @@ app.get('/api/xg/teams', async (req, res) => {
   const now = Date.now();
   if (cache[key] && now - cache[key].ts < 30*MIN) return res.json(cache[key].data);
   try {
-    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const d = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
     const teams = Object.values(d.teams || {}).map(t => ({
       name: t.title,
       xG: +parseFloat(t.xG||0).toFixed(2),
@@ -996,7 +1000,7 @@ async function fetchUnderstat(url) {
 app.get('/api/xg/match', async (req, res) => {
   try {
     const {home, away, date} = req.query;
-    const d = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const d = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
     const dates = d.dates || [];
     const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
     const hn = norm(home), an = norm(away);
@@ -1019,13 +1023,13 @@ app.get('/api/xg/match', async (req, res) => {
 
 // xG player stats for EPL 2025
 app.get('/api/xg/players', async (req, res) => {
-  const cacheKey = 'understat_players_2025';
+  const cacheKey = 'understat_players_'+SEASON;
   const now = Date.now();
   if (cache[cacheKey] && now - cache[cacheKey].ts < 30*MIN) {
     return res.json(cache[cacheKey].data);
   }
   try {
-    const data = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const data = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
     const players = (data.players || []).map(p => ({
       id: p.id,
       name: p.player_name,
@@ -1052,13 +1056,13 @@ app.get('/api/xg/players', async (req, res) => {
 
 // xG team table for EPL 2025
 app.get('/api/xg/teams', async (req, res) => {
-  const cacheKey = 'understat_teams_2025';
+  const cacheKey = 'understat_teams_'+SEASON;
   const now = Date.now();
   if (cache[cacheKey] && now - cache[cacheKey].ts < 30*MIN) {
     return res.json(cache[cacheKey].data);
   }
   try {
-    const data = await fetchUnderstat('https://understat.com/league/EPL/2025');
+    const data = await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
     const teams = data.teams || {};
     const result = { teams: Object.values(teams).map(t => ({
       id: t.id,
@@ -1132,6 +1136,10 @@ input[type=number]{-moz-appearance:textfield}
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
+// Current season start year (2025 = 2025-26). Change when the new season's data is live.
+const SEASON = 2025;
+const SEASONS = [SEASON, SEASON-1, SEASON-2, SEASON-3, SEASON-4];
+const SEASON_LABEL = SEASON+'-'+String(SEASON+1).slice(2);
 const C={dark:'#FFFFFF',d2:'#F2F8F8',d3:'#E8F3F2',d4:'#D6E6E5',white:'#0F2027',text:'#0F2027',muted:'#6B8B8E',teal:'#0ABFB8',green:'#00B85C',red:'#E53535',yellow:'#E0A800',orange:'#E57300',blue:'#2979FF',gold:'#C9A227'};
 const TCODE={
   'Arsenal':'ARS','Arsenal FC':'ARS',
@@ -1541,9 +1549,8 @@ function Matches({openPlayer, openClub}){
 
 // -- TABLE -------------------------------------------------
 function Table({openClub}){
-  const SEASONS=[2025,2024,2023,2022,2021];
-  const [season,setSeason]=useState(2025);
-  const {data,loading,error}=useApi('/api/standings?season='+season, season===2025?300000:6*3600000);
+  const [season,setSeason]=useState(SEASON);
+  const {data,loading,error}=useApi('/api/standings?season='+season, season===SEASON?300000:6*3600000);
 
   const table=data?.standings?.[0]?.table||[];
   const ZC={1:C.teal,2:C.teal,3:C.teal,4:C.teal,5:C.blue,6:C.orange,18:C.red,19:C.red,20:C.red};
@@ -3501,8 +3508,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
   const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
-  const [tableSeason,setTableSeason]=useState(2025);
-  const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===2025?300000:6*3600000);
+  const [tableSeason,setTableSeason]=useState(SEASON);
+  const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===SEASON?300000:6*3600000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
   const {data:teamStats} = useApi(team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
@@ -3976,7 +3983,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>League Table</div>
             <select value={tableSeason} onChange={e=>setTableSeason(Number(e.target.value))}
               style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:7,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer',outline:'none'}}>
-              {[2025,2024,2023,2022,2021].map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
+              {SEASONS.map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
             </select>
           </div>
           {!tableSeasonData&&<div style={{textAlign:'center',padding:24}}><Spinner size={20}/></div>}
@@ -4029,7 +4036,7 @@ function GKCleanSheets(){
   if(error)return<div style={{padding:12,color:C.red,fontSize:13}}>{error}</div>;
   return(
     <div>
-      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Golden Glove race 2025-26 (based on team clean sheets)</div>
+      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Golden Glove race {SEASON_LABEL} (based on team clean sheets)</div>
       {gks.map((gk,i)=>{
         const code=TCODE[gk.team]||TCODE[Object.keys(TSHORT).find(k=>TSHORT[k]===gk.team||k===gk.team)||'']||'???';
         const tc=teamCol(code);
@@ -4127,7 +4134,7 @@ function Stats({openPlayer, openClub}){
       {selClub&&<ClubModal team={selClub} onClose={()=>setSelClub(null)}/>}
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>PL <span style={{color:C.teal}}>STATS</span></div>
-        <div style={{fontSize:11,color:C.muted}}>2025-26 Premier League</div>
+        <div style={{fontSize:11,color:C.muted}}>{SEASON_LABEL} Premier League</div>
       </div>
       <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:4}}>
         {[['scorers','Top Scorers'],['assists','Assists'],['xgtable','xG Table']].map(([id,label])=>(
@@ -4167,7 +4174,7 @@ function Stats({openPlayer, openClub}){
           {xgLoad&&xgTLoad&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
           {/* Team xG */}
           {!xgTLoad&&xgTeamList.length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team xG 2025-26</div>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team xG {SEASON_LABEL}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 44px 44px 44px 44px',gap:4,padding:'4px 10px',marginBottom:4}}>
               {['Team','xG','xGA','xGD','xPts'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>0?'center':'left'}}>{h}</div>)}
             </div>
@@ -4192,7 +4199,7 @@ function Stats({openPlayer, openClub}){
           </>}
           {/* Player xG */}
           {!xgLoad&&xgPlayers.length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Player xG 2025-26</div>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Player xG {SEASON_LABEL}</div>
             <div style={{display:'grid',gridTemplateColumns:'28px 1fr 44px 32px 44px 32px',gap:4,padding:'4px 10px',marginBottom:4}}>
               {['#','','xG','G','xA','A'].map((h,i)=><div key={i} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
             </div>
@@ -4687,7 +4694,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const seasonGoals = selSeasonObj ? selSeasonObj.goals : s?.goals;
   const seasonAssists = selSeasonObj ? selSeasonObj.assists : s?.assists;
   const seasonApps = selSeasonObj ? selSeasonObj.appearances : (s?.playedMatches ?? s?.appearances);
-  const seasonLabel = selSeasonObj ? (selSeasonObj.season+'-'+String(selSeasonObj.season+1).slice(2)+' '+(selSeasonObj.league||'')) : '2025-26 Season';
+  const seasonLabel = selSeasonObj ? (selSeasonObj.season+'-'+String(selSeasonObj.season+1).slice(2)+' '+(selSeasonObj.league||'')) : (SEASON_LABEL+' Season');
   const goalsN = Number(seasonGoals)||0, minsN = Number(detail.minutes)||0;
   const minsPerGoal = (goalsN>0 && minsN>0) ? Math.round(minsN/goalsN) : null;
   // per-90 helpers + position-aware radar/breakdown
