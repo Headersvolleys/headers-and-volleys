@@ -21,6 +21,49 @@ async function fd(endpoint, ttl) {
 }
 
 const MIN = 60000;
+// Football news via RSS feeds from reputable sources
+const NEWS_FEEDS=[
+  {src:'BBC Sport', url:'https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml'},
+  {src:'BBC Sport', url:'https://feeds.bbci.co.uk/sport/football/rss.xml'},
+  {src:'The Guardian', url:'https://www.theguardian.com/football/premierleague/rss'},
+  {src:'Sky Sports', url:'https://www.skysports.com/rss/12040'},
+];
+function parseRss(xml, src){
+  const items=[];
+  const blocks = xml.split(/<item[ >]/).slice(1);
+  for(const b of blocks){
+    const pick=(tag)=>{
+      const m=b.match(new RegExp('<'+tag+'[^>]*>([\\s\\S]*?)<\\/'+tag+'>'));
+      if(!m) return '';
+      return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').trim();
+    };
+    const title=pick('title');
+    const link=pick('link');
+    const desc=pick('description').replace(/<[^>]+>/g,'').replace(/&[a-z]+;/g,' ').trim();
+    const pub=pick('pubDate');
+    if(title&&link){ items.push({title, link, desc:desc.slice(0,180), src, ts: pub?new Date(pub).getTime():0}); }
+  }
+  return items;
+}
+app.get('/api/news', async (req, res) => {
+  const cKey='news_all';
+  if(cache[cKey] && Date.now()-cache[cKey].ts < 15*MIN) return res.json(cache[cKey].data);
+  try {
+    const results = await Promise.all(NEWS_FEEDS.map(f=>
+      fetch(f.url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'application/rss+xml,application/xml,text/xml'}})
+        .then(r=>r.ok?r.text():'').then(x=>x?parseRss(x,f.src):[]).catch(()=>[])
+    ));
+    let items=[].concat(...results);
+    // dedupe by title
+    const seen=new Set(); items=items.filter(it=>{const k=it.title.toLowerCase().slice(0,50); if(seen.has(k))return false; seen.add(k); return true;});
+    items.sort((a,b)=>b.ts-a.ts);
+    items=items.slice(0,60);
+    const data={items, fetched:Date.now()};
+    cache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, items:[]}); }
+});
+
 app.get('/api/matches', async (req, res) => {
   try { res.json(await fd('/competitions/PL/matches?season=2025', 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
