@@ -21,12 +21,24 @@ async function fd(endpoint, ttl) {
 }
 
 const MIN = 60000;
-// Football news via RSS feeds from reputable sources
+// Football news via RSS feeds from reputable sources. Feeds that fail/return nothing are skipped automatically.
 const NEWS_FEEDS=[
   {src:'BBC Sport', url:'https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml'},
   {src:'BBC Sport', url:'https://feeds.bbci.co.uk/sport/football/rss.xml'},
   {src:'The Guardian', url:'https://www.theguardian.com/football/premierleague/rss'},
+  {src:'The Guardian', url:'https://www.theguardian.com/football/rss'},
   {src:'Sky Sports', url:'https://www.skysports.com/rss/12040'},
+  {src:'Sky Sports PL', url:'https://www.skysports.com/rss/11661'},
+  {src:'talkSPORT', url:'https://talksport.com/football/feed/'},
+  {src:'Daily Mail', url:'https://www.dailymail.co.uk/sport/football/index.rss'},
+  {src:'Sports Illustrated', url:'https://www.si.com/.rss/full/soccer'},
+  {src:'This Is Anfield', url:'https://www.thisisanfield.com/feed/'},
+  {src:'Gunnerblog', url:'https://gunnerblog.com/feed/'},
+  {src:'Marca', url:'https://e00-marca.uecdn.es/rss/en/football.xml'},
+  {src:'Bild', url:'https://www.bild.de/rssfeeds/vw-sport/vw-sport-16725492,sort=1,view=rss2.bild.xml'},
+  {src:'90min', url:'https://www.90min.com/posts.rss'},
+  {src:'Football365', url:'https://www.football365.com/feed'},
+  {src:'Goal', url:'https://www.goal.com/feeds/en/news'},
 ];
 function parseRss(xml, src){
   const items=[];
@@ -59,16 +71,19 @@ app.get('/api/news', async (req, res) => {
   const cKey='news_all';
   if(cache[cKey] && Date.now()-cache[cKey].ts < 15*MIN) return res.json(cache[cKey].data);
   try {
-    const results = await Promise.all(NEWS_FEEDS.map(f=>
-      fetch(f.url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'application/rss+xml,application/xml,text/xml'}})
-        .then(r=>r.ok?r.text():'').then(x=>x?parseRss(x,f.src):[]).catch(()=>[])
-    ));
+    const fetchFeed=(f)=>{
+      const ctl=new AbortController();
+      const to=setTimeout(()=>ctl.abort(), 6000); // 6s per feed
+      return fetch(f.url,{signal:ctl.signal,headers:{'User-Agent':'Mozilla/5.0 (compatible; HVNewsBot/1.0)','Accept':'application/rss+xml,application/xml,text/xml,*/*'}})
+        .then(r=>r.ok?r.text():'').then(x=>x?parseRss(x,f.src):[]).catch(()=>[]).finally(()=>clearTimeout(to));
+    };
+    const results = await Promise.all(NEWS_FEEDS.map(fetchFeed));
     let items=[].concat(...results);
     // dedupe by title
     const seen=new Set(); items=items.filter(it=>{const k=it.title.toLowerCase().slice(0,50); if(seen.has(k))return false; seen.add(k); return true;});
     items.sort((a,b)=>b.ts-a.ts);
-    items=items.slice(0,60);
-    const data={items, fetched:Date.now()};
+    items=items.slice(0,80);
+    const data={items, fetched:Date.now(), sources:[...new Set(items.map(i=>i.src))]};
     cache[cKey]={data, ts:Date.now()};
     res.json(data);
   } catch(e){ res.status(500).json({error:e.message, items:[]}); }
