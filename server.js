@@ -2885,14 +2885,14 @@ function DraftGame({onExit}){
             fm.slots.forEach(s=>{ lines[s.line]=(lines[s.line]||0)+1; });
             return(
               <div key={key} className="hv-press" onClick={()=>chooseFormation(key)}
-                style={{borderRadius:14,padding:'16px 12px',cursor:'pointer',background:C.d2,border:'1px solid '+C.d4,textAlign:'center'}}>
+                style={{borderRadius:14,padding:'18px 12px 22px',cursor:'pointer',background:C.d2,border:'1px solid '+C.d4,textAlign:'center'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.teal,letterSpacing:1}}>{fm.name}</div>
                 {/* mini pitch preview */}
-                <div style={{margin:'10px 4px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:8,padding:'8px 4px',border:'1px solid rgba(255,255,255,.08)'}}>
+                <div style={{margin:'12px 4px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:8,padding:'16px 6px',border:'1px solid rgba(255,255,255,.08)',minHeight:150,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
                   {lines.slice().reverse().map((cnt,li)=>(
-                    <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?5:0}}>
+                    <div key={li} style={{display:'flex',justifyContent:'space-around'}}>
                       {Array.from({length:cnt}).map((_,i)=>(
-                        <div key={i} style={{width:8,height:8,borderRadius:'50%',background:C.teal,opacity:.85}}/>
+                        <div key={i} style={{width:9,height:9,borderRadius:'50%',background:C.teal,opacity:.85}}/>
                       ))}
                     </div>
                   ))}
@@ -2908,6 +2908,13 @@ function DraftGame({onExit}){
   if(done){
     const avg=picks.reduce((s,p)=>s+p.r,0)/picks.length;
     const grade=draftGrade(avg);
+    // balance: how close the team's avg ATT is to its avg DEF
+    const tw=picks.map(p=>deriveTwoStats(p,p.group||'MID'));
+    const attAvg=tw.reduce((s,t)=>s+t.ATT,0)/tw.length;
+    const defAvg=tw.reduce((s,t)=>s+t.DEF,0)/tw.length;
+    const gap=Math.abs(attAvg-defAvg);
+    const balance=Math.max(0,Math.round(100-gap*1.6)); // 0 gap=100, ~62 gap=0
+    const balColor=balance>=80?'#00E676':balance>=60?'#0ABFB8':balance>=40?'#FFD600':'#FF8000';
     // group picks into pitch lines by slot.line
     const maxLine=Math.max(...SLOTS.map(s=>s.line));
     const lineArr=[];
@@ -2923,9 +2930,15 @@ function DraftGame({onExit}){
             <div style={{fontSize:12,color:C.teal,fontWeight:700}}>{FORMATIONS[formation].name}</div>
           </div>
         </div>
-        <div style={{margin:16,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+grade.c+'55'}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:60,color:grade.c,lineHeight:.9}}>{grade.g}</div>
-          <div style={{fontSize:14,color:C.text,fontWeight:700,marginTop:4}}>Team Rating {avg.toFixed(1)}</div>
+        <div style={{margin:16,display:'flex',gap:12}}>
+          <div style={{flex:1,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+grade.c+'55'}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:54,color:grade.c,lineHeight:.9}}>{grade.g}</div>
+            <div style={{fontSize:13,color:C.text,fontWeight:700,marginTop:4}}>Rating {avg.toFixed(1)}</div>
+          </div>
+          <div style={{flex:1,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+balColor+'55'}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:54,color:balColor,lineHeight:.9}}>{balance}</div>
+            <div style={{fontSize:13,color:C.text,fontWeight:700,marginTop:4}}>Balance</div>
+          </div>
         </div>
         <div style={{display:'flex',gap:12,overflowX:'auto',padding:'0 16px 14px',WebkitOverflowScrolling:'touch'}}>
           {picks.map((p,i)=>(
