@@ -92,6 +92,35 @@ app.get('/api/matches', async (req, res) => {
   try { res.json(await fd('/competitions/PL/matches?season='+SEASON+'', 5*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Diagnostic: probe what cup/europe competitions are available on the current tiers.
+// Hit /api/cups/probe once and report back which return data.
+app.get('/api/cups/probe', async (req, res) => {
+  const out = {};
+  // football-data.org competitions (FA Cup, League Cup, Champions League)
+  const fdTry = async (label, code) => {
+    try {
+      const d = await fd('/competitions/'+code+'/matches?season='+SEASON+'', 5*MIN);
+      out[label] = { ok: true, count: (d.matches||[]).length, sample: (d.matches||[]).slice(0,2).map(m=>({h:m.homeTeam?.name,a:m.awayTeam?.name,date:m.utcDate,stage:m.stage})) };
+    } catch(e){ out[label] = { ok:false, error:e.message }; }
+  };
+  // API-Football competitions (UCL=2, FA Cup=45, League Cup=48)
+  const afTry = async (label, lid) => {
+    try {
+      const d = await af('/fixtures?league='+lid+'&season='+SEASON+'', 10*MIN);
+      out[label] = { ok:true, count:(d.response||[]).length, sample:(d.response||[]).slice(0,2).map(x=>({h:x.teams?.home?.name,a:x.teams?.away?.name,date:x.fixture?.date,round:x.league?.round})) };
+    } catch(e){ out[label] = { ok:false, error:e.message }; }
+  };
+  await Promise.all([
+    fdTry('fd_FA_Cup','FAC'),
+    fdTry('fd_League_Cup','EFL'),
+    fdTry('fd_Champions_League','CL'),
+    afTry('af_Champions_League',2),
+    afTry('af_FA_Cup',45),
+    afTry('af_League_Cup',48),
+  ]);
+  res.json(out);
+});
 app.get('/api/matches/live', async (req, res) => {
   try { res.json(await fd('/competitions/PL/matches?status=IN_PLAY,PAUSED,LIVE', MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
