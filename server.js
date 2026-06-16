@@ -39,9 +39,19 @@ function parseRss(xml, src){
     };
     const title=pick('title');
     const link=pick('link');
-    const desc=pick('description').replace(/<[^>]+>/g,'').replace(/&[a-z]+;/g,' ').trim();
+    const descRaw=pick('description');
+    const desc=descRaw.replace(/<[^>]+>/g,'').replace(/&[a-z]+;/g,' ').trim();
     const pub=pick('pubDate');
-    if(title&&link){ items.push({title, link, desc:desc.slice(0,180), src, ts: pub?new Date(pub).getTime():0}); }
+    // image: try media:thumbnail, media:content, enclosure, then <img> in description/content
+    let img='';
+    let m=b.match(/<media:thumbnail[^>]*url="([^"]+)"/i)
+       || b.match(/<media:content[^>]*url="([^"]+)"[^>]*(?:type="image|medium="image)/i)
+       || b.match(/<media:content[^>]*url="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i)
+       || b.match(/<enclosure[^>]*url="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i)
+       || descRaw.match(/<img[^>]*src="([^"]+)"/i)
+       || b.match(/<content:encoded[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"/i);
+    if(m) img=m[1];
+    if(title&&link){ items.push({title, link, desc:desc.slice(0,180), src, img, ts: pub?new Date(pub).getTime():0}); }
   }
   return items;
 }
@@ -3195,12 +3205,17 @@ function NewsList({filter, limit}){
     <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8}}>
       {items.map((it,i)=>(
         <a key={i} href={it.link} target="_blank" rel="noopener noreferrer" className="hv-press"
-          style={{display:'block',textDecoration:'none',background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'12px 14px'}}>
-          <div style={{fontSize:13.5,color:C.text,fontWeight:700,lineHeight:1.3,marginBottom:4}}>{it.title}</div>
-          {it.desc&&<div style={{fontSize:11.5,color:C.muted,lineHeight:1.4,marginBottom:6}}>{it.desc}</div>}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span style={{fontSize:10,color:C.teal,fontWeight:700,letterSpacing:.3}}>{it.src}</span>
-            <span style={{fontSize:10,color:C.muted}}>{timeAgo(it.ts)}</span>
+          style={{display:'flex',gap:12,textDecoration:'none',background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'10px',alignItems:'stretch'}}>
+          {it.img&&<div style={{width:84,height:84,flexShrink:0,borderRadius:8,overflow:'hidden',background:C.d3}}>
+            <img src={it.img} alt="" onError={e=>{e.target.parentNode.style.display='none';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          </div>}
+          <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column'}}>
+            <div style={{fontSize:13,color:C.text,fontWeight:700,lineHeight:1.3,marginBottom:3}}>{it.title}</div>
+            {it.desc&&<div style={{fontSize:11,color:C.muted,lineHeight:1.35,marginBottom:6,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{it.desc}</div>}
+            <div style={{marginTop:'auto',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:10,color:C.teal,fontWeight:700,letterSpacing:.3}}>{it.src}</span>
+              <span style={{fontSize:10,color:C.muted}}>{timeAgo(it.ts)}</span>
+            </div>
           </div>
         </a>
       ))}
