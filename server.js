@@ -1700,11 +1700,12 @@ function Cups(){
 }
 
 function MatchesDateStrip({selected, onPick}){
-  // build a window of days around today (and around selected if scrolled away)
   const today=new Date(); today.setHours(0,0,0,0);
-  const days=[];
-  for(let i=-7;i<=14;i++){ const d=new Date(today); d.setDate(today.getDate()+i); days.push(d); }
   const iso=d=>d.toISOString().split('T')[0];
+  // window around the selected date so a far calendar jump still shows context
+  const base=new Date(selected+'T00:00:00'); base.setHours(0,0,0,0);
+  const days=[];
+  for(let i=-7;i<=14;i++){ const d=new Date(base); d.setDate(base.getDate()+i); days.push(d); }
   const ref=useRef(null);
   useEffect(()=>{
     if(ref.current){ const el=ref.current.querySelector('[data-sel="1"]'); if(el) el.scrollIntoView({inline:'center',block:'nearest'}); }
@@ -1717,7 +1718,7 @@ function MatchesDateStrip({selected, onPick}){
         const lbl=isToday?'Today':d.toLocaleDateString('en-GB',{weekday:'short'});
         const sub=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
         return(
-          <button key={di} data-sel={sel?'1':'0'} onClick={()=>onPick(di)} style={{flexShrink:0,minWidth:58,padding:'7px 10px',borderRadius:10,border:'1px solid '+(sel?C.teal:C.d4),background:sel?C.teal:C.d2,cursor:'pointer',textAlign:'center'}}>
+          <button key={di} data-sel={sel?'1':'0'} onClick={()=>onPick(di)} style={{flexShrink:0,minWidth:58,padding:'7px 10px',borderRadius:10,border:'1px solid '+(sel?C.teal:isToday?C.teal:C.d4),background:sel?C.teal:C.d2,cursor:'pointer',textAlign:'center'}}>
             <div style={{fontSize:11,fontWeight:700,color:sel?'#FFFFFF':isToday?C.teal:C.text,letterSpacing:.3}}>{lbl}</div>
             <div style={{fontSize:9.5,color:sel?'rgba(255,255,255,.85)':C.muted,marginTop:2}}>{sub}</div>
           </button>
@@ -1736,9 +1737,16 @@ function Matches({openPlayer, openClub}){
       {/* Header */}
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
-        <div style={{paddingLeft:8}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MATCH<span style={{color:C.teal}}>ES</span></div>
-          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>All competitions by day</div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
+          <div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MATCH<span style={{color:C.teal}}>ES</span></div>
+            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>All competitions by day</div>
+          </div>
+          <label style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',width:40,height:40,borderRadius:12,background:'rgba(10,191,184,.12)',border:'1px solid '+C.teal,cursor:'pointer',flexShrink:0}}>
+            <svg width={20} height={20} viewBox="0 0 24 24" fill={C.teal}><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/></svg>
+            <input type="date" value={date} onChange={e=>e.target.value&&setDate(e.target.value)}
+              style={{position:'absolute',inset:0,opacity:0,width:'100%',height:'100%',cursor:'pointer',border:'none'}}/>
+          </label>
         </div>
       </div>
       {/* Date strip */}
