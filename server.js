@@ -472,6 +472,54 @@ app.get('/api/af/player-career', async (req, res) => {
 // Understat xG by player name
 
 
+// ONE-TIME: authoritative resolver. Pulls league teams -> squads -> player IDs. Delete after use.
+app.get('/api/draft-resolve', async (req, res) => {
+  try {
+    const da = x => (x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+    // pool club code -> [league id, name tokens to match the team]
+    const CLUB = {
+      ARS:[39,'arsenal'],AVL:[39,'aston villa'],BHA:[39,'brighton'],BOU:[39,'bournemouth'],BRE:[39,'brentford'],
+      CHE:[39,'chelsea'],CRY:[39,'crystal palace'],EVE:[39,'everton'],FUL:[39,'fulham'],LIV:[39,'liverpool'],
+      MCI:[39,'manchester city'],MUN:[39,'manchester united'],NEW:[39,'newcastle'],NFO:[39,'nottingham'],TOT:[39,'tottenham'],WHU:[39,'west ham'],
+      ATB:[140,'athletic'],ATM:[140,'atletico madrid'],BAR:[140,'barcelona'],RMA:[140,'real madrid'],RSO:[140,'real sociedad'],
+      ATA:[135,'atalanta'],INT:[135,'inter'],JUV:[135,'juventus'],LAZ:[135,'lazio'],MIL:[135,'ac milan'],NAP:[135,'napoli'],ROM:[135,'roma'],
+      BAY:[78,'bayern'],BVB:[78,'dortmund'],RBL:[78,'leipzig'], MAR:[61,'marseille'],PSG:[61,'paris saint germain']
+    };
+    const POOL = {"LIV":["Alisson","Van Dijk","Alexander-Arnold","Robertson","Konate","Kerkez","Frimpong","Mac Allister","Szoboszlai","Gravenberch","Salah","Gakpo","Diaz","Chiesa","Ekitike"],"MCI":["Ederson","Dias","Gvardiol","Stones","Rodri","De Bruyne","Haaland","Foden","Marmoush"],"ARS":["David Raya","Saliba","Gabriel","White","Gabriel Magalhaes","Calafiori","Timber","Odegaard","Rice","Zubimendi","Merino","Saka","Gyokeres"],"MUN":["Onana","Fernandes","Mainoo","Ugarte","Cunha","Mbeumo","Garnacho","Rashford"],"EVE":["Pickford","Tarkowski","Garner","Beto"],"CHE":["Sanchez","Cucurella","James","Colwill","Palmer","Caicedo","Jackson","Nkunku","Joao Pedro","Pedro Neto"],"TOT":["Vicario","Romero","Van de Ven","Maddison","Son","Solanke","Kudus"],"NEW":["Pope","Trippier","Burn","Botman","Livramento","Hall","Bruno Guimaraes","Tonali","Isak","Elanga"],"AVL":["Martinez","Mings","Pau Torres","Digne","Amadou Onana","Rogers","Watkins"],"NFO":["Sels","Aina","Murillo","Sangare","Anderson","Gibbs-White","Wood"],"BRE":["Sanchez Flekken","Wissa","Schade"],"CRY":["Henderson","Guehi","Munoz","Lacroix","Wharton","Eze","Sarr","Mateta","Nketiah"],"RMA":["Courtois","Rudiger","Carvajal","Bellingham","Valverde","Tchouameni","Vinicius","Mbappe","Rodrygo"],"BAR":["Ter Stegen","Szczesny","Cubarsi","Kounde","Araujo","Balde","Pedri","Gavi","De Jong","Casado","Lewandowski","Raphinha","Yamal","Ferran Torres"],"ATM":["Oblak","Griezmann","Sorloth","Julian Alvarez"],"MIL":["Maignan","Theo Hernandez","Estupinan","Tomori","Reijnders","Modric","Loftus-Cheek","Leao","Gimenez","Pulisic"],"PSG":["Donnarumma","Hakimi","Marquinhos","Mendes","Vitinha","Fabian Ruiz","Dembele","Kvaratskhelia","Barcola"],"BAY":["Neuer","Davies","Kim Min-jae","Tah","Upamecano","Wirtz","Musiala","Kimmich","Olise","Goretzka","Kane"],"INT":["Sommer","Bastoni","Dimarco","Pavard","Acerbi","Barella","Calhanoglu","Frattesi","Mkhitaryan","Lautaro","Thuram"],"JUV":["Di Gregorio","Bremer","Gatti","Koopmeiners","Locatelli","Khephren Thuram","Vlahovic","Gonzalez"],"NAP":["Meret","Di Lorenzo","Buongiorno","McTominay","Lobotka","Anguissa","Osimhen"],"BVB":["Kobel","Schlotterbeck","Bensebaini","Ryerson","Anton","Brandt","Sabitzer","Gross","Adeyemi","Guirassy"],"BHA":["Verbruggen","Welbeck","Mitoma"],"WHU":["Areola","Bowen","Sarabia"],"BOU":["Petrovic","Kluivert","Semenyo"],"MAR":["Rulli"],"ATB":["Bono","Williams","Nico Williams"],"LAZ":["Provedel"],"ATA":["Carnesecchi","Retegui","Lookman"],"ROM":["Pellegrini"],"FUL":["Smith Rowe","Andreas Pereira"],"RBL":["Openda"],"RSO":["Oyarzabal"]};
+    // cache league teams
+    const teamCache={};
+    const getTeams=async(lg)=>{ if(teamCache[lg])return teamCache[lg]; let r={response:[]}; try{r=await af('/teams?league='+lg+'&season=2025',86400000);}catch(e){} teamCache[lg]=r.response||[]; return teamCache[lg]; };
+    const out={}; const misses=[]; const teamIds={};
+    for(const code of Object.keys(POOL)){
+      const [lg,tok]=CLUB[code]||[39,code.toLowerCase()];
+      const teams=await getTeams(lg);
+      // find team whose name contains all tokens
+      const toks=tok.split(' ');
+      let team=teams.find(t=>{const n=da(t.team?.name); return toks.every(w=>n.includes(w));});
+      if(!team) team=teams.find(t=>da(t.team?.name).includes(toks[0]));
+      if(!team){ POOL[code].forEach(n=>misses.push(n+' ('+code+': no team)')); continue; }
+      const tid=team.team.id; teamIds[code]=tid;
+      let sq={response:[]}; try{ sq=await af('/players/squads?team='+tid,86400000); }catch(e){}
+      const squad=(sq.response&&sq.response[0]&&sq.response[0].players)||[];
+      for(const name of POOL[code]){
+        const pn=da(name); const last=da(name.split(' ').pop());
+        let best=null,bs=-1;
+        for(const sp of squad){
+          const sn=da(sp.name||'');
+          let sc=0;
+          if(sn===pn) sc=100;
+          else if(sn.split(' ').pop()===last && (pn.split(' ').length===1 || pn.split(' ').every(w=>w.length<3||sn.includes(w)))) sc=85;
+          else if(sn.includes(last) && last.length>=4) sc=60;
+          else sc=0;
+          if(sc>bs){bs=sc;best=sp;}
+        }
+        if(best&&best.id&&bs>=60){ out[name]=best.id; } else { misses.push(name+' ('+code+')'); }
+      }
+    }
+    res.json({count:Object.keys(out).length, total:Object.values(POOL).flat().length, teamIds, misses, ids:out});
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
   const now = Date.now();
