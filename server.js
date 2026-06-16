@@ -2658,6 +2658,24 @@ function deriveStats(p, group){
   };
 }
 
+// Two headline stats: ATT (attacking output) and DEF (defensive ability), position-aware.
+function deriveTwoStats(p, group){
+  const r=p.r;
+  const clamp=v=>Math.max(35,Math.min(99,Math.round(v)));
+  const seed=(p.n.charCodeAt(0)+p.n.length*3)%7-3;
+  // [attOffset, defOffset] from overall, by position archetype
+  const W={
+    GK:[-40,-2],
+    DEF:[-22,4],
+    MID:[-4,-6],
+    FWD:[5,-30],
+  }[group]||[0,0];
+  return {
+    ATT:clamp(r+W[0]+seed),
+    DEF:clamp(r+W[1]-seed),
+  };
+}
+
 // 4-3-3 slots
 const DRAFT_SLOTS=[
   {pos:'GK',label:'Goalkeeper',group:'GK'},
@@ -2717,6 +2735,7 @@ function PlayerCard({player, w}){
   const clip='polygon(50% 0,100% 6%,100% 90%,84% 100%,16% 100%,0 90%,0 6%)'; // both tiers angular now
   const showStats=W>=92;
   const statMargin=W*0.15;
+  const two=deriveTwoStats(player, player.group||'MID');
   const glowShadow=leg?'0 0 13px rgba(180,90,255,.4)':'0 0 12px rgba(40,140,235,.4)';
   return(
     <div style={{width:W,margin:'0 auto',padding:3,background:frame,clipPath:clip,boxShadow:glowShadow}}>
@@ -2745,7 +2764,7 @@ function PlayerCard({player, w}){
               <div style={{fontSize:W*0.058,fontWeight:700,color:sub}}>{player.c}</div>
             </div>
             <div style={{flex:1,display:'flex',justifyContent:'center',alignItems:'center'}}>
-              <div style={{width:W*0.56,height:W*0.56,borderRadius:'50%',overflow:'hidden',background:leg?'rgba(255,220,150,.08)':'rgba(255,255,255,.07)',border:'1px solid '+trim,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+              <div style={{width:W*0.56,height:W*0.56,marginTop:W*0.1,borderRadius:'50%',overflow:'hidden',background:leg?'rgba(255,220,150,.08)':'rgba(255,255,255,.07)',border:'1px solid '+trim,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
                 <DraftPhoto player={player} size={W*0.56}/>
               </div>
             </div>
@@ -2756,17 +2775,18 @@ function PlayerCard({player, w}){
           <div style={{textAlign:'center',paddingBottom:W*0.03}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.14,color:accent,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',padding:'0 6px',textShadow:leg?'0 0 8px rgba(255,210,120,.5)':'0 1px 6px rgba(0,40,90,.7)'}}>{player.n.split(' ').pop()}</div>
           </div>
-          {/* stats */}
-          {showStats&&
-          <div style={{display:'flex',justifyContent:'space-between',margin:'0 '+statMargin+'px '+(W*0.08)+'px',borderTop:'1px solid '+trim,paddingTop:W*0.035}}>
-            {[['PAC',st.PAC],['SHO',st.SHO],['PAS',st.PAS],['DRI',st.DRI]].map(([k,v])=>(
-              <div key={k} style={{textAlign:'center',flex:1}}>
-                <div style={{fontSize:W*0.082,fontWeight:800,color:accent}}>{v}</div>
-                <div style={{fontSize:W*0.048,color:sub,fontWeight:700}}>{k}</div>
-              </div>
-            ))}
-          </div>}
-          {!showStats&&<div style={{paddingBottom:W*0.06}}/>}
+          {/* stats: two prominent headline stats */}
+          <div style={{display:'flex',margin:'0 '+(W*0.16)+'px '+(W*0.09)+'px',borderTop:'1px solid '+trim,paddingTop:W*0.04}}>
+            <div style={{flex:1,textAlign:'center'}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.155,fontWeight:800,color:accent,lineHeight:1}}>{two.ATT}</div>
+              <div style={{fontSize:W*0.058,color:sub,fontWeight:700,letterSpacing:1}}>ATT</div>
+            </div>
+            <div style={{width:1,background:trim}}/>
+            <div style={{flex:1,textAlign:'center'}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:W*0.155,fontWeight:800,color:accent,lineHeight:1}}>{two.DEF}</div>
+              <div style={{fontSize:W*0.058,color:sub,fontWeight:700,letterSpacing:1}}>DEF</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
