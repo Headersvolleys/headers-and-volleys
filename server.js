@@ -1444,12 +1444,8 @@ function Live({openPlayer, openClub}){
   const upcoming=matches.filter(m=>m.status==='SCHEDULED'||m.status==='TIMED');
   const finished=matches.filter(m=>m.status==='FINISHED');
   return(
-    <div style={{padding:16,paddingBottom:80}}>
+    <div>
       {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
-      <div style={{marginBottom:16}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>LIVE <span style={{color:C.orange}}>SCORES</span></div>
-        <div style={{fontSize:11,color:C.muted}}>Tap a match for goals, cards, form and H2H</div>
-      </div>
       {loading&&<div style={{textAlign:'center',padding:40}}><Spinner/></div>}
       {!loading&&!live.length&&!upcoming.length&&!finished.length&&<div style={{textAlign:'center',padding:40,color:C.muted,fontSize:13}}>No matches today</div>}
       {live.length>0&&<><div style={{fontSize:10,fontWeight:700,color:C.orange,letterSpacing:.8,marginBottom:8,textTransform:'uppercase'}}>* Live Now</div>{live.map(m=><MatchRow key={m.id} m={m} onClick={setSel}/>)}</>}
@@ -1462,7 +1458,6 @@ function Live({openPlayer, openClub}){
 // -- FIXTURES ----------------------------------------------
 function Fixtures({openPlayer, openClub}){
   const {data,loading,error}=useApi('/api/matches',300000);
-  const [selClub,setSelClub]=useState(null);
   const [filter,setFilter]=useState('ALL');
   const [openGW,setOpenGW]=useState(null);
   const [sel,setSel]=useState(null);
@@ -1476,12 +1471,8 @@ function Fixtures({openPlayer, openClub}){
   if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
   if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
   return(
-    <div style={{padding:16,paddingBottom:80}}>
+    <div>
       {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>FIXTURES <span style={{color:C.teal}}>2025-26</span></div>
-        <div style={{fontSize:11,color:C.muted}}>{matches.length} matches - tap any result for details</div>
-      </div>
       <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:6,marginBottom:12,alignItems:'center'}}>
         <button onClick={()=>setFilter('ALL')} style={{flexShrink:0,padding:'4px 10px',borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,border:'1px solid '+(filter==='ALL'?C.teal:C.d4),background:filter==='ALL'?'rgba(0,255,212,.1)':C.d2,color:filter==='ALL'?C.teal:C.muted}}>All</button>
         {CLUBS.map(s=><div key={s} onClick={()=>setFilter(s===filter?'ALL':s)} style={{flexShrink:0,borderRadius:6,padding:2,cursor:'pointer',border:'2px solid '+(filter===s?C.teal:C.d4),background:filter===s?'rgba(0,255,212,.08)':C.d2}}><Badge code={s} size={22}/></div>)}
@@ -1495,6 +1486,25 @@ function Fixtures({openPlayer, openClub}){
           {openGW===gw&&byGW[gw].map(m=><MatchRow key={m.id} m={m} onClick={setSel}/>)}
         </div>
       ))}
+    </div>
+  );
+}
+
+// -- MATCHES (merged Live + Fixtures) ----------------------
+function Matches({openPlayer, openClub}){
+  const [mode,setMode]=useState('today'); // today | all
+  return(
+    <div style={{padding:16,paddingBottom:80}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>MATCHES</div>
+        <div style={{fontSize:11,color:C.muted}}>Tap any match for goals, cards, form and H2H</div>
+      </div>
+      <div style={{display:'flex',gap:6,marginBottom:16}}>
+        {[['today','Today'],['all','All Fixtures']].map(([id,lbl])=>(
+          <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:'9px 12px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>{lbl}</button>
+        ))}
+      </div>
+      {mode==='today'?<Live openPlayer={openPlayer} openClub={openClub}/>:<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
     </div>
   );
 }
@@ -4347,9 +4357,8 @@ function XGStats(){
 
 // -- APP ---------------------------------------------------
 const TABS=[
-  {id:'live',label:'Live',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
+  {id:'matches',label:'Matches',path:'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'},
   {id:'predict',label:'Predict',path:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z'},
-  {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
   {id:'games',label:'Games',path:'M7 6h10a5 5 0 0 1 5 5v2a4 4 0 0 1-7.2 2.4l-.3-.4H9.5l-.3.4A4 4 0 0 1 2 13v-2a5 5 0 0 1 5-5zm-1 4v1.5H4.5V13H6v1.5h1.5V13H9v-1.5H7.5V10H6zm10.5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'},
@@ -5519,7 +5528,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
 
 function App(){
-  const [tab,setTab]=useState('live');
+  const [tab,setTab]=useState('matches');
   const [stack,setStack]=useState([]); // navigation stack of {type, ...}
   useCrests();
 
@@ -5556,9 +5565,8 @@ function App(){
         <div style={{background:C.d3,border:'1px solid '+C.d4,borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600,color:C.muted}}>LIVE <span style={{color:C.green,marginLeft:4}}>*</span></div>
       </nav>
       <div style={{animation:'fadeIn .2s ease'}}>
-        {tab==='live'&&<Live openClub={openClub}/>}
+        {tab==='matches'&&<Matches openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='predict'&&<Predictions/>}
-        {tab==='fixtures'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='games'&&<MiniGames openPlayer={openPlayer} openClub={openClub}/>}
@@ -5567,9 +5575,9 @@ function App(){
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
           <button key={t.id} className="hv-press" onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,background:'transparent',border:'none',cursor:'pointer',padding:'6px 2px',position:'relative'}}>
-            {tab===t.id&&<div style={{position:'absolute',top:0,left:'20%',right:'20%',height:2,borderRadius:'0 0 2px 2px',background:t.id==='live'?C.orange:C.teal}}/>}
-            <svg width={18} height={18} viewBox="0 0 24 24" fill={tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted}><path d={t.path}/></svg>
-            <span style={{fontSize:8,fontWeight:tab===t.id?700:500,color:tab===t.id?(t.id==='live'?C.orange:C.teal):C.muted,letterSpacing:.3}}>{t.label}</span>
+            {tab===t.id&&<div style={{position:'absolute',top:0,left:'20%',right:'20%',height:2,borderRadius:'0 0 2px 2px',background:t.id==='matches'?C.orange:C.teal}}/>}
+            <svg width={18} height={18} viewBox="0 0 24 24" fill={tab===t.id?(t.id==='matches'?C.orange:C.teal):C.muted}><path d={t.path}/></svg>
+            <span style={{fontSize:8,fontWeight:tab===t.id?700:500,color:tab===t.id?(t.id==='matches'?C.orange:C.teal):C.muted,letterSpacing:.3}}>{t.label}</span>
           </button>
         ))}
       </div>
