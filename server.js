@@ -1370,9 +1370,10 @@ function TeamCrest({code, logo, size=18}){
   return <Badge code={code||'???'} size={size}/>;
 }
 
-function Badge({code,size=24}){
+function Badge({code,size=24,logo}){
   const [bg,acc]=CC[code]||['#333','#fff'];
   const [err,setErr]=useState(false);
+  const [logoErr,setLogoErr]=useState(false);
   const [loaded,setLoaded]=useState(false);
   const crest=CRESTS[code];
 
@@ -1380,6 +1381,17 @@ function Badge({code,size=24}){
     if(CRESTS_LOADED&&CRESTS[code]) setLoaded(true);
   },[code]);
 
+  // Direct logo URL (e.g. API-Football crest for non-PL clubs) takes priority when present.
+  if(logo&&!logoErr){
+    return(
+      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
+        <img src={logo} width={size} height={size}
+          style={{objectFit:'contain',display:'block',maxWidth:size,maxHeight:size}}
+          onError={()=>setLogoErr(true)}
+          alt={code||''}/>
+      </div>
+    );
+  }
   if(crest&&!err){
     return(
       <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
@@ -5521,7 +5533,10 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const hg = match.score?.fullTime?.home;
   const ag = match.score?.fullTime?.away;
   const finished = match.status==='FINISHED';
-  const [homeCol, awayCol] = safeTeamCols(hc, ac);
+  const [homeColBase, awayColBase] = safeTeamCols(hc, ac);
+  // stat-bar tint: PL clubs use their colours; others (no PL colour) get distinct defaults so the two bars differ
+  const homeCol = hc==='???' ? C.teal : homeColBase;
+  const awayCol = ac==='???' ? C.blue : awayColBase;
   const homeTxt = contrastCol(hc);
   const awayTxt = contrastCol(ac);
 
@@ -5597,7 +5612,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
         <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4,position:'sticky',top:0,background:C.d2,zIndex:1}}>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
             <div style={{flex:1,display:'flex',alignItems:'center',gap:8}}>
-              <Badge code={hc} size={30}/>
+              <Badge code={hc} size={30} logo={match.homeTeam?.crest}/>
               <div>
                 <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</div>
                 {homeLineup&&<div style={{fontSize:10,color:C.muted}}>{homeLineup.formation}</div>}
@@ -5613,7 +5628,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                   <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</div>
                   {awayLineup&&<div style={{fontSize:10,color:C.muted,textAlign:'right'}}>{awayLineup.formation}</div>}
                 </div>
-                <Badge code={ac} size={30}/>
+                <Badge code={ac} size={30} logo={match.awayTeam?.crest}/>
               </div>
             </div>
           </div>
@@ -5634,9 +5649,9 @@ function MatchModal({match, onClose, openPlayer, openClub}){
               {!afLoading&&afId&&Object.keys(homeStats).length>0&&(
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}><Badge code={hc} size={20}/><span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]}</span></div>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}><Badge code={hc} size={20} logo={match.homeTeam?.crest}/><span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</span></div>
                     <span style={{fontSize:10,color:C.muted}}>STATS</span>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:12,fontWeight:700,color:awayCol}}>{TSHORT[match.awayTeam?.name]}</span><Badge code={ac} size={20}/></div>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:12,fontWeight:700,color:awayCol}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</span><Badge code={ac} size={20} logo={match.awayTeam?.crest}/></div>
                   </div>
                   {(xGHome!=null||xGAway!=null)&&<div style={{marginBottom:4}}><StatBar label="xG (Official)" home={xGHome??0} away={xGAway??0} homeCol={homeCol} awayCol={awayCol}/></div>}
                   {understatXG&&<div style={{marginBottom:4}}><StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={homeCol} awayCol={awayCol}/></div>}
