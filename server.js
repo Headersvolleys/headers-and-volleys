@@ -472,53 +472,6 @@ app.get('/api/af/player-career', async (req, res) => {
 // Understat xG by player name
 
 
-// ONE-TIME: authoritative resolver. Pulls league teams -> squads -> player IDs. Delete after use.
-app.get('/api/draft-resolve', async (req, res) => {
-  try {
-    const da = x => (x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-    // pool club code -> [league id, name tokens to match the team]
-    const CLUB = {
-      ARS:[39,'arsenal'],AVL:[39,'aston villa'],BHA:[39,'brighton'],BOU:[39,'bournemouth'],BRE:[39,'brentford'],
-      CHE:[39,'chelsea'],CRY:[39,'crystal palace'],EVE:[39,'everton'],FUL:[39,'fulham'],LIV:[39,'liverpool'],
-      MCI:[39,'manchester city'],MUN:[39,'manchester united'],NEW:[39,'newcastle'],NFO:[39,'nottingham'],TOT:[39,'tottenham'],WHU:[39,'west ham'],
-      ATB:[140,'athletic'],ATM:[140,'atletico madrid'],BAR:[140,'barcelona'],RMA:[140,'real madrid'],RSO:[140,'real sociedad'],
-      ATA:[135,'atalanta'],INT:[135,'inter'],JUV:[135,'juventus'],LAZ:[135,'lazio'],MIL:[135,'ac milan'],NAP:[135,'napoli'],ROM:[135,'roma'],
-      BAY:[78,'bayern'],BVB:[78,'dortmund'],RBL:[78,'leipzig'], MAR:[61,'marseille'],PSG:[61,'paris saint germain']
-    };
-    const POOL = {"LIV":["Alisson","Van Dijk","Alexander-Arnold","Robertson","Konate","Kerkez","Frimpong","Mac Allister","Szoboszlai","Gravenberch","Salah","Gakpo","Diaz","Chiesa","Ekitike"],"MCI":["Ederson","Dias","Gvardiol","Stones","Rodri","De Bruyne","Haaland","Foden","Marmoush"],"ARS":["David Raya","Saliba","Gabriel","White","Gabriel Magalhaes","Calafiori","Timber","Odegaard","Rice","Zubimendi","Merino","Saka","Gyokeres"],"MUN":["Onana","Fernandes","Mainoo","Ugarte","Cunha","Mbeumo","Garnacho","Rashford"],"EVE":["Pickford","Tarkowski","Garner","Beto"],"CHE":["Sanchez","Cucurella","James","Colwill","Palmer","Caicedo","Jackson","Nkunku","Joao Pedro","Pedro Neto"],"TOT":["Vicario","Romero","Van de Ven","Maddison","Son","Solanke","Kudus"],"NEW":["Pope","Trippier","Burn","Botman","Livramento","Hall","Bruno Guimaraes","Tonali","Isak","Elanga"],"AVL":["Martinez","Mings","Pau Torres","Digne","Amadou Onana","Rogers","Watkins"],"NFO":["Sels","Aina","Murillo","Sangare","Anderson","Gibbs-White","Wood"],"BRE":["Sanchez Flekken","Wissa","Schade"],"CRY":["Henderson","Guehi","Munoz","Lacroix","Wharton","Eze","Sarr","Mateta","Nketiah"],"RMA":["Courtois","Rudiger","Carvajal","Bellingham","Valverde","Tchouameni","Vinicius","Mbappe","Rodrygo"],"BAR":["Ter Stegen","Szczesny","Cubarsi","Kounde","Araujo","Balde","Pedri","Gavi","De Jong","Casado","Lewandowski","Raphinha","Yamal","Ferran Torres"],"ATM":["Oblak","Griezmann","Sorloth","Julian Alvarez"],"MIL":["Maignan","Theo Hernandez","Estupinan","Tomori","Reijnders","Modric","Loftus-Cheek","Leao","Gimenez","Pulisic"],"PSG":["Donnarumma","Hakimi","Marquinhos","Mendes","Vitinha","Fabian Ruiz","Dembele","Kvaratskhelia","Barcola"],"BAY":["Neuer","Davies","Kim Min-jae","Tah","Upamecano","Wirtz","Musiala","Kimmich","Olise","Goretzka","Kane"],"INT":["Sommer","Bastoni","Dimarco","Pavard","Acerbi","Barella","Calhanoglu","Frattesi","Mkhitaryan","Lautaro","Thuram"],"JUV":["Di Gregorio","Bremer","Gatti","Koopmeiners","Locatelli","Khephren Thuram","Vlahovic","Gonzalez"],"NAP":["Meret","Di Lorenzo","Buongiorno","McTominay","Lobotka","Anguissa","Osimhen"],"BVB":["Kobel","Schlotterbeck","Bensebaini","Ryerson","Anton","Brandt","Sabitzer","Gross","Adeyemi","Guirassy"],"BHA":["Verbruggen","Welbeck","Mitoma"],"WHU":["Areola","Bowen","Sarabia"],"BOU":["Petrovic","Kluivert","Semenyo"],"MAR":["Rulli"],"ATB":["Bono","Williams","Nico Williams"],"LAZ":["Provedel"],"ATA":["Carnesecchi","Retegui","Lookman"],"ROM":["Pellegrini"],"FUL":["Smith Rowe","Andreas Pereira"],"RBL":["Openda"],"RSO":["Oyarzabal"]};
-    // cache league teams
-    const teamCache={};
-    const getTeams=async(lg)=>{ if(teamCache[lg])return teamCache[lg]; let r={response:[]}; try{r=await af('/teams?league='+lg+'&season=2025',86400000);}catch(e){} teamCache[lg]=r.response||[]; return teamCache[lg]; };
-    const out={}; const misses=[]; const teamIds={};
-    for(const code of Object.keys(POOL)){
-      const [lg,tok]=CLUB[code]||[39,code.toLowerCase()];
-      const teams=await getTeams(lg);
-      // find team whose name contains all tokens
-      const toks=tok.split(' ');
-      let team=teams.find(t=>{const n=da(t.team?.name); return toks.every(w=>n.includes(w));});
-      if(!team) team=teams.find(t=>da(t.team?.name).includes(toks[0]));
-      if(!team){ POOL[code].forEach(n=>misses.push(n+' ('+code+': no team)')); continue; }
-      const tid=team.team.id; teamIds[code]=tid;
-      let sq={response:[]}; try{ sq=await af('/players/squads?team='+tid,86400000); }catch(e){}
-      const squad=(sq.response&&sq.response[0]&&sq.response[0].players)||[];
-      for(const name of POOL[code]){
-        const pn=da(name); const last=da(name.split(' ').pop());
-        let best=null,bs=-1;
-        for(const sp of squad){
-          const sn=da(sp.name||'');
-          let sc=0;
-          if(sn===pn) sc=100;
-          else if(sn.split(' ').pop()===last && (pn.split(' ').length===1 || pn.split(' ').every(w=>w.length<3||sn.includes(w)))) sc=85;
-          else if(sn.includes(last) && last.length>=4) sc=60;
-          else sc=0;
-          if(sc>bs){bs=sc;best=sp;}
-        }
-        if(best&&best.id&&bs>=60){ out[name]=best.id; } else { misses.push(name+' ('+code+')'); }
-      }
-    }
-    res.json({count:Object.keys(out).length, total:Object.values(POOL).flat().length, teamIds, misses, ids:out});
-  } catch(e){ res.status(500).json({error:e.message}); }
-});
 
 app.get('/api/xg/player-search', async (req, res) => {
   const cKey = 'us_players';
@@ -2572,97 +2525,92 @@ function CrosswordPlayer({puzzle,onBack}){
 // Add more IDs as you confirm them in API-Football.
 const LEGEND_SILHOUETTE='data:image/jpeg;base64,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';
 const DRAFT_IDS={
-  'Alisson':280,'Ederson':617,'David Raya':19465,'Onana':526,'Pickford':2932,'Sanchez':18959,'Vicario':31354,'Pope':18911,'Martinez':2467,'Sels':2919,'Henderson':292,'Courtois':730,'Ter Stegen':127,'Oblak':29,'Maignan':22221,'Donnarumma':1622,'Neuer':497,'Sommer':2802,'Di Gregorio':30670,'Meret':312,'Kobel':25282,'Verbruggen':129058,'Areola':253,'Petrovic':118307,'Szczesny':851,'Rulli':47296,'Provedel':31037,'Carnesecchi':30417,
-  'Van Dijk':290,'Saliba':22090,'Gabriel':643,'Dias':95,'Gvardiol':129033,'Trippier':169,'Robertson':289,'White':18746,'Cucurella':47380,'James':19329,'Romero':30776,'Van de Ven':152849,'Konate':1145,'Stones':626,'Burn':18961,'Mings':19179,'Tarkowski':2936,'Colwill':152953,'Guehi':67971,'Botman':38734,'Rudiger':2285,'Carvajal':733,'Cubarsi':396623,'Kounde':1257,'Bastoni':31009,'Bremer':30497,'Hakimi':9,'Davies':509,'Schlotterbeck':26242,'Araujo':101814,'Balde':161928,'Dimarco':31010,'Di Lorenzo':31042,'Bensebaini':2194,'Marquinhos':257,'Pavard':2725,'Mendes':263482,'Aina':2771,'Munoz':13736,'Lacroix':20995,'Kerkez':206254,'Frimpong':152654,'Murillo':363695,'Gabriel Magalhaes':22224,'Livramento':158694,'Hall':148099,'Pau Torres':46815,'Digne':2724,'Estupinan':46731,'Tomori':19209,'Calafiori':157052,'Timber':38746,'Acerbi':1836,'Gatti':268341,'Buongiorno':31226,'Ryerson':24845,'Anton':25368,'Upamecano':1149,
-  'Rodri':44,'Rice':2937,'Mac Allister':6716,'Szoboszlai':1096,'Fernandes':1485,'Palmer':152982,'Maddison':18784,'Caicedo':116117,'Gravenberch':542,'Wharton':288102,'Bruno Guimaraes':10135,'Tonali':31146,'Amadou Onana':162714,'Mainoo':284322,'Rogers':19170,'Bellingham':129718,'Valverde':756,'Tchouameni':1271,'Pedri':133609,'Gavi':296667,'De Jong':538,'Barella':30558,'Calhanoglu':1640,'Vitinha':128384,'Musiala':181812,'Kimmich':502,'McTominay':903,'Lobotka':47439,'Pellegrini':782,'Koopmeiners':36899,'Olise':19617,'Fabian Ruiz':328,'Zubimendi':47315,'Ugarte':51494,'Frattesi':31173,'Brandt':984,'Sangare':22149,'Anderson':138908,'Smith Rowe':1161,'Andreas Pereira':899,'Garner':895,'Kluivert':792,'Sarr':2218,'Merino':47311,'Modric':754,'Mkhitaryan':1457,'Locatelli':30533,'Anguissa':3406,'Sabitzer':1159,'Goretzka':511,'Casado':329728,
-  'Haaland':1100,'Salah':306,'Saka':1460,'Foden':631,'Watkins':19366,'Isak':2864,'Gakpo':247,'Cunha':1165,'Mbeumo':20589,'Wood':18889,'Mateta':25927,'Bowen':19428,'Garnacho':284324,'Vinicius':762,'Mbappe':278,'Rodrygo':10009,'Lewandowski':521,'Raphinha':1496,'Yamal':386828,'Lautaro':217,'Thuram':116,'Vlahovic':30415,'Leao':22236,'Kane':184,'Dembele':153,'Kvaratskhelia':483,'Griezmann':56,'Williams':47294,'Openda':86,'Adeyemi':7334,'Guirassy':21393,'Barcola':161904,'Marmoush':81573,'Wissa':20649,'Schade':178077,'Welbeck':1469,'Mitoma':106835,'Joao Pedro':10329,'Pedro Neto':1864,'Solanke':18883,'Kudus':15911,'Elanga':153430,'Semenyo':19281,'Nketiah':1468,'Julian Alvarez':6009,'Ferran Torres':931,'Nico Williams':183799,'Oyarzabal':47323,'Gimenez':94562,'Pulisic':17,'Chiesa':30410,'Lookman':18767,'Gyokeres':18979,'Beto':125743,'Ekitike':174565,
-  // resolved misses (confident only)
-  'De Bruyne':629,'Son':186,'Wirtz':171420,'Rashford':909,'Kim Min-jae':2599,'Loftus-Cheek':536,
+  'Alisson':280, 'Van Dijk':290, 'Robertson':289, 'Konate':1145, 'Kerkez':206254, 'Frimpong':152654, 'Mac Allister':6716, 'Szoboszlai':1096, 'Gravenberch':542, 'Salah':306, 'Gakpo':247, 'Chiesa':30410, 'Ekitike':174565, 'Dias':567, 'Gvardiol':129033, 'Stones':626, 'Rodri':44, 'Haaland':1100, 'Foden':631, 'Marmoush':81573, 'David Raya':19465, 'Saliba':22090, 'Gabriel':22224, 'White':19959, 'Calafiori':157052, 'Timber':38746, 'Rice':2937, 'Zubimendi':47315, 'Merino':47311, 'Saka':1460, 'Gyokeres':18979, 'Fernandes':1485, 'Mainoo':284322, 'Ugarte':51494, 'Cunha':1165, 'Mbeumo':20589, 'Pickford':2932, 'Tarkowski':2936, 'Garner':895, 'Beto':125743, 'Sanchez':18959, 'Cucurella':47380, 'James':19545, 'Colwill':152953, 'Palmer':152982, 'Caicedo':116117, 'Joao Pedro':10329, 'Pedro Neto':1864, 'Vicario':31354, 'Romero':30776, 'Van de Ven':152849, 'Maddison':18784, 'Solanke':18883, 'Kudus':15911, 'Pope':18911, 'Trippier':169, 'Burn':18961, 'Botman':38734, 'Livramento':158694, 'Hall':284492, 'Bruno Guimaraes':10135, 'Tonali':31146, 'Elanga':153430, 'Martinez':19599, 'Mings':19179, 'Pau Torres':46815, 'Digne':2724, 'Amadou Onana':162714, 'Rogers':19170, 'Watkins':19366, 'Sels':2919, 'Aina':2771, 'Murillo':363695, 'Sangare':22149, 'Anderson':138908, 'Gibbs-White':18746, 'Wood':18931, 'Schade':178077, 'Henderson':19088, 'Munoz':13736, 'Lacroix':20995, 'Wharton':288102, 'Sarr':2218, 'Mateta':25927, 'Nketiah':1468, 'Courtois':730, 'Rudiger':2285, 'Carvajal':733, 'Bellingham':129718, 'Valverde':756, 'Tchouameni':1271, 'Vinicius':762, 'Mbappe':278, 'Rodrygo':10009, 'Szczesny':851, 'Cubarsi':396623, 'Kounde':1257, 'Araujo':101814, 'Balde':161928, 'Pedri':133609, 'Gavi':296667, 'De Jong':538, 'Casado':329728, 'Lewandowski':521, 'Raphinha':1496, 'Yamal':386828, 'Ferran Torres':931, 'Oblak':29, 'Griezmann':56, 'Julian Alvarez':6009, 'Maignan':22221, 'Estupinan':46731, 'Tomori':19209, 'Modric':754, 'Loftus-Cheek':2292, 'Leao':22236, 'Gimenez':94562, 'Pulisic':17, 'Hakimi':9, 'Marquinhos':257, 'Mendes':263482, 'Vitinha':128384, 'Fabian Ruiz':328, 'Dembele':153, 'Kvaratskhelia':483, 'Barcola':161904, 'Neuer':497, 'Davies':509, 'Kim Min-jae':2897, 'Tah':972, 'Upamecano':1149, 'Musiala':181812, 'Kimmich':502, 'Olise':19617, 'Goretzka':511, 'Kane':184, 'Sommer':2802, 'Bastoni':31009, 'Dimarco':31010, 'Acerbi':1836, 'Barella':30558, 'Calhanoglu':1640, 'Frattesi':31173, 'Mkhitaryan':1457, 'Lautaro':217, 'Thuram':21509, 'Di Gregorio':30670, 'Bremer':30497, 'Gatti':268341, 'Koopmeiners':36899, 'Locatelli':30533, 'Khephren Thuram':116, 'Vlahovic':30415, 'Meret':312, 'Di Lorenzo':31042, 'Buongiorno':31226, 'McTominay':903, 'Lobotka':47439, 'Anguissa':3406, 'Kobel':25282, 'Schlotterbeck':26243, 'Bensebaini':2194, 'Ryerson':24845, 'Anton':25368, 'Brandt':984, 'Sabitzer':1159, 'Adeyemi':7334, 'Guirassy':21393, 'Verbruggen':129058, 'Welbeck':1469, 'Mitoma':106835, 'Areola':253, 'Bowen':19428, 'Petrovic':118307, 'Kluivert':792, 'Rulli':47296, 'Williams':47294, 'Nico Williams':183799, 'Provedel':31037, 'Carnesecchi':30417, 'Pellegrini':782, 'Smith Rowe':1161, 'Oyarzabal':47323,
 };
 
 
 const DRAFT_POOL={
   GK:[
-    {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'Ederson',c:'MCI',r:87,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
-    {n:'Onana',c:'MUN',r:82,nat:'Cameroon'},{n:'Pickford',c:'EVE',r:84,nat:'England'},{n:'Sanchez',c:'CHE',r:82,nat:'Spain'},
+    {n:'Alisson',c:'LIV',r:89,nat:'Brazil'},{n:'David Raya',c:'ARS',r:86,nat:'Spain'},
+    {n:'Pickford',c:'EVE',r:84,nat:'England'},{n:'Sanchez',c:'CHE',r:82,nat:'Spain'},
     {n:'Vicario',c:'TOT',r:83,nat:'Italy'},{n:'Pope',c:'NEW',r:82,nat:'England'},{n:'Martinez',c:'AVL',r:85,nat:'Argentina'},
-    {n:'Sels',c:'NFO',r:82,nat:'Belgium'},{n:'Sanchez Flekken',c:'BRE',r:79,nat:'Germany'},{n:'Henderson',c:'CRY',r:79,nat:'England'},
-    {n:'Courtois',c:'RMA',r:88,nat:'Belgium'},{n:'Ter Stegen',c:'BAR',r:86,nat:'Germany'},{n:'Oblak',c:'ATM',r:86,nat:'Slovenia'},
-    {n:'Maignan',c:'MIL',r:86,nat:'France'},{n:'Donnarumma',c:'PSG',r:87,nat:'Italy'},{n:'Neuer',c:'BAY',r:85,nat:'Germany'},
+    {n:'Sels',c:'NFO',r:82,nat:'Belgium'},{n:'Henderson',c:'CRY',r:79,nat:'England'},
+    {n:'Courtois',c:'RMA',r:88,nat:'Belgium'},{n:'Oblak',c:'ATM',r:86,nat:'Slovenia'},
+    {n:'Maignan',c:'MIL',r:86,nat:'France'},{n:'Neuer',c:'BAY',r:85,nat:'Germany'},
     {n:'Sommer',c:'INT',r:83,nat:'Switzerland'},{n:'Di Gregorio',c:'JUV',r:82,nat:'Italy'},{n:'Meret',c:'NAP',r:81,nat:'Italy'},
     {n:'Kobel',c:'BVB',r:84,nat:'Switzerland'},
     {n:'Verbruggen',c:'BHA',r:79,nat:'Netherlands'},{n:'Areola',c:'WHU',r:79,nat:'France'},{n:'Petrovic',c:'BOU',r:78,nat:'Serbia'},
-    {n:'Szczesny',c:'BAR',r:81,nat:'Poland'},{n:'Rulli',c:'MAR',r:80,nat:'Argentina'},{n:'Bono',c:'ATB',r:81,nat:'Morocco'},
+    {n:'Szczesny',c:'BAR',r:81,nat:'Poland'},{n:'Rulli',c:'MAR',r:80,nat:'Argentina'},
     {n:'Provedel',c:'LAZ',r:80,nat:'Italy'},{n:'Carnesecchi',c:'ATA',r:80,nat:'Italy'},
   ],
   DEF:[
     {n:'Van Dijk',c:'LIV',r:88,nat:'Netherlands'},{n:'Saliba',c:'ARS',r:87,nat:'France'},{n:'Gabriel',c:'ARS',r:86,nat:'Brazil'},
     {n:'Dias',c:'MCI',r:87,nat:'Portugal'},{n:'Gvardiol',c:'MCI',r:85,nat:'Croatia'},{n:'Trippier',c:'NEW',r:82,nat:'England'},
-    {n:'Alexander-Arnold',c:'LIV',r:86,nat:'England'},{n:'Robertson',c:'LIV',r:84,nat:'Scotland'},{n:'White',c:'ARS',r:84,nat:'England'},
+    {n:'Robertson',c:'LIV',r:84,nat:'Scotland'},{n:'White',c:'ARS',r:84,nat:'England'},
     {n:'Cucurella',c:'CHE',r:83,nat:'Spain'},{n:'James',c:'CHE',r:83,nat:'England'},{n:'Romero',c:'TOT',r:85,nat:'Argentina'},
     {n:'Van de Ven',c:'TOT',r:83,nat:'Netherlands'},{n:'Konate',c:'LIV',r:83,nat:'France'},{n:'Stones',c:'MCI',r:84,nat:'England'},
     {n:'Burn',c:'NEW',r:79,nat:'England'},{n:'Mings',c:'AVL',r:79,nat:'England'},{n:'Tarkowski',c:'EVE',r:80,nat:'England'},
-    {n:'Colwill',c:'CHE',r:80,nat:'England'},{n:'Guehi',c:'CRY',r:82,nat:'England'},{n:'Botman',c:'NEW',r:81,nat:'Netherlands'},
+    {n:'Colwill',c:'CHE',r:80,nat:'England'},{n:'Botman',c:'NEW',r:81,nat:'Netherlands'},
     {n:'Rudiger',c:'RMA',r:86,nat:'Germany'},{n:'Carvajal',c:'RMA',r:85,nat:'Spain'},{n:'Cubarsi',c:'BAR',r:84,nat:'Spain'},
     {n:'Kounde',c:'BAR',r:85,nat:'France'},{n:'Bastoni',c:'INT',r:86,nat:'Italy'},{n:'Bremer',c:'JUV',r:84,nat:'Brazil'},
-    {n:'Hakimi',c:'PSG',r:85,nat:'Morocco'},{n:'Theo Hernandez',c:'MIL',r:84,nat:'France'},{n:'Davies',c:'BAY',r:83,nat:'Canada'},
+    {n:'Hakimi',c:'PSG',r:85,nat:'Morocco'},{n:'Davies',c:'BAY',r:83,nat:'Canada'},
     {n:'Kim Min-jae',c:'BAY',r:83,nat:'South Korea'},{n:'Tah',c:'BAY',r:83,nat:'Germany'},{n:'Schlotterbeck',c:'BVB',r:82,nat:'Germany'},
     {n:'Araujo',c:'BAR',r:84,nat:'Uruguay'},{n:'Balde',c:'BAR',r:81,nat:'Spain'},{n:'Dimarco',c:'INT',r:84,nat:'Italy'},
     {n:'Di Lorenzo',c:'NAP',r:83,nat:'Italy'},{n:'Bensebaini',c:'BVB',r:79,nat:'Algeria'},{n:'Marquinhos',c:'PSG',r:85,nat:'Brazil'},
-    {n:'Pavard',c:'INT',r:82,nat:'France'},{n:'Mendes',c:'PSG',r:83,nat:'Portugal'},
+    {n:'Mendes',c:'PSG',r:83,nat:'Portugal'},
     {n:'Aina',c:'NFO',r:79,nat:'Nigeria'},{n:'Munoz',c:'CRY',r:80,nat:'Colombia'},{n:'Lacroix',c:'CRY',r:80,nat:'France'},
     {n:'Kerkez',c:'LIV',r:81,nat:'Hungary'},{n:'Frimpong',c:'LIV',r:81,nat:'Netherlands'},{n:'Murillo',c:'NFO',r:81,nat:'Brazil'},
-    {n:'Gabriel Magalhaes',c:'ARS',r:86,nat:'Brazil'},{n:'Livramento',c:'NEW',r:79,nat:'England'},{n:'Hall',c:'NEW',r:79,nat:'England'},
+    {n:'Livramento',c:'NEW',r:79,nat:'England'},{n:'Hall',c:'NEW',r:79,nat:'England'},
     {n:'Pau Torres',c:'AVL',r:81,nat:'Spain'},{n:'Digne',c:'AVL',r:79,nat:'France'},{n:'Estupinan',c:'MIL',r:80,nat:'Ecuador'},
     {n:'Tomori',c:'MIL',r:81,nat:'England'},{n:'Calafiori',c:'ARS',r:81,nat:'Italy'},{n:'Timber',c:'ARS',r:83,nat:'Netherlands'},
     {n:'Acerbi',c:'INT',r:82,nat:'Italy'},{n:'Gatti',c:'JUV',r:80,nat:'Italy'},{n:'Buongiorno',c:'NAP',r:82,nat:'Italy'},
     {n:'Ryerson',c:'BVB',r:78,nat:'Norway'},{n:'Anton',c:'BVB',r:79,nat:'Germany'},{n:'Upamecano',c:'BAY',r:83,nat:'France'},
   ],
   MID:[
-    {n:'Rodri',c:'MCI',r:90,nat:'Spain'},{n:'De Bruyne',c:'MCI',r:88,nat:'Belgium'},{n:'Odegaard',c:'ARS',r:87,nat:'Norway'},
+    {n:'Rodri',c:'MCI',r:90,nat:'Spain'},
     {n:'Rice',c:'ARS',r:86,nat:'England'},{n:'Mac Allister',c:'LIV',r:85,nat:'Argentina'},{n:'Szoboszlai',c:'LIV',r:84,nat:'Hungary'},
     {n:'Fernandes',c:'MUN',r:86,nat:'Portugal'},{n:'Palmer',c:'CHE',r:86,nat:'England'},{n:'Maddison',c:'TOT',r:83,nat:'England'},
     {n:'Caicedo',c:'CHE',r:84,nat:'Ecuador'},{n:'Gravenberch',c:'LIV',r:84,nat:'Netherlands'},{n:'Wharton',c:'CRY',r:80,nat:'England'},
     {n:'Bruno Guimaraes',c:'NEW',r:84,nat:'Brazil'},{n:'Tonali',c:'NEW',r:83,nat:'Italy'},{n:'Amadou Onana',c:'AVL',r:80,nat:'Belgium'},
-    {n:'Mainoo',c:'MUN',r:80,nat:'England'},{n:'Eze',c:'CRY',r:83,nat:'England'},{n:'Rogers',c:'AVL',r:81,nat:'England'},
+    {n:'Mainoo',c:'MUN',r:80,nat:'England'},{n:'Rogers',c:'AVL',r:81,nat:'England'},
     {n:'Bellingham',c:'RMA',r:89,nat:'England'},{n:'Valverde',c:'RMA',r:87,nat:'Uruguay'},{n:'Tchouameni',c:'RMA',r:85,nat:'France'},
     {n:'Pedri',c:'BAR',r:87,nat:'Spain'},{n:'Gavi',c:'BAR',r:83,nat:'Spain'},{n:'De Jong',c:'BAR',r:85,nat:'Netherlands'},
     {n:'Barella',c:'INT',r:86,nat:'Italy'},{n:'Calhanoglu',c:'INT',r:85,nat:'Turkey'},{n:'Vitinha',c:'PSG',r:85,nat:'Portugal'},
-    {n:'Wirtz',c:'BAY',r:87,nat:'Germany'},{n:'Musiala',c:'BAY',r:87,nat:'Germany'},{n:'Kimmich',c:'BAY',r:85,nat:'Germany'},
-    {n:'Reijnders',c:'MIL',r:83,nat:'Netherlands'},{n:'McTominay',c:'NAP',r:83,nat:'Scotland'},{n:'Lobotka',c:'NAP',r:83,nat:'Slovakia'},
+    {n:'Musiala',c:'BAY',r:87,nat:'Germany'},{n:'Kimmich',c:'BAY',r:85,nat:'Germany'},
+    {n:'McTominay',c:'NAP',r:83,nat:'Scotland'},{n:'Lobotka',c:'NAP',r:83,nat:'Slovakia'},
     {n:'Pellegrini',c:'ROM',r:81,nat:'Italy'},{n:'Koopmeiners',c:'JUV',r:82,nat:'Netherlands'},{n:'Olise',c:'BAY',r:85,nat:'France'},
     {n:'Fabian Ruiz',c:'PSG',r:84,nat:'Spain'},{n:'Zubimendi',c:'ARS',r:84,nat:'Spain'},{n:'Ugarte',c:'MUN',r:80,nat:'Uruguay'},
     {n:'Frattesi',c:'INT',r:81,nat:'Italy'},{n:'Brandt',c:'BVB',r:82,nat:'Germany'},
     {n:'Sangare',c:'NFO',r:79,nat:'Ivory Coast'},{n:'Anderson',c:'NFO',r:79,nat:'England'},{n:'Smith Rowe',c:'FUL',r:79,nat:'England'},
-    {n:'Andreas Pereira',c:'FUL',r:79,nat:'Brazil'},{n:'Garner',c:'EVE',r:78,nat:'England'},{n:'Gibbs-White',c:'NFO',r:82,nat:'England'},
+    {n:'Garner',c:'EVE',r:78,nat:'England'},{n:'Gibbs-White',c:'NFO',r:82,nat:'England'},
     {n:'Kluivert',c:'BOU',r:80,nat:'Netherlands'},{n:'Sarr',c:'CRY',r:80,nat:'Senegal'},{n:'Merino',c:'ARS',r:82,nat:'Spain'},
     {n:'Modric',c:'MIL',r:83,nat:'Croatia'},{n:'Loftus-Cheek',c:'MIL',r:80,nat:'England'},{n:'Mkhitaryan',c:'INT',r:81,nat:'Armenia'},
     {n:'Locatelli',c:'JUV',r:81,nat:'Italy'},{n:'Khephren Thuram',c:'JUV',r:81,nat:'France'},{n:'Anguissa',c:'NAP',r:82,nat:'Cameroon'},
-    {n:'Sabitzer',c:'BVB',r:80,nat:'Austria'},{n:'Gross',c:'BVB',r:79,nat:'Germany'},{n:'Goretzka',c:'BAY',r:82,nat:'Germany'},
+    {n:'Sabitzer',c:'BVB',r:80,nat:'Austria'},{n:'Goretzka',c:'BAY',r:82,nat:'Germany'},
     {n:'Casado',c:'BAR',r:79,nat:'Spain'},
   ],
   FWD:[
     {n:'Haaland',c:'MCI',r:91,nat:'Norway'},{n:'Salah',c:'LIV',r:89,nat:'Egypt'},{n:'Saka',c:'ARS',r:87,nat:'England'},
-    {n:'Son',c:'TOT',r:85,nat:'South Korea'},{n:'Foden',c:'MCI',r:86,nat:'England'},{n:'Watkins',c:'AVL',r:84,nat:'England'},
-    {n:'Isak',c:'NEW',r:86,nat:'Sweden'},{n:'Gakpo',c:'LIV',r:83,nat:'Netherlands'},{n:'Cunha',c:'MUN',r:82,nat:'Brazil'},
-    {n:'Mbeumo',c:'MUN',r:83,nat:'Cameroon'},{n:'Jackson',c:'CHE',r:81,nat:'Senegal'},{n:'Nkunku',c:'CHE',r:82,nat:'France'},
+    {n:'Foden',c:'MCI',r:86,nat:'England'},{n:'Watkins',c:'AVL',r:84,nat:'England'},
+    {n:'Gakpo',c:'LIV',r:83,nat:'Netherlands'},{n:'Cunha',c:'MUN',r:82,nat:'Brazil'},
+    {n:'Mbeumo',c:'MUN',r:83,nat:'Cameroon'},
     {n:'Wood',c:'NFO',r:80,nat:'New Zealand'},{n:'Mateta',c:'CRY',r:80,nat:'France'},{n:'Bowen',c:'WHU',r:82,nat:'England'},
-    {n:'Garnacho',c:'MUN',r:80,nat:'Argentina'},{n:'Rashford',c:'MUN',r:82,nat:'England'},{n:'Diaz',c:'LIV',r:84,nat:'Colombia'},
+    
     {n:'Vinicius',c:'RMA',r:90,nat:'Brazil'},{n:'Mbappe',c:'RMA',r:91,nat:'France'},{n:'Rodrygo',c:'RMA',r:85,nat:'Brazil'},
     {n:'Lewandowski',c:'BAR',r:87,nat:'Poland'},{n:'Raphinha',c:'BAR',r:86,nat:'Brazil'},{n:'Yamal',c:'BAR',r:87,nat:'Spain'},
     {n:'Lautaro',c:'INT',r:87,nat:'Argentina'},{n:'Thuram',c:'INT',r:85,nat:'France'},{n:'Vlahovic',c:'JUV',r:83,nat:'Serbia'},
-    {n:'Osimhen',c:'NAP',r:86,nat:'Nigeria'},{n:'Leao',c:'MIL',r:85,nat:'Portugal'},{n:'Kane',c:'BAY',r:90,nat:'England'},
+    {n:'Leao',c:'MIL',r:85,nat:'Portugal'},{n:'Kane',c:'BAY',r:90,nat:'England'},
     {n:'Dembele',c:'PSG',r:87,nat:'France'},{n:'Kvaratskhelia',c:'PSG',r:86,nat:'Georgia'},{n:'Griezmann',c:'ATM',r:85,nat:'France'},
-    {n:'Williams',c:'ATB',r:84,nat:'Spain'},{n:'Openda',c:'RBL',r:81,nat:'Belgium'},{n:'Adeyemi',c:'BVB',r:81,nat:'Germany'},
-    {n:'Guirassy',c:'BVB',r:83,nat:'Guinea'},{n:'Retegui',c:'ATA',r:83,nat:'Italy'},{n:'Gonzalez',c:'JUV',r:81,nat:'Argentina'},
+    {n:'Williams',c:'ATB',r:84,nat:'Spain'},{n:'Adeyemi',c:'BVB',r:81,nat:'Germany'},
+    {n:'Guirassy',c:'BVB',r:83,nat:'Guinea'},
     {n:'Barcola',c:'PSG',r:83,nat:'France'},{n:'Marmoush',c:'MCI',r:82,nat:'Egypt'},
-    {n:'Wissa',c:'BRE',r:80,nat:'DR Congo'},{n:'Schade',c:'BRE',r:78,nat:'Germany'},{n:'Welbeck',c:'BHA',r:79,nat:'England'},
+    {n:'Schade',c:'BRE',r:78,nat:'Germany'},{n:'Welbeck',c:'BHA',r:79,nat:'England'},
     {n:'Mitoma',c:'BHA',r:82,nat:'Japan'},{n:'Joao Pedro',c:'CHE',r:82,nat:'Brazil'},{n:'Pedro Neto',c:'CHE',r:81,nat:'Portugal'},
     {n:'Solanke',c:'TOT',r:81,nat:'England'},{n:'Kudus',c:'TOT',r:82,nat:'Ghana'},{n:'Elanga',c:'NEW',r:81,nat:'Sweden'},
-    {n:'Semenyo',c:'BOU',r:80,nat:'Ghana'},{n:'Nketiah',c:'CRY',r:78,nat:'England'},{n:'Sarabia',c:'WHU',r:79,nat:'Spain'},
-    {n:'Sorloth',c:'ATM',r:82,nat:'Norway'},{n:'Julian Alvarez',c:'ATM',r:85,nat:'Argentina'},{n:'Ferran Torres',c:'BAR',r:81,nat:'Spain'},
+    {n:'Nketiah',c:'CRY',r:78,nat:'England'},
+    {n:'Julian Alvarez',c:'ATM',r:85,nat:'Argentina'},{n:'Ferran Torres',c:'BAR',r:81,nat:'Spain'},
     {n:'Nico Williams',c:'ATB',r:84,nat:'Spain'},{n:'Oyarzabal',c:'RSO',r:82,nat:'Spain'},{n:'Gimenez',c:'MIL',r:81,nat:'Mexico'},
-    {n:'Pulisic',c:'MIL',r:83,nat:'USA'},{n:'Chiesa',c:'LIV',r:80,nat:'Italy'},{n:'Lookman',c:'ATA',r:83,nat:'Nigeria'},
+    {n:'Pulisic',c:'MIL',r:83,nat:'USA'},{n:'Chiesa',c:'LIV',r:80,nat:'Italy'},
     {n:'Gyokeres',c:'ARS',r:85,nat:'Sweden'},{n:'Beto',c:'EVE',r:78,nat:'Portugal'},{n:'Ekitike',c:'LIV',r:82,nat:'France'},
   ],
 };
