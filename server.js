@@ -1657,22 +1657,32 @@ function Cups(){
 }
 
 function Matches({openPlayer, openClub}){
-  const [mode,setMode]=useState('today'); // today | upcoming | all
+  const [mode,setMode]=useState('today'); // today | upcoming | all | cups
+  const SEGS=[['today','Today'],['upcoming','Upcoming'],['all','Fixtures'],['cups','Cups & Europe']];
   return(
-    <div style={{padding:16,paddingBottom:80}}>
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>MATCHES</div>
-        <div style={{fontSize:11,color:C.muted}}>Tap any match for goals, cards, form and H2H</div>
+    <div style={{paddingBottom:80}}>
+      {/* Header */}
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
+        <div style={{paddingLeft:8}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MATCH<span style={{color:C.teal}}>ES</span></div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Tap any match for details</div>
+        </div>
       </div>
-      <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
-        {[['today','Today'],['upcoming','Upcoming'],['all','All Fixtures'],['cups','Cups & Europe']].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setMode(id)} style={{flex:'1 1 40%',padding:'9px 8px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,cursor:'pointer'}}>{lbl}</button>
-        ))}
+      {/* Segmented control */}
+      <div style={{padding:'12px 12px 0',position:'sticky',top:0,zIndex:50,background:C.dark}}>
+        <div style={{display:'flex',gap:2,background:C.d3,borderRadius:11,padding:3,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+          {SEGS.map(([id,lbl])=>(
+            <button key={id} onClick={()=>setMode(id)} style={{flex:'1 0 auto',whiteSpace:'nowrap',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,letterSpacing:.2,transition:'all .15s ease',background:mode===id?C.teal:'transparent',color:mode===id?'#FFFFFF':C.muted,boxShadow:mode===id?'0 1px 4px rgba(10,191,184,.4)':'none'}}>{lbl}</button>
+          ))}
+        </div>
       </div>
-      {mode==='today'&&<Live openPlayer={openPlayer} openClub={openClub}/>}
-      {mode==='upcoming'&&<Upcoming openPlayer={openPlayer} openClub={openClub}/>}
-      {mode==='all'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
-      {mode==='cups'&&<Cups/>}
+      <div style={{padding:'14px 16px 0'}}>
+        {mode==='today'&&<Live openPlayer={openPlayer} openClub={openClub}/>}
+        {mode==='upcoming'&&<Upcoming openPlayer={openPlayer} openClub={openClub}/>}
+        {mode==='all'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
+        {mode==='cups'&&<Cups/>}
+      </div>
     </div>
   );
 }
