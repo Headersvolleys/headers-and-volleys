@@ -1491,8 +1491,36 @@ function Fixtures({openPlayer, openClub}){
 }
 
 // -- MATCHES (merged Live + Fixtures) ----------------------
+function Upcoming({openPlayer, openClub}){
+  const {data,loading,error}=useApi('/api/matches',300000);
+  const [sel,setSel]=useState(null);
+  if(loading)return<div style={{padding:40,textAlign:'center'}}><Spinner/></div>;
+  if(error)return<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>;
+  const now=Date.now();
+  const future=(data?.matches||[])
+    .filter(m=>(m.status==='SCHEDULED'||m.status==='TIMED')&&m.utcDate&&new Date(m.utcDate).getTime()>now)
+    .sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate))
+    .slice(0,40);
+  if(!future.length)return<div style={{textAlign:'center',padding:40,color:C.muted,fontSize:13}}>No upcoming fixtures scheduled</div>;
+  // group by date label
+  const byDay={};
+  future.forEach(m=>{const d=new Date(m.utcDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});if(!byDay[d])byDay[d]=[];byDay[d].push(m);});
+  const days=Object.keys(byDay);
+  return(
+    <div>
+      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
+      {days.map(d=>(
+        <div key={d} style={{marginBottom:14}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.8,marginBottom:8,textTransform:'uppercase'}}>{d}</div>
+          {byDay[d].map(m=><MatchRow key={m.id} m={m} onClick={setSel}/>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Matches({openPlayer, openClub}){
-  const [mode,setMode]=useState('today'); // today | all
+  const [mode,setMode]=useState('today'); // today | upcoming | all
   return(
     <div style={{padding:16,paddingBottom:80}}>
       <div style={{marginBottom:14}}>
@@ -1500,11 +1528,13 @@ function Matches({openPlayer, openClub}){
         <div style={{fontSize:11,color:C.muted}}>Tap any match for goals, cards, form and H2H</div>
       </div>
       <div style={{display:'flex',gap:6,marginBottom:16}}>
-        {[['today','Today'],['all','All Fixtures']].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:'9px 12px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,cursor:'pointer'}}>{lbl}</button>
+        {[['today','Today'],['upcoming','Upcoming'],['all','All Fixtures']].map(([id,lbl])=>(
+          <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:'9px 8px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,cursor:'pointer'}}>{lbl}</button>
         ))}
       </div>
-      {mode==='today'?<Live openPlayer={openPlayer} openClub={openClub}/>:<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
+      {mode==='today'&&<Live openPlayer={openPlayer} openClub={openClub}/>}
+      {mode==='upcoming'&&<Upcoming openPlayer={openPlayer} openClub={openClub}/>}
+      {mode==='all'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
     </div>
   );
 }
