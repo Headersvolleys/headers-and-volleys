@@ -422,11 +422,13 @@ app.get('/api/af/player-career', async (req, res) => {
       shotsTotal: st.shots?.total, shotsOn: st.shots?.on,
       passesTotal: st.passes?.total, passesKey: st.passes?.key, passAccuracy: st.passes?.accuracy,
       dribblesAttempts: st.dribbles?.attempts, dribblesSuccess: st.dribbles?.success,
-      tacklesTotal: st.tackles?.total, interceptions: st.tackles?.interceptions,
+      tacklesTotal: st.tackles?.total, interceptions: st.tackles?.interceptions, blocks: st.tackles?.blocks,
       duelsTotal: st.duels?.total, duelsWon: st.duels?.won,
       foulsDrawn: st.fouls?.drawn, foulsCommitted: st.fouls?.committed,
-      goals: st.goals?.total, assists: st.goals?.assists,
+      goals: st.goals?.total, assists: st.goals?.assists, conceded: st.goals?.conceded, saves: st.goals?.saves,
       yellow: st.cards?.yellow, red: st.cards?.red,
+      penScored: st.penalty?.scored, penMissed: st.penalty?.missed, penWon: st.penalty?.won, penCommitted: st.penalty?.commited,
+      appearances: st.games?.appearences, lineups: st.games?.lineups,
       rating: st.games?.rating ? parseFloat(st.games.rating).toFixed(2) : null,
       minutes: st.games?.minutes,
     });
@@ -4710,6 +4712,53 @@ function PlayerModal({player, teamId, onClose, openClub}){
               {breakdownTiles.map((t,i)=><StatTile key={i} label={t.label} value={t.value} accent={t.accent} sub={t.sub}/>)}
             </div>
           </>}
+
+          {/* Expanded stat sections */}
+          {[
+            {title:'Attacking', tiles:[
+              {label:'Goals',value:sd(d.goals)},
+              {label:'Assists',value:sd(d.assists)},
+              {label:'Shots',value:sd(d.shotsTotal),sub:d.shotsOn!=null?d.shotsOn+' on target':null},
+              {label:'Shot Acc',value:shotAccuracy!=null?shotAccuracy+'%':'-',accent:C.teal},
+              {label:'Pens Scored',value:sd(d.penScored),sub:d.penMissed!=null?d.penMissed+' missed':null},
+              {label:'Pens Won',value:sd(d.penWon)},
+            ]},
+            {title:'Passing & Possession', tiles:[
+              {label:'Passes',value:sd(d.passesTotal)},
+              {label:'Pass %',value:passAcc!=null?passAcc+'%':'-',accent:C.teal},
+              {label:'Key Passes',value:sd(d.passesKey)},
+              {label:'Dribbles',value:sd(d.dribblesSuccess),sub:d.dribblesAttempts!=null?'of '+d.dribblesAttempts:null},
+              {label:'Dribble %',value:dribbleRate!=null?dribbleRate+'%':'-',accent:C.teal},
+              {label:'Fouls Won',value:sd(d.foulsDrawn)},
+            ]},
+            {title:'Defending', tiles:[
+              {label:'Tackles',value:sd(d.tacklesTotal)},
+              {label:'Interceptions',value:sd(d.interceptions)},
+              {label:'Blocks',value:sd(d.blocks)},
+              {label:'Duels Won',value:sd(d.duelsWon),sub:d.duelsTotal!=null?'of '+d.duelsTotal:null},
+              {label:'Duel %',value:duelRate!=null?duelRate+'%':'-',accent:C.teal},
+              {label:'Fouls',value:sd(d.foulsCommitted)},
+            ]},
+            {title:'Discipline & Minutes', tiles:[
+              {label:'Minutes',value:sd(d.minutes)},
+              {label:'Apps',value:sd(d.appearances),sub:d.lineups!=null?d.lineups+' starts':null},
+              {label:'Rating',value:sd(d.rating),accent:C.teal},
+              {label:'Yellow',value:sd(d.yellow),accent:C.yellow},
+              {label:'Red',value:sd(d.red),accent:C.red},
+              {label:'Fouls',value:sd(d.foulsCommitted),sub:d.foulsDrawn!=null?d.foulsDrawn+' won':null},
+            ]},
+          ].map((sec,si)=>{
+            const shown=sec.tiles.filter(t=>t.value!=='-'&&t.value!=null);
+            if(shown.length<2) return null;
+            return(
+              <div key={si}>
+                <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>{sec.title}</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:16}}>
+                  {shown.map((t,i)=><StatTile key={i} label={t.label} value={t.value} accent={t.accent} sub={t.sub}/>)}
+                </div>
+              </div>
+            );
+          })}
 
           {/* xG section */}
           {xgData&&<>
