@@ -2948,6 +2948,9 @@ function DraftGame({onExit}){
     // overall = average of team rating and balance, rounded
     const overall=Math.round((avg+balance)/2);
     const overallColor=overall>=85?'#FFD700':overall>=80?'#00E676':overall>=75?'#0ABFB8':overall>=70?'#FFD600':'#FF8000';
+    // showcase: top-rated player from each of DEF(incl GK), MID, ATT
+    const topOf=(groups)=>{ const c=picks.filter(p=>groups.includes(p.group)); return c.sort((a,b)=>b.r-a.r)[0]; };
+    const showcase=[topOf(['GK','DEF']), topOf(['MID']), topOf(['FWD'])].filter(Boolean);
     // group picks into pitch lines by slot.line
     const maxLine=Math.max(...SLOTS.map(s=>s.line));
     const lineArr=[];
@@ -2984,26 +2987,19 @@ function DraftGame({onExit}){
             </div>
           </div>
         </div>
-        <div style={{display:'flex',gap:12,overflowX:'auto',padding:'0 16px 14px',WebkitOverflowScrolling:'touch'}}>
-          {picks.map((p,i)=>(
-            <div key={i} style={{flexShrink:0}}><PlayerCard player={p} w={120}/></div>
+        <div style={{display:'flex',gap:14,justifyContent:'center',padding:'0 16px 14px',flexWrap:'wrap'}}>
+          {showcase.map((p,i)=>(
+            <div key={i} style={{flexShrink:0}}><PlayerCard player={p} w={104}/></div>
           ))}
         </div>
         <div style={{margin:'0 16px',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'18px 8px',border:'1px solid rgba(255,255,255,.08)'}}>
           {lines.map((line,li)=>(
-            <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?20:0}}>
-              {line.map((p,i)=>{
-                const lg=p.isLegend;
-                return(
-                <div key={i} style={{textAlign:'center',width:72}}>
-                  <div style={{width:42,height:42,borderRadius:'50%',background:lg?'#3d1466':C.d2,border:'2px solid '+(lg?'#FFD700':C.teal),boxShadow:lg?'0 0 8px rgba(255,210,80,.6)':'none',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px'}}>
-                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:lg?'#FFD700':C.teal}}>{p.r}</span>
-                  </div>
-                  <div style={{fontSize:10,color:'#fff',fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.n.split(' ').pop()}</div>
-                  <div style={{fontSize:8,color:'rgba(255,255,255,.6)',fontWeight:700}}>{p.pos} &middot; {p.c}</div>
+            <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?16:0}}>
+              {line.map((p,i)=>(
+                <div key={i} style={{width:'calc('+(100/Math.max(line.length,1))+'% - 4px)',maxWidth:84,display:'flex',justifyContent:'center'}}>
+                  <PlayerCard player={p} w={64}/>
                 </div>
-                );
-              })}
+              ))}
             </div>
           ))}
         </div>
