@@ -324,15 +324,17 @@ app.get('/api/af/player-trophies', async (req, res) => {
     const r = await af('/trophies?player='+encodeURIComponent(id), 24*60*MIN).catch(()=>({response:[]}));
     const rows = r.response||[];
     if(req.query.debug) return res.json({rawCount:rows.length, sample:rows.slice(0,5), raw:rows});
-    // group by league+country, count winners vs runner-up
+    // AF returns each trophy twice: once with a season, once with season:null (summary). Keep only seasoned rows.
+    const seasoned = rows.filter(t=>t.season);
     const map = {};
-    rows.forEach(t=>{
+    seasoned.forEach(t=>{
       const key = (t.league||'Trophy')+'||'+(t.country||'');
       if(!map[key]) map[key]={league:t.league||'Trophy', country:t.country||'', won:0, runner:0};
       const place=(t.place||'').toLowerCase();
       if(place==='winner') map[key].won++; else map[key].runner++;
     });
-    const trophies = Object.values(map).sort((a,b)=>b.won-a.won);
+    // winners first, then by count
+    const trophies = Object.values(map).sort((a,b)=>(b.won-a.won)||(b.runner-a.runner));
     const totalWon = trophies.reduce((s,t)=>s+t.won,0);
     const data = {found:trophies.length>0, totalWon, trophies};
     cache[cKey] = {data, ts:Date.now()};
@@ -1111,6 +1113,30 @@ const TSHORT={
   'Tottenham Hotspur':'Spurs','Tottenham Hotspur FC':'Spurs',
   'West Ham United':'West Ham','West Ham United FC':'West Ham',
   'Wolverhampton Wanderers':'Wolves','Wolverhampton Wanderers FC':'Wolves',
+};
+
+// Hardcoded major team honours (keyed by short name). [TopFlight titles, FA Cup, League Cup, European Cup/CL, Europa/UEFA Cup]
+const TEAM_HONOURS={
+  'Arsenal':[['League Titles',13],['FA Cup',14],['League Cup',2],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Aston Villa':[['League Titles',7],['FA Cup',7],['League Cup',5],['European Cup / CL',1],['Europa / UEFA Cup',0]],
+  'Brighton':[['League Titles',0],['FA Cup',0],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Bournemouth':[['League Titles',0],['FA Cup',0],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Brentford':[['League Titles',0],['FA Cup',0],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Burnley':[['League Titles',2],['FA Cup',1],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Chelsea':[['League Titles',6],['FA Cup',8],['League Cup',5],['European Cup / CL',2],['Europa / UEFA Cup',2]],
+  'Crystal Palace':[['League Titles',0],['FA Cup',1],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Everton':[['League Titles',9],['FA Cup',5],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',1]],
+  'Fulham':[['League Titles',0],['FA Cup',0],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Leeds United':[['League Titles',3],['FA Cup',1],['League Cup',1],['European Cup / CL',0],['Europa / UEFA Cup',2]],
+  'Liverpool':[['League Titles',20],['FA Cup',8],['League Cup',10],['European Cup / CL',6],['Europa / UEFA Cup',3]],
+  'Manchester City':[['League Titles',10],['FA Cup',7],['League Cup',8],['European Cup / CL',1],['Europa / UEFA Cup',0]],
+  'Manchester United':[['League Titles',20],['FA Cup',12],['League Cup',6],['European Cup / CL',3],['Europa / UEFA Cup',1]],
+  'Newcastle United':[['League Titles',4],['FA Cup',6],['League Cup',1],['European Cup / CL',0],['Europa / UEFA Cup',1]],
+  'Nottingham Forest':[['League Titles',1],['FA Cup',2],['League Cup',4],['European Cup / CL',2],['Europa / UEFA Cup',0]],
+  'Sunderland':[['League Titles',6],['FA Cup',2],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',0]],
+  'Tottenham Hotspur':[['League Titles',2],['FA Cup',8],['League Cup',4],['European Cup / CL',0],['Europa / UEFA Cup',3]],
+  'West Ham United':[['League Titles',0],['FA Cup',3],['League Cup',0],['European Cup / CL',0],['Europa / UEFA Cup',1]],
+  'Wolves':[['League Titles',3],['FA Cup',4],['League Cup',2],['European Cup / CL',0],['Europa / UEFA Cup',0]],
 };
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
 
@@ -3480,6 +3506,19 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             </div>
           </>}
 
+          {/* Honours */}
+          {(TEAM_HONOURS[TSHORT[team?.name]]||[]).some(x=>x[1]>0)&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Honours <span style={{color:C.muted,fontWeight:600}}>&middot; major trophies</span></div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:16}}>
+              {(TEAM_HONOURS[TSHORT[team?.name]]||[]).filter(x=>x[1]>0).map(([label,n],i)=>(
+                <div key={i} style={{background:C.d2,borderRadius:9,padding:'10px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.gold,lineHeight:1}}>{n}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3,textTransform:'uppercase'}}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </>}
+
           {/* Season Stats */}
           {played>0&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Stats</div>
@@ -4375,6 +4414,12 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const [data, setData] = useState(null);
   const [xgData, setXgData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [trophies, setTrophies] = useState(null);
+
+  useEffect(()=>{
+    if(!player?.id) return;
+    fetch('/api/af/player-trophies?id='+player.id).then(r=>r.json()).then(setTrophies).catch(()=>{});
+  },[player?.id]);
 
   useEffect(()=>{
     // If we already have goals/assists from the prop, no need to wait for API
@@ -4785,6 +4830,25 @@ function PlayerModal({player, teamId, onClose, openClub}){
               </div>
             );
           })}
+
+          {/* Player honours */}
+          {trophies&&trophies.found&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Honours <span style={{color:C.muted,fontWeight:600}}>&middot; {trophies.totalWon} won</span></div>
+            <div style={{background:C.d3,borderRadius:10,padding:'4px 0',marginBottom:16}}>
+              {trophies.trophies.filter(t=>t.won>0).map((t,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 14px',borderBottom:i<trophies.trophies.filter(x=>x.won>0).length-1?'1px solid '+C.d4:'none'}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12.5,color:C.text,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.league}</div>
+                    {t.country&&<div style={{fontSize:9,color:C.muted}}>{t.country}</div>}
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0,marginLeft:10}}>
+                    <span style={{color:C.gold,fontSize:13}}>&#127942;</span>
+                    <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.gold}}>{t.won}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>}
 
           {/* xG section */}
           {xgData&&<>
