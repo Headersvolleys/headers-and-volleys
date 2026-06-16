@@ -1007,8 +1007,8 @@ app.get('/', (req, res) => {
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0F2027;color:#E0FFFD;font-family:'DM Sans',sans-serif;max-width:520px;margin:0 auto}
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:#1E3545;border-radius:2px}
+body{background:#FFFFFF;color:#0F2027;font-family:'DM Sans',sans-serif;max-width:520px;margin:0 auto}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:#D6E6E5;border-radius:2px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
@@ -1027,7 +1027,7 @@ body{background:#0F2027;color:#E0FFFD;font-family:'DM Sans',sans-serif;max-width
 .hv-press{transition:transform .12s ease, box-shadow .2s ease, background .2s ease}
 .hv-press:active{transform:scale(.97)}
 .hv-card{transition:transform .18s ease, box-shadow .25s ease, border-color .2s ease}
-.hv-skel{background:linear-gradient(90deg,#1A3340 0%,#244554 40%,#1A3340 80%);background-size:600px 100%;animation:hvShimmer 1.3s linear infinite;border-radius:8px}
+.hv-skel{background:linear-gradient(90deg,#EEF5F4 0%,#E0EDEC 40%,#EEF5F4 80%);background-size:600px 100%;animation:hvShimmer 1.3s linear infinite;border-radius:8px}
 .hv-fade-tab{animation:hvFadeUp .3s ease both}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 input[type=number]{-moz-appearance:textfield}
@@ -1039,7 +1039,7 @@ input[type=number]{-moz-appearance:textfield}
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
-const C={dark:'#0F2027',d2:'#1A3340',d3:'#162D3A',d4:'#1E3545',white:'#fff',text:'#E0FFFD',muted:'#5A9AAA',teal:'#0ABFB8',green:'#00E676',red:'#FF3D3D',yellow:'#FFD600',orange:'#FF8000',blue:'#2979FF',gold:'#FFD700'};
+const C={dark:'#FFFFFF',d2:'#F2F8F8',d3:'#E8F3F2',d4:'#D6E6E5',white:'#0F2027',text:'#0F2027',muted:'#6B8B8E',teal:'#0ABFB8',green:'#00B85C',red:'#E53535',yellow:'#E0A800',orange:'#E57300',blue:'#2979FF',gold:'#C9A227'};
 const TCODE={
   'Arsenal':'ARS','Arsenal FC':'ARS',
   'Aston Villa':'AVL','Aston Villa FC':'AVL',
@@ -1394,7 +1394,7 @@ function Table({openClub}){
   return(
     <div style={{paddingBottom:80}}>
       {/* Broadcast header bar */}
-      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
           <div>
@@ -2904,7 +2904,7 @@ function DraftGame({onExit}){
   if(!formation){
     return(
       <div style={{paddingBottom:80}}>
-        <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+        <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
           <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
           <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Choose your formation</div>
@@ -2959,7 +2959,7 @@ function DraftGame({onExit}){
     const lines=lineArr.slice().reverse(); // attackers on top
     return(
       <div style={{paddingBottom:80}}>
-        <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+        <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
           <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>YOUR XI</div>
@@ -3022,7 +3022,7 @@ function DraftGame({onExit}){
   const runningAvg=picks.length?(picks.reduce((s,p)=>s+p.r,0)/picks.length):0;
   return(
     <div style={{paddingBottom:80}}>
-      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
         <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
         <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
           <div>
@@ -3095,7 +3095,7 @@ function MiniGames({openPlayer, openClub}){
 
   return(
     <div style={{paddingBottom:80}}>
-      <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{paddingLeft:8}}>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MINI <span style={{color:C.teal}}>GAMES</span></div>
