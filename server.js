@@ -2908,13 +2908,15 @@ function DraftGame({onExit}){
   if(done){
     const avg=picks.reduce((s,p)=>s+p.r,0)/picks.length;
     const grade=draftGrade(avg);
-    // balance: how close the team's avg ATT is to its avg DEF
+    // balance (ratio method): weaker side as % of stronger side
     const tw=picks.map(p=>deriveTwoStats(p,p.group||'MID'));
     const attAvg=tw.reduce((s,t)=>s+t.ATT,0)/tw.length;
     const defAvg=tw.reduce((s,t)=>s+t.DEF,0)/tw.length;
-    const gap=Math.abs(attAvg-defAvg);
-    const balance=Math.max(0,Math.round(100-gap*1.6)); // 0 gap=100, ~62 gap=0
+    const balance=Math.round((Math.min(attAvg,defAvg)/Math.max(attAvg,defAvg))*100);
     const balColor=balance>=80?'#00E676':balance>=60?'#0ABFB8':balance>=40?'#FFD600':'#FF8000';
+    // overall = average of team rating and balance, rounded
+    const overall=Math.round((avg+balance)/2);
+    const overallColor=overall>=85?'#FFD700':overall>=80?'#00E676':overall>=75?'#0ABFB8':overall>=70?'#FFD600':'#FF8000';
     // group picks into pitch lines by slot.line
     const maxLine=Math.max(...SLOTS.map(s=>s.line));
     const lineArr=[];
@@ -2930,14 +2932,25 @@ function DraftGame({onExit}){
             <div style={{fontSize:12,color:C.teal,fontWeight:700}}>{FORMATIONS[formation].name}</div>
           </div>
         </div>
-        <div style={{margin:16,display:'flex',gap:12}}>
-          <div style={{flex:1,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+grade.c+'55'}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:54,color:grade.c,lineHeight:.9}}>{grade.g}</div>
-            <div style={{fontSize:13,color:C.text,fontWeight:700,marginTop:4}}>Rating {avg.toFixed(1)}</div>
+        <div style={{margin:16}}>
+          {/* overall headline */}
+          <div style={{background:C.d2,borderRadius:14,padding:'20px',textAlign:'center',border:'1px solid '+overallColor+'66',marginBottom:12}}>
+            <div style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase'}}>Overall</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:72,color:overallColor,lineHeight:.95}}>{overall}</div>
+            <div style={{display:'inline-block',marginTop:6,padding:'2px 12px',borderRadius:20,background:grade.c+'22',border:'1px solid '+grade.c+'66'}}>
+              <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:grade.c,letterSpacing:1}}>{grade.g}</span>
+            </div>
           </div>
-          <div style={{flex:1,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+balColor+'55'}}>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:54,color:balColor,lineHeight:.9}}>{balance}</div>
-            <div style={{fontSize:13,color:C.text,fontWeight:700,marginTop:4}}>Balance</div>
+          {/* supporting: rating + balance */}
+          <div style={{display:'flex',gap:12}}>
+            <div style={{flex:1,background:C.d2,borderRadius:14,padding:'14px',textAlign:'center',border:'1px solid '+C.d4}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:grade.c,lineHeight:.9}}>{avg.toFixed(1)}</div>
+              <div style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:1,marginTop:3}}>RATING</div>
+            </div>
+            <div style={{flex:1,background:C.d2,borderRadius:14,padding:'14px',textAlign:'center',border:'1px solid '+C.d4}}>
+              <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:balColor,lineHeight:.9}}>{balance}</div>
+              <div style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:1,marginTop:3}}>BALANCE</div>
+            </div>
           </div>
         </div>
         <div style={{display:'flex',gap:12,overflowX:'auto',padding:'0 16px 14px',WebkitOverflowScrolling:'touch'}}>
