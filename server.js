@@ -1731,9 +1731,22 @@ function Matches({openPlayer, openClub}){
   const todayIso=new Date().toISOString().split('T')[0];
   const [date,setDate]=useState(todayIso);
   const {data,loading,error}=useApi('/api/day?date='+date, 300000);
+  const [sel,setSel]=useState(null);
   const groups=data?.groups||[];
+  // adapt a day-view match (AF shape) into the shape MatchModal expects, with the AF id pre-resolved
+  const openMatch=(m)=>{
+    const fin=m.status==='FT'||m.status==='AET'||m.status==='PEN';
+    setSel({
+      id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
+      status:fin?'FINISHED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':'SCHEDULED',
+      homeTeam:{name:m.home.name, crest:m.home.logo},
+      awayTeam:{name:m.away.name, crest:m.away.logo},
+      score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
+    });
+  };
   return(
     <div style={{paddingBottom:80}}>
+      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
       {/* Header */}
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
@@ -1763,7 +1776,7 @@ function Matches({openPlayer, openClub}){
               {g.logo&&<img src={g.logo} alt="" style={{width:18,height:18,objectFit:'contain'}}/>}
               <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3}}>{g.name}</div>
             </div>
-            {g.matches.map(m=><CupMatchRow key={m.id} m={m}/>)}
+            {g.matches.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatch(m)}/>)}
           </div>
         ))}
       </div>
@@ -5514,7 +5527,8 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
   useEffect(()=>{
     setAfLoading(true);
-    findAFFixture(match).then(id=>{
+    const resolve = match.afIdDirect ? Promise.resolve(match.afIdDirect) : findAFFixture(match);
+    resolve.then(id=>{
       setAfId(id);
       if(id){
         Promise.all([
@@ -5585,7 +5599,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <div style={{flex:1,display:'flex',alignItems:'center',gap:8}}>
               <Badge code={hc} size={30}/>
               <div>
-                <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.homeTeam?.name]}</div>
+                <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</div>
                 {homeLineup&&<div style={{fontSize:10,color:C.muted}}>{homeLineup.formation}</div>}
               </div>
             </div>
@@ -5596,7 +5610,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <div style={{flex:1,display:'flex',alignItems:'flex-end',flexDirection:'column',gap:2}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.awayTeam?.name]}</div>
+                  <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</div>
                   {awayLineup&&<div style={{fontSize:10,color:C.muted,textAlign:'right'}}>{awayLineup.formation}</div>}
                 </div>
                 <Badge code={ac} size={30}/>
