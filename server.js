@@ -3172,6 +3172,58 @@ function DraftGame({onExit}){
   );
 }
 
+function timeAgo(ts){
+  if(!ts) return '';
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60) return 'just now';
+  const m=Math.floor(s/60); if(m<60) return m+'m ago';
+  const h=Math.floor(m/60); if(h<24) return h+'h ago';
+  const d=Math.floor(h/24); return d+'d ago';
+}
+function NewsList({filter, limit}){
+  const {data,loading}=useApi('/api/news',900000);
+  let items=data?.items||[];
+  if(filter){
+    const f=filter.toLowerCase();
+    const alt=f.replace(' fc','').replace(' united',' utd');
+    items=items.filter(it=>{const t=(it.title+' '+it.desc).toLowerCase(); return t.includes(f)||t.includes(alt);});
+  }
+  if(limit) items=items.slice(0,limit);
+  if(loading) return <div style={{padding:'30px 0',textAlign:'center',color:C.muted,fontSize:13}}>Loading news...</div>;
+  if(!items.length) return <div style={{padding:'24px 0',textAlign:'center',color:C.muted,fontSize:13}}>No recent news{filter?' for this club':''}.</div>;
+  return(
+    <div className="hv-stagger" style={{display:'flex',flexDirection:'column',gap:8}}>
+      {items.map((it,i)=>(
+        <a key={i} href={it.link} target="_blank" rel="noopener noreferrer" className="hv-press"
+          style={{display:'block',textDecoration:'none',background:C.d2,border:'1px solid '+C.d4,borderRadius:12,padding:'12px 14px'}}>
+          <div style={{fontSize:13.5,color:C.text,fontWeight:700,lineHeight:1.3,marginBottom:4}}>{it.title}</div>
+          {it.desc&&<div style={{fontSize:11.5,color:C.muted,lineHeight:1.4,marginBottom:6}}>{it.desc}</div>}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:10,color:C.teal,fontWeight:700,letterSpacing:.3}}>{it.src}</span>
+            <span style={{fontSize:10,color:C.muted}}>{timeAgo(it.ts)}</span>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+function NewsPage(){
+  return(
+    <div style={{paddingBottom:80}}>
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
+        <div style={{paddingLeft:8}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>FOOTBALL <span style={{color:C.teal}}>NEWS</span></div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Latest headlines &middot; updated hourly</div>
+        </div>
+      </div>
+      <div style={{padding:16}}>
+        <NewsList/>
+      </div>
+    </div>
+  );
+}
+
 function MiniGames({openPlayer, openClub}){
   const [game,setGame]=useState(null); // null = hub, else section id
 
@@ -3550,8 +3602,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
           </>}
 
           {/* Honours */}
-          {(TEAM_HONOURS[TSHORT[team?.name]]||[]).some(x=>x[1]>0)&&<>
-            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Honours <span style={{color:C.muted,fontWeight:600}}>&middot; major trophies</span></div>
+          {(TEAM_HONOURS[TSHORT[team?.name]]||[]).some(x=>x[1]>0)&&<>            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Honours <span style={{color:C.muted,fontWeight:600}}>&middot; major trophies</span></div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:16}}>
               {(TEAM_HONOURS[TSHORT[team?.name]]||[]).filter(x=>x[1]>0).map(([label,n],i)=>(
                 <div key={i} style={{background:C.d2,borderRadius:9,padding:'10px 6px',textAlign:'center'}}>
@@ -3561,6 +3612,12 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
               ))}
             </div>
           </>}
+
+          {/* Club news */}
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Latest News</div>
+          <div style={{marginBottom:16}}>
+            <NewsList filter={TSHORT[team?.name]||team?.name} limit={6}/>
+          </div>
 
           {/* Season Stats */}
           {played>0&&<>
@@ -4270,7 +4327,8 @@ const TABS=[
   {id:'fixtures',label:'Fixtures',path:'M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'},
   {id:'table',label:'Table',path:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z'},
   {id:'stats',label:'Stats',path:'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z'},
-  {id:'games',label:'Games',path:'M7 6h10a5 5 0 0 1 5 5v2a4 4 0 0 1-7.2 2.4l-.3-.4H9.5l-.3.4A4 4 0 0 1 2 13v-2a5 5 0 0 1 5-5zm-1 4v1.5H4.5V13H6v1.5h1.5V13H9v-1.5H7.5V10H6zm10.5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'}
+  {id:'games',label:'Games',path:'M7 6h10a5 5 0 0 1 5 5v2a4 4 0 0 1-7.2 2.4l-.3-.4H9.5l-.3.4A4 4 0 0 1 2 13v-2a5 5 0 0 1 5-5zm-1 4v1.5H4.5V13H6v1.5h1.5V13H9v-1.5H7.5V10H6zm10.5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'},
+  {id:'news',label:'News',path:'M4 4h16a1 1 0 0 1 1 1v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1zm2 4v2h8V8H6zm0 4v2h8v-2H6zm0 4v2h5v-2H6zm10-8v8h2V8h-2z'}
 ];
 
 
@@ -5479,6 +5537,7 @@ function App(){
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='games'&&<MiniGames openPlayer={openPlayer} openClub={openClub}/>}
+        {tab==='news'&&<NewsPage/>}
       </div>
       <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:200,background:C.d2,borderTop:'1px solid '+C.d4,display:'flex',height:58,maxWidth:520,margin:'0 auto'}}>
         {TABS.map(t=>(
