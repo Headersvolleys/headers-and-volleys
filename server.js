@@ -93,6 +93,42 @@ app.get('/api/matches', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Cup / Europe fixtures from API-Football. league: CL=2, FA Cup=45, League Cup=48.
+// FA Cup & League Cup are filtered to the rounds where PL clubs feature (3rd round onward + knockout names).
+const CUP_COMPS = {
+  ucl: { lid: 2, name: 'Champions League', minRound: null },
+  facup: { lid: 45, name: 'FA Cup', minRound: 3 },
+  carabao: { lid: 48, name: 'Carabao Cup', minRound: 3 },
+};
+// keep rounds we care about for domestic cups: numbered rounds >= minRound, plus all knockout-named rounds
+function cupRoundAllowed(roundStr, minRound){
+  if(minRound==null) return true; // CL: keep everything
+  const r = (roundStr||'').toLowerCase();
+  const knockoutWords = ['final','semi','quarter','round of'];
+  if(knockoutWords.some(w=>r.includes(w))) return true;
+  const m = r.match(/(\d+)(?:st|nd|rd|th)?\s*round/);
+  if(m) return Number(m[1])>=minRound;
+  return false; // drop preliminary/qualifying/replays etc.
+}
+app.get('/api/cup/:comp', async (req, res) => {
+  const comp = CUP_COMPS[req.params.comp];
+  if(!comp) return res.status(404).json({error:'unknown competition'});
+  try {
+    const d = await af('/fixtures?league='+comp.lid+'&season='+SEASON+'', 30*MIN);
+    let rows = (d.response||[]).filter(x=>cupRoundAllowed(x.league?.round, comp.minRound));
+    const matches = rows.map(x=>({
+      id: x.fixture?.id,
+      utcDate: x.fixture?.date,
+      status: x.fixture?.status?.short,
+      round: x.league?.round,
+      home: { name: x.teams?.home?.name, logo: x.teams?.home?.logo, winner: x.teams?.home?.winner },
+      away: { name: x.teams?.away?.name, logo: x.teams?.away?.logo, winner: x.teams?.away?.winner },
+      goalsHome: x.goals?.home, goalsAway: x.goals?.away,
+    })).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));
+    res.json({ name: comp.name, count: matches.length, matches });
+  } catch(e){ res.status(500).json({error:e.message, matches:[]}); }
+});
+
 // Diagnostic: probe what cup/europe competitions are available on the current tiers.
 // Hit /api/cups/probe once and report back which return data.
 app.get('/api/cups/probe', async (req, res) => {
@@ -1556,6 +1592,70 @@ function Upcoming({openPlayer, openClub}){
   );
 }
 
+function CupMatchRow({m, onClick}){
+  const fin=m.status==='FT'||m.status==='AET'||m.status==='PEN';
+  const live=m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET';
+  const dt=m.utcDate?new Date(m.utcDate):null;
+  const dateStr=dt?dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
+  const timeStr=dt?dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
+  const col=live?C.orange:fin?C.muted:C.teal;
+  const Side=({s,score,won})=>(
+    <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
+      {s.logo?<img src={s.logo} alt="" style={{width:20,height:20,objectFit:'contain',flexShrink:0}}/>:<div style={{width:20,height:20,flexShrink:0}}/>}
+      <span style={{fontSize:12.5,fontWeight:won?700:600,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</span>
+    </div>
+  );
+  return(
+    <div onClick={()=>onClick&&onClick(m)} style={{background:C.d2,borderLeft:'3px solid '+col,borderRadius:9,marginBottom:5,padding:'10px 12px',cursor:onClick?'pointer':'default'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <div style={{flexShrink:0,minWidth:54}}>
+          <div style={{fontSize:10,color:C.muted,lineHeight:1.3}}>{dateStr}</div>
+          <div style={{fontSize:10,fontWeight:700,marginTop:1,color:col}}>{live?'LIVE':fin?'FT':timeStr}</div>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <Side s={m.home} score={m.goalsHome} won={m.home.winner}/>
+          <div style={{height:4}}/>
+          <Side s={m.away} score={m.goalsAway} won={m.away.winner}/>
+        </div>
+        {(fin||live)&&<div style={{flexShrink:0,textAlign:'center',minWidth:24}}>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.white,lineHeight:1.1}}>{m.goalsHome==null?'-':m.goalsHome}</div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.white,lineHeight:1.1}}>{m.goalsAway==null?'-':m.goalsAway}</div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+function CupSection({comp, label}){
+  const {data,loading}=useApi('/api/cup/'+comp, 1800000);
+  const [open,setOpen]=useState(false);
+  const matches=data?.matches||[];
+  const now=Date.now();
+  // show the most relevant slice: upcoming first, else most recent
+  const upcoming=matches.filter(m=>m.utcDate&&new Date(m.utcDate).getTime()>now);
+  const past=matches.filter(m=>m.utcDate&&new Date(m.utcDate).getTime()<=now).reverse();
+  const shown=open?matches:[...upcoming.slice(0,5),...(upcoming.length<5?past.slice(0,5-upcoming.length):[])];
+  return(
+    <div style={{marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>{label}</div>
+        {matches.length>0&&<button onClick={()=>setOpen(!open)} style={{background:'transparent',border:'none',color:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>{open?'Show less':'Show all ('+matches.length+')'}</button>}
+      </div>
+      {loading&&<div style={{padding:'14px 0',textAlign:'center'}}><Spinner/></div>}
+      {!loading&&!matches.length&&<div style={{padding:'12px 0',color:C.muted,fontSize:12}}>No fixtures available yet.</div>}
+      {shown.map(m=><CupMatchRow key={m.id} m={m}/>)}
+    </div>
+  );
+}
+function Cups(){
+  return(
+    <div>
+      <CupSection comp="ucl" label="Champions League"/>
+      <CupSection comp="facup" label="FA Cup"/>
+      <CupSection comp="carabao" label="Carabao Cup"/>
+    </div>
+  );
+}
+
 function Matches({openPlayer, openClub}){
   const [mode,setMode]=useState('today'); // today | upcoming | all
   return(
@@ -1564,14 +1664,15 @@ function Matches({openPlayer, openClub}){
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,color:C.white,letterSpacing:1.5}}>MATCHES</div>
         <div style={{fontSize:11,color:C.muted}}>Tap any match for goals, cards, form and H2H</div>
       </div>
-      <div style={{display:'flex',gap:6,marginBottom:16}}>
-        {[['today','Today'],['upcoming','Upcoming'],['all','All Fixtures']].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:'9px 8px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,cursor:'pointer'}}>{lbl}</button>
+      <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+        {[['today','Today'],['upcoming','Upcoming'],['all','All Fixtures'],['cups','Cups & Europe']].map(([id,lbl])=>(
+          <button key={id} onClick={()=>setMode(id)} style={{flex:'1 1 40%',padding:'9px 8px',borderRadius:9,border:'1px solid '+(mode===id?C.teal:C.d4),background:mode===id?'rgba(10,191,184,.1)':C.d2,color:mode===id?C.teal:C.muted,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,cursor:'pointer'}}>{lbl}</button>
         ))}
       </div>
       {mode==='today'&&<Live openPlayer={openPlayer} openClub={openClub}/>}
       {mode==='upcoming'&&<Upcoming openPlayer={openPlayer} openClub={openClub}/>}
       {mode==='all'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
+      {mode==='cups'&&<Cups/>}
     </div>
   );
 }
