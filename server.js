@@ -314,6 +314,32 @@ app.get('/api/scorer-photo-ids', async (req, res) => {
 
 
 // API-Football player career
+// Player honours/trophies from API-Football
+app.get('/api/af/player-trophies', async (req, res) => {
+  const id = req.query.id;
+  if(!id) return res.json({found:false, trophies:[]});
+  const cKey = 'trophies_'+id;
+  if(cache[cKey] && Date.now()-cache[cKey].ts < 24*60*MIN) return res.json(cache[cKey].data);
+  try {
+    const r = await af('/trophies?player='+encodeURIComponent(id), 24*60*MIN).catch(()=>({response:[]}));
+    const rows = r.response||[];
+    if(req.query.debug) return res.json({rawCount:rows.length, sample:rows.slice(0,5), raw:rows});
+    // group by league+country, count winners vs runner-up
+    const map = {};
+    rows.forEach(t=>{
+      const key = (t.league||'Trophy')+'||'+(t.country||'');
+      if(!map[key]) map[key]={league:t.league||'Trophy', country:t.country||'', won:0, runner:0};
+      const place=(t.place||'').toLowerCase();
+      if(place==='winner') map[key].won++; else map[key].runner++;
+    });
+    const trophies = Object.values(map).sort((a,b)=>b.won-a.won);
+    const totalWon = trophies.reduce((s,t)=>s+t.won,0);
+    const data = {found:trophies.length>0, totalWon, trophies};
+    cache[cKey] = {data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, found:false, trophies:[]}); }
+});
+
 app.get('/api/af/player-career', async (req, res) => {
   try {
     const {name, teamName, dob, id} = req.query;
