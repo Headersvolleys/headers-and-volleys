@@ -27,17 +27,10 @@ const NEWS_FEEDS=[
   {src:'BBC Sport', url:'https://feeds.bbci.co.uk/sport/football/rss.xml'},
   {src:'The Guardian', url:'https://www.theguardian.com/football/premierleague/rss'},
   {src:'The Guardian', url:'https://www.theguardian.com/football/rss'},
+  {src:'The Independent', url:'https://www.independent.co.uk/sport/football/rss'},
   {src:'Daily Mail', url:'https://www.dailymail.co.uk/sport/football/index.rss'},
-  {src:'Sky Sports', url:'https://www.skysports.com/rss/11095'},
-  {src:'talkSPORT', url:'https://talksport.com/feed/'},
   {src:'This Is Anfield', url:'https://www.thisisanfield.com/feed/'},
   {src:'Gunnerblog', url:'https://gunnerblog.com/feed/'},
-  {src:'Football365', url:'https://www.football365.com/feed'},
-  {src:'Caught Offside', url:'https://www.caughtoffside.com/feed/'},
-  {src:'Metro Football', url:'https://metro.co.uk/sport/football/feed/'},
-  {src:'The Independent', url:'https://www.independent.co.uk/sport/football/rss'},
-  {src:'Mirror Football', url:'https://www.mirror.co.uk/sport/football/?service=rss'},
-  {src:'Marca', url:'https://e00-marca.uecdn.es/rss/en/football/premier-league.xml'},
 ];
 function parseRss(xml, src){
   const items=[];
@@ -81,7 +74,10 @@ app.get('/api/news', async (req, res) => {
     // dedupe by title
     const seen=new Set(); items=items.filter(it=>{const k=it.title.toLowerCase().slice(0,50); if(seen.has(k))return false; seen.add(k); return true;});
     items.sort((a,b)=>b.ts-a.ts);
-    items=items.slice(0,80);
+    // cap each source so one prolific outlet (e.g. Daily Mail) does not dominate
+    const perSrc={}; const capped=[];
+    for(const it of items){ perSrc[it.src]=(perSrc[it.src]||0)+1; if(perSrc[it.src]<=18) capped.push(it); }
+    items=capped.slice(0,80);
     const data={items, fetched:Date.now(), sources:[...new Set(items.map(i=>i.src))]};
     cache[cKey]={data, ts:Date.now()};
     res.json(data);
