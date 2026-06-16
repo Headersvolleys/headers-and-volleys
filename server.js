@@ -93,6 +93,36 @@ app.get('/api/matches', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Generic standings for any competition (league table, or groups for World Cup etc.)
+// Returns { groups: [ { name, table:[...] } ] } - one entry for leagues, several for group stages.
+const STANDINGS_COMPS = {
+  pl:{lid:39}, ucl:{lid:2}, championship:{lid:40}, worldcup:{lid:1},
+  laliga:{lid:140}, seriea:{lid:135}, bundesliga:{lid:78}, ligue1:{lid:61},
+  europa:{lid:3}, conference:{lid:848},
+};
+app.get('/api/comp-standings/:comp', async (req, res) => {
+  const comp = STANDINGS_COMPS[req.params.comp];
+  if(!comp) return res.status(404).json({error:'unknown competition'});
+  const cKey = 'cstand_'+req.params.comp+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/standings?league='+comp.lid+'&season='+SEASON+'', 30*MIN);
+    const blocks = d.response?.[0]?.league?.standings || [];
+    const groups = blocks.map(rows=>({
+      name: rows[0]?.group || '',
+      table: rows.map(r=>({
+        position:r.rank, team:{name:r.team?.name, logo:r.team?.logo},
+        played:r.all?.played, won:r.all?.win, draw:r.all?.draw, lost:r.all?.lose,
+        gf:r.all?.goals?.for, ga:r.all?.goals?.against, gd:r.goalsDiff, points:r.points,
+        form:r.form, desc:r.description,
+      })),
+    }));
+    const data = { groups };
+    afCache[cKey] = {data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, groups:[]}); }
+});
+
 // Whole-day fixtures across the competitions we care about (FotMob-style).
 // Ordered set: importance rank + display name. AF league IDs.
 const DAY_COMPS = [
@@ -1711,6 +1741,48 @@ function Cups(){
   );
 }
 
+// map day-view AF league id -> comp-standings key (only comps that have a table)
+const LID_TO_STANDINGS = {39:'pl',2:'ucl',40:'championship',1:'worldcup',140:'laliga',135:'seriea',78:'bundesliga',61:'ligue1',3:'europa',848:'conference'};
+function CompStandings({compKey, title, onClose}){
+  const {data,loading,error}=useApi('/api/comp-standings/'+compKey, 1800000);
+  const groups=data?.groups||[];
+  return(
+    <div style={{position:'fixed',inset:0,background:C.dark,zIndex:400,overflowY:'auto'}}>
+      <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:10,display:'flex',alignItems:'center',gap:10}}>
+        <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
+        <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.white,letterSpacing:.5,flex:1}}>{title} TABLE</div>
+      </div>
+      <div style={{padding:16,paddingBottom:60}}>
+        {loading&&<div style={{padding:'30px 0',textAlign:'center'}}><Spinner/></div>}
+        {error&&!loading&&<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>}
+        {!loading&&!error&&!groups.length&&<div style={{padding:'30px 0',textAlign:'center',color:C.muted,fontSize:13}}>No table available for this competition.</div>}
+        {groups.map((g,gi)=>(
+          <div key={gi} style={{marginBottom:18}}>
+            {g.name&&<div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>{g.name}</div>}
+            <div style={{display:'grid',gridTemplateColumns:'24px 1fr 26px 34px 34px',gap:4,padding:'0 8px 6px',alignItems:'center'}}>
+              <div style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center'}}>#</div>
+              <div/>
+              {['P','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center'}}>{h}</div>)}
+            </div>
+            {g.table.map((r,i)=>(
+              <div key={i} style={{display:'grid',gridTemplateColumns:'24px 1fr 26px 34px 34px',gap:4,alignItems:'center',background:C.d2,borderRadius:8,marginBottom:4,padding:'8px 8px'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted,textAlign:'center'}}>{r.position}</div>
+                <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                  {r.team.logo&&<img src={r.team.logo} alt="" style={{width:18,height:18,objectFit:'contain',flexShrink:0}}/>}
+                  <span style={{fontSize:12.5,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.team.name}</span>
+                </div>
+                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{r.played}</div>
+                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{r.gd>0?'+':''}{r.gd}</div>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.white,textAlign:'center'}}>{r.points}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MatchesDateStrip({selected, onPick}){
   const today=new Date(); today.setHours(0,0,0,0);
   const iso=d=>d.toISOString().split('T')[0];
@@ -1744,6 +1816,7 @@ function Matches({openPlayer, openClub}){
   const [date,setDate]=useState(todayIso);
   const {data,loading,error}=useApi('/api/day?date='+date, 300000);
   const [sel,setSel]=useState(null);
+  const [tableComp,setTableComp]=useState(null); // {key,title}
   const groups=data?.groups||[];
   // adapt a day-view match (AF shape) into the shape MatchModal expects, with the AF id pre-resolved
   const openMatch=(m)=>{
@@ -1759,6 +1832,7 @@ function Matches({openPlayer, openClub}){
   return(
     <div style={{paddingBottom:80}}>
       {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
+      {tableComp&&<CompStandings compKey={tableComp.key} title={tableComp.title} onClose={()=>setTableComp(null)}/>}
       {/* Header */}
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
@@ -1786,7 +1860,8 @@ function Matches({openPlayer, openClub}){
           <div key={g.lid} style={{marginBottom:18}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
               {g.logo&&<img src={g.logo} alt="" style={{width:18,height:18,objectFit:'contain'}}/>}
-              <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3}}>{g.name}</div>
+              <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3,flex:1}}>{g.name}</div>
+              {LID_TO_STANDINGS[g.lid]&&<button onClick={()=>setTableComp({key:LID_TO_STANDINGS[g.lid],title:g.name})} style={{background:'rgba(10,191,184,.12)',border:'1px solid '+C.teal,color:C.teal,fontSize:10.5,fontWeight:700,borderRadius:7,padding:'4px 10px',cursor:'pointer',letterSpacing:.3}}>Table</button>}
             </div>
             {g.matches.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatch(m)}/>)}
           </div>
