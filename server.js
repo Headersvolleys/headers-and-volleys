@@ -2688,19 +2688,43 @@ function deriveTwoStats(p, group){
 }
 
 // 4-3-3 slots
-const DRAFT_SLOTS=[
-  {pos:'GK',label:'Goalkeeper',group:'GK'},
-  {pos:'LB',label:'Left Back',group:'DEF'},
-  {pos:'CB',label:'Centre Back',group:'DEF'},
-  {pos:'CB',label:'Centre Back',group:'DEF'},
-  {pos:'RB',label:'Right Back',group:'DEF'},
-  {pos:'CM',label:'Midfielder',group:'MID'},
-  {pos:'CM',label:'Midfielder',group:'MID'},
-  {pos:'CM',label:'Midfielder',group:'MID'},
-  {pos:'LW',label:'Left Wing',group:'FWD'},
-  {pos:'ST',label:'Striker',group:'FWD'},
-  {pos:'RW',label:'Right Wing',group:'FWD'},
-];
+// Formations: ordered draft slots (GK -> DEF -> MID -> FWD). line index groups slots into pitch rows (0=GK at back).
+const FORMATIONS={
+  '4-3-3':{ name:'4-3-3', slots:[
+    {pos:'GK',label:'Goalkeeper',group:'GK',line:0},
+    {pos:'LB',label:'Left Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'RB',label:'Right Back',group:'DEF',line:1},
+    {pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},
+    {pos:'LW',label:'Left Wing',group:'FWD',line:3},{pos:'ST',label:'Striker',group:'FWD',line:3},{pos:'RW',label:'Right Wing',group:'FWD',line:3},
+  ]},
+  '4-4-2':{ name:'4-4-2', slots:[
+    {pos:'GK',label:'Goalkeeper',group:'GK',line:0},
+    {pos:'LB',label:'Left Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'RB',label:'Right Back',group:'DEF',line:1},
+    {pos:'LM',label:'Left Mid',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'RM',label:'Right Mid',group:'MID',line:2},
+    {pos:'ST',label:'Striker',group:'FWD',line:3},{pos:'ST',label:'Striker',group:'FWD',line:3},
+  ]},
+  '3-4-3':{ name:'3-4-3', slots:[
+    {pos:'GK',label:'Goalkeeper',group:'GK',line:0},
+    {pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},
+    {pos:'LM',label:'Left Mid',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'RM',label:'Right Mid',group:'MID',line:2},
+    {pos:'LW',label:'Left Wing',group:'FWD',line:3},{pos:'ST',label:'Striker',group:'FWD',line:3},{pos:'RW',label:'Right Wing',group:'FWD',line:3},
+  ]},
+  '5-4-1':{ name:'5-4-1', slots:[
+    {pos:'GK',label:'Goalkeeper',group:'GK',line:0},
+    {pos:'LWB',label:'Left Wing Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'RWB',label:'Right Wing Back',group:'DEF',line:1},
+    {pos:'LM',label:'Left Mid',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'CM',label:'Midfielder',group:'MID',line:2},{pos:'RM',label:'Right Mid',group:'MID',line:2},
+    {pos:'ST',label:'Striker',group:'FWD',line:3},
+  ]},
+  '4-1-2-1-2':{ name:'4-1-2-1-2', slots:[
+    {pos:'GK',label:'Goalkeeper',group:'GK',line:0},
+    {pos:'LB',label:'Left Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'CB',label:'Centre Back',group:'DEF',line:1},{pos:'RB',label:'Right Back',group:'DEF',line:1},
+    {pos:'CDM',label:'Defensive Mid',group:'MID',line:2},
+    {pos:'CM',label:'Midfielder',group:'MID',line:3},{pos:'CM',label:'Midfielder',group:'MID',line:3},
+    {pos:'CAM',label:'Attacking Mid',group:'MID',line:4},
+    {pos:'ST',label:'Striker',group:'FWD',line:5},{pos:'ST',label:'Striker',group:'FWD',line:5},
+  ]},
+};
+const FORMATION_KEYS=['4-3-3','4-4-2','3-4-3','5-4-1','4-1-2-1-2'];
+
 function draftGrade(avg){
   if(avg>=88) return {g:'A+',c:'#FFD700'};
   if(avg>=86) return {g:'A',c:'#00E676'};
@@ -2805,9 +2829,10 @@ function PlayerCard({player, w}){
 }
 
 function DraftGame({onExit}){
+  const [formation,setFormation]=useState(null); // null = show picker first
   // weighted sampling: lower-rated players far more likely; elite rare. Strong skew.
   const weightedPick=(arr)=>{
-    const w=arr.map(p=>Math.pow(Math.max(1,96-p.r),3)); // 78->~5800, 91->125, 97->~1
+    const w=arr.map(p=>Math.pow(Math.max(1,96-p.r),3));
     let total=w.reduce((a,b)=>a+b,0);
     let x=Math.random()*total;
     for(let i=0;i<arr.length;i++){ x-=w[i]; if(x<=0) return i; }
@@ -2818,13 +2843,12 @@ function DraftGame({onExit}){
     while(out.length<n && pool.length){ const i=weightedPick(pool); out.push(pool[i]); pool.splice(i,1); }
     return out;
   };
-  const buildOptions=()=>{
+  const buildOptions=(slots)=>{
     const used={GK:[],DEF:[],MID:[],FWD:[]};
-    return DRAFT_SLOTS.map(slot=>{
+    return slots.map(slot=>{
       const g=slot.group;
       const cur=DRAFT_POOL[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:false}));
       const leg=DRAFT_LEGENDS[g].filter(p=>!used[g].includes(p.n)).map(p=>({...p,isLegend:true}));
-      // legends are rare (~18% chance one appears as an option)
       const opts=[];
       if(leg.length && Math.random()<0.18){ opts.push(weightedSample(leg,1)[0]); }
       const remaining=weightedSample(cur,5-opts.length);
@@ -2834,40 +2858,80 @@ function DraftGame({onExit}){
       return shuffled;
     });
   };
-  const [options]=useState(buildOptions);
-  const [picks,setPicks]=useState([]); // chosen player per slot
-  const [seed,setSeed]=useState(0); // for replay
+  const [options,setOptions]=useState([]);
+  const [picks,setPicks]=useState([]);
+  const SLOTS=formation?FORMATIONS[formation].slots:[];
   const step=picks.length;
-  const done=step>=DRAFT_SLOTS.length;
+  const done=formation&&step>=SLOTS.length;
 
-  const pick=(p)=>{ if(done)return; const slot=DRAFT_SLOTS[picks.length]; setPicks(ps=>[...ps,{...p,pos:slot.pos}]); };
-  const replay=()=>{ setPicks([]); setSeed(s=>s+1); };
+  const chooseFormation=(key)=>{ setFormation(key); setOptions(buildOptions(FORMATIONS[key].slots)); setPicks([]); };
+  const pick=(p)=>{ if(done)return; const slot=SLOTS[picks.length]; setPicks(ps=>[...ps,{...p,pos:DRAFT_POS[p.n]||slot.pos,slotPos:slot.pos}]); };
+  const replay=()=>{ setOptions(buildOptions(SLOTS)); setPicks([]); };
+  const changeFormation=()=>{ setFormation(null); setPicks([]); setOptions([]); };
 
-  if(done){
-    const avg=picks.reduce((s,p)=>s+p.r,0)/picks.length;
-    const grade=draftGrade(avg);
-    // group picks for pitch display
-    const byLine={GK:[],DEF:[],MID:[],FWD:[]};
-    DRAFT_SLOTS.forEach((slot,i)=>byLine[slot.group].push({...picks[i],pos:slot.pos}));
-    const lines=[byLine.FWD,byLine.MID,byLine.DEF,byLine.GK];
+  // ---- FORMATION PICKER ----
+  if(!formation){
     return(
       <div style={{paddingBottom:80}}>
         <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
           <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>YOUR XI</div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
+          <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Choose your formation</div>
         </div>
-        {/* rating banner */}
+        <div style={{padding:16,display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          {FORMATION_KEYS.map(key=>{
+            const fm=FORMATIONS[key];
+            const lines=[];
+            fm.slots.forEach(s=>{ lines[s.line]=(lines[s.line]||0)+1; });
+            return(
+              <div key={key} className="hv-press" onClick={()=>chooseFormation(key)}
+                style={{borderRadius:14,padding:'16px 12px',cursor:'pointer',background:C.d2,border:'1px solid '+C.d4,textAlign:'center'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:C.teal,letterSpacing:1}}>{fm.name}</div>
+                {/* mini pitch preview */}
+                <div style={{margin:'10px 4px 0',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:8,padding:'8px 4px',border:'1px solid rgba(255,255,255,.08)'}}>
+                  {lines.slice().reverse().map((cnt,li)=>(
+                    <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?5:0}}>
+                      {Array.from({length:cnt}).map((_,i)=>(
+                        <div key={i} style={{width:8,height:8,borderRadius:'50%',background:C.teal,opacity:.85}}/>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if(done){
+    const avg=picks.reduce((s,p)=>s+p.r,0)/picks.length;
+    const grade=draftGrade(avg);
+    // group picks into pitch lines by slot.line
+    const maxLine=Math.max(...SLOTS.map(s=>s.line));
+    const lineArr=[];
+    for(let l=0;l<=maxLine;l++) lineArr[l]=[];
+    SLOTS.forEach((slot,i)=>lineArr[slot.line].push(picks[i]));
+    const lines=lineArr.slice().reverse(); // attackers on top
+    return(
+      <div style={{paddingBottom:80}}>
+        <div style={{background:'linear-gradient(120deg,#0B2A33 0%,#0F2027 60%)',padding:'16px',borderBottom:'1px solid '+C.d4}}>
+          <button onClick={onExit} style={{background:'transparent',border:'none',color:C.muted,fontSize:13,fontWeight:700,cursor:'pointer',padding:0,marginBottom:8}}>{'<'} Mini Games</button>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>YOUR XI</div>
+            <div style={{fontSize:12,color:C.teal,fontWeight:700}}>{FORMATIONS[formation].name}</div>
+          </div>
+        </div>
         <div style={{margin:16,background:C.d2,borderRadius:14,padding:'18px',textAlign:'center',border:'1px solid '+grade.c+'55'}}>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:60,color:grade.c,lineHeight:.9}}>{grade.g}</div>
           <div style={{fontSize:14,color:C.text,fontWeight:700,marginTop:4}}>Team Rating {avg.toFixed(1)}</div>
         </div>
-        {/* card showcase */}
         <div style={{display:'flex',gap:12,overflowX:'auto',padding:'0 16px 14px',WebkitOverflowScrolling:'touch'}}>
           {picks.map((p,i)=>(
             <div key={i} style={{flexShrink:0}}><PlayerCard player={p} w={120}/></div>
           ))}
         </div>
-        {/* pitch */}
         <div style={{margin:'0 16px',background:'linear-gradient(180deg,#0d3d2a,#0a2f20)',borderRadius:14,padding:'18px 8px',border:'1px solid rgba(255,255,255,.08)'}}>
           {lines.map((line,li)=>(
             <div key={li} style={{display:'flex',justifyContent:'space-around',marginBottom:li<lines.length-1?20:0}}>
@@ -2886,19 +2950,22 @@ function DraftGame({onExit}){
             </div>
           ))}
         </div>
-        <div style={{padding:16}}>
-          <button onClick={replay} className="hv-press" style={{width:'100%',padding:'13px',borderRadius:10,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:'pointer'}}>Draft Again</button>
+        <div style={{padding:16,display:'flex',gap:10}}>
+          <button onClick={changeFormation} className="hv-press" style={{flex:1,padding:'13px',borderRadius:10,border:'1px solid '+C.d4,background:C.d2,color:C.text,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:'pointer'}}>Change Formation</button>
+          <button onClick={replay} className="hv-press" style={{flex:1,padding:'13px',borderRadius:10,border:'none',background:C.teal,color:C.dark,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,cursor:'pointer'}}>Draft Again</button>
         </div>
       </div>
     );
   }
 
-  const slot=DRAFT_SLOTS[step];
-  const opts=options[step];
+  const slot=SLOTS[step];
+  const opts=options[step]||[];
   // live pitch: map every slot to filled pick or empty, grouped into lines
-  const slotView=DRAFT_SLOTS.map((s,i)=>({...s, idx:i, player:picks[i]||null, current:i===step}));
-  const lineOf=(g)=>slotView.filter(s=>s.group===g);
-  const liveLines=[lineOf('FWD'),lineOf('MID'),lineOf('DEF'),lineOf('GK')];
+  const slotView=SLOTS.map((s,i)=>({...s, idx:i, player:picks[i]||null, current:i===step}));
+  const maxLine=Math.max(...SLOTS.map(s=>s.line));
+  const liveLineArr=[];
+  for(let l=0;l<=maxLine;l++) liveLineArr[l]=slotView.filter(s=>s.line===l);
+  const liveLines=liveLineArr.slice().reverse();
   const runningAvg=picks.length?(picks.reduce((s,p)=>s+p.r,0)/picks.length):0;
   return(
     <div style={{paddingBottom:80}}>
@@ -2907,7 +2974,7 @@ function DraftGame({onExit}){
         <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
           <div>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5}}>THE <span style={{color:C.teal}}>DRAFT</span></div>
-            <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Pick {step+1} of {DRAFT_SLOTS.length}</div>
+            <div style={{fontSize:11,color:C.muted,fontWeight:600,marginTop:2}}>Pick {step+1} of {SLOTS.length}</div>
           </div>
           {picks.length>0&&<div style={{textAlign:'right'}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{runningAvg.toFixed(1)}</div>
@@ -2917,7 +2984,7 @@ function DraftGame({onExit}){
       </div>
       {/* progress */}
       <div style={{display:'flex',gap:3,padding:'10px 16px 6px'}}>
-        {DRAFT_SLOTS.map((s,i)=>(
+        {SLOTS.map((s,i)=>(
           <div key={i} style={{flex:1,height:4,borderRadius:2,background:i<step?C.teal:i===step?C.teal+'88':C.d4}}/>
         ))}
       </div>
@@ -2945,7 +3012,7 @@ function DraftGame({onExit}){
         <div className="hv-stagger" style={{display:'flex',gap:5,marginTop:8,padding:'4px 8px 8px',justifyContent:'space-between'}}>
           {opts.map((p,i)=>(
             <div key={i} className="hv-press" onClick={()=>pick(p)} style={{flex:1,minWidth:0,cursor:'pointer'}}>
-              <PlayerCard player={{...p, pos:slot.pos}} w={66}/>
+              <PlayerCard player={{...p, pos:DRAFT_POS[p.n]||slot.pos}} w={66}/>
             </div>
           ))}
         </div>
