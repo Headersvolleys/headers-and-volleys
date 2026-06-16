@@ -93,6 +93,49 @@ app.get('/api/matches', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Whole-day fixtures across the competitions we care about (FotMob-style).
+// Ordered set: importance rank + display name. AF league IDs.
+const DAY_COMPS = [
+  {lid:39,  name:'Premier League'},
+  {lid:2,   name:'Champions League'},
+  {lid:3,   name:'Europa League'},
+  {lid:848, name:'Europa Conference League'},
+  {lid:45,  name:'FA Cup'},
+  {lid:48,  name:'Carabao Cup'},
+  {lid:40,  name:'Championship'},
+  {lid:1,   name:'World Cup'},
+  {lid:140, name:'LaLiga'},
+  {lid:135, name:'Serie A'},
+  {lid:78,  name:'Bundesliga'},
+  {lid:61,  name:'Ligue 1'},
+];
+const DAY_RANK = {}; DAY_COMPS.forEach((c,i)=>{DAY_RANK[c.lid]={rank:i,name:c.name};});
+app.get('/api/day', async (req, res) => {
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const cKey = 'day_'+date;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 5*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/fixtures?date='+date, 5*MIN);
+    const wanted = (d.response||[]).filter(x=>DAY_RANK[x.league?.id]!=null);
+    const groups = {};
+    wanted.forEach(x=>{
+      const lid=x.league.id;
+      if(!groups[lid]) groups[lid]={lid, name:DAY_RANK[lid].name, rank:DAY_RANK[lid].rank, logo:x.league?.logo, round:x.league?.round, matches:[]};
+      groups[lid].matches.push({
+        id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
+        home:{name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
+        away:{name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
+        goalsHome:x.goals?.home, goalsAway:x.goals?.away,
+      });
+    });
+    const out = Object.values(groups).sort((a,b)=>a.rank-b.rank);
+    out.forEach(g=>g.matches.sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)));
+    const data = {date, groups:out};
+    afCache[cKey] = {data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, groups:[]}); }
+});
+
 // Cup / Europe fixtures from API-Football. league: CL=2, FA Cup=45, League Cup=48.
 // FA Cup & League Cup are filtered to the rounds where PL clubs feature (3rd round onward + knockout names).
 const CUP_COMPS = {
@@ -1656,9 +1699,38 @@ function Cups(){
   );
 }
 
+function MatchesDateStrip({selected, onPick}){
+  // build a window of days around today (and around selected if scrolled away)
+  const today=new Date(); today.setHours(0,0,0,0);
+  const days=[];
+  for(let i=-7;i<=14;i++){ const d=new Date(today); d.setDate(today.getDate()+i); days.push(d); }
+  const iso=d=>d.toISOString().split('T')[0];
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(ref.current){ const el=ref.current.querySelector('[data-sel="1"]'); if(el) el.scrollIntoView({inline:'center',block:'nearest'}); }
+  },[selected]);
+  return(
+    <div ref={ref} style={{display:'flex',gap:6,overflowX:'auto',padding:'2px 0 10px',WebkitOverflowScrolling:'touch'}}>
+      {days.map(d=>{
+        const di=iso(d), sel=di===selected;
+        const isToday=di===iso(today);
+        const lbl=isToday?'Today':d.toLocaleDateString('en-GB',{weekday:'short'});
+        const sub=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+        return(
+          <button key={di} data-sel={sel?'1':'0'} onClick={()=>onPick(di)} style={{flexShrink:0,minWidth:58,padding:'7px 10px',borderRadius:10,border:'1px solid '+(sel?C.teal:C.d4),background:sel?C.teal:C.d2,cursor:'pointer',textAlign:'center'}}>
+            <div style={{fontSize:11,fontWeight:700,color:sel?'#FFFFFF':isToday?C.teal:C.text,letterSpacing:.3}}>{lbl}</div>
+            <div style={{fontSize:9.5,color:sel?'rgba(255,255,255,.85)':C.muted,marginTop:2}}>{sub}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 function Matches({openPlayer, openClub}){
-  const [mode,setMode]=useState('today'); // today | upcoming | all | cups
-  const SEGS=[['today','Today'],['upcoming','Upcoming'],['all','Fixtures'],['cups','Cups & Europe']];
+  const todayIso=new Date().toISOString().split('T')[0];
+  const [date,setDate]=useState(todayIso);
+  const {data,loading,error}=useApi('/api/day?date='+date, 300000);
+  const groups=data?.groups||[];
   return(
     <div style={{paddingBottom:80}}>
       {/* Header */}
@@ -1666,22 +1738,26 @@ function Matches({openPlayer, openClub}){
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{paddingLeft:8}}>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>MATCH<span style={{color:C.teal}}>ES</span></div>
-          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Tap any match for details</div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>All competitions by day</div>
         </div>
       </div>
-      {/* Segmented control */}
-      <div style={{padding:'12px 12px 0',position:'sticky',top:0,zIndex:50,background:C.dark}}>
-        <div style={{display:'flex',gap:2,background:C.d3,borderRadius:11,padding:3,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
-          {SEGS.map(([id,lbl])=>(
-            <button key={id} onClick={()=>setMode(id)} style={{flex:'1 0 auto',whiteSpace:'nowrap',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,letterSpacing:.2,transition:'all .15s ease',background:mode===id?C.teal:'transparent',color:mode===id?'#FFFFFF':C.muted,boxShadow:mode===id?'0 1px 4px rgba(10,191,184,.4)':'none'}}>{lbl}</button>
-          ))}
-        </div>
+      {/* Date strip */}
+      <div style={{padding:'10px 16px 0',position:'sticky',top:0,zIndex:50,background:C.dark}}>
+        <MatchesDateStrip selected={date} onPick={setDate}/>
       </div>
-      <div style={{padding:'14px 16px 0'}}>
-        {mode==='today'&&<Live openPlayer={openPlayer} openClub={openClub}/>}
-        {mode==='upcoming'&&<Upcoming openPlayer={openPlayer} openClub={openClub}/>}
-        {mode==='all'&&<Fixtures openPlayer={openPlayer} openClub={openClub}/>}
-        {mode==='cups'&&<Cups/>}
+      <div style={{padding:'4px 16px 0'}}>
+        {loading&&<div style={{padding:'30px 0',textAlign:'center'}}><Spinner/></div>}
+        {error&&!loading&&<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>}
+        {!loading&&!error&&!groups.length&&<div style={{padding:'40px 0',textAlign:'center',color:C.muted,fontSize:13}}>No matches on this day</div>}
+        {!loading&&groups.map(g=>(
+          <div key={g.lid} style={{marginBottom:18}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              {g.logo&&<img src={g.logo} alt="" style={{width:18,height:18,objectFit:'contain'}}/>}
+              <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3}}>{g.name}</div>
+            </div>
+            {g.matches.map(m=><CupMatchRow key={m.id} m={m}/>)}
+          </div>
+        ))}
       </div>
     </div>
   );
