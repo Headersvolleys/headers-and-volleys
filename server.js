@@ -743,6 +743,57 @@ app.get('/api/h2h/:id', async (req, res) => {
   try { res.json(await fd(`/matches/${req.params.id}/head2head?limit=5`, 30*MIN)); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
+// AF-based H2H by two team IDs (works for any league). Returns fd-shaped data.
+app.get('/api/af/h2h', async (req, res) => {
+  const h = req.query.home, a = req.query.away;
+  if(!h||!a) return res.json({aggregates:null, matches:[]});
+  const cKey='afh2h_'+h+'_'+a;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 6*60*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/fixtures/headtohead?h2h='+h+'-'+a+'&last=10', 6*60*MIN);
+    const raw = (d.response||[]).filter(x=>x.fixture?.status?.short==='FT'||x.fixture?.status?.short==='AET'||x.fixture?.status?.short==='PEN');
+    let hw=0, aw=0, dr=0;
+    const matches = raw.map(x=>{
+      const gh=x.goals?.home, ga=x.goals?.away;
+      const homeIsH = x.teams?.home?.id===Number(h);
+      // tally from the perspective of the requested home team id
+      if(gh!=null&&ga!=null){
+        const winnerId = gh>ga ? x.teams?.home?.id : ga>gh ? x.teams?.away?.id : null;
+        if(winnerId===Number(h)) hw++; else if(winnerId===Number(a)) aw++; else dr++;
+      }
+      return {
+        utcDate:x.fixture?.date,
+        homeTeam:{id:x.teams?.home?.id, name:x.teams?.home?.name, crest:x.teams?.home?.logo},
+        awayTeam:{id:x.teams?.away?.id, name:x.teams?.away?.name, crest:x.teams?.away?.logo},
+        score:{fullTime:{home:gh, away:ga}},
+      };
+    }).sort((m1,m2)=>new Date(m2.utcDate)-new Date(m1.utcDate));
+    const data = {
+      aggregates:{ numberOfMatches:matches.length, homeTeam:{wins:hw}, awayTeam:{wins:aw}, draws:dr },
+      matches,
+    };
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, aggregates:null, matches:[]}); }
+});
+// AF-based recent form (last 5 finished) for a team across all competitions. fd-shaped.
+app.get('/api/af/team-form/:teamId', async (req, res) => {
+  const tid = req.params.teamId;
+  const cKey='afform_'+tid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/fixtures?team='+tid+'&last=5', 30*MIN);
+    const matches = (d.response||[]).map(x=>({
+      utcDate:x.fixture?.date,
+      homeTeam:{id:x.teams?.home?.id, name:x.teams?.home?.name, crest:x.teams?.home?.logo},
+      awayTeam:{id:x.teams?.away?.id, name:x.teams?.away?.name, crest:x.teams?.away?.logo},
+      score:{fullTime:{home:x.goals?.home, away:x.goals?.away}},
+    })).sort((m1,m2)=>new Date(m2.utcDate)-new Date(m1.utcDate));
+    const data={matches};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, matches:[]}); }
+});
 // All PL teams
 app.get('/api/teams', async (req, res) => {
   try { res.json(await fd('/competitions/PL/teams?season='+SEASON+'', 60*MIN)); }
@@ -5912,8 +5963,24 @@ function MatchModal({match, onClose, openPlayer, openClub}){
     const an2 = TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'';
     fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2)+'&date='+matchDate)
       .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
-    fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
-    fetch('/api/matches').then(r=>r.json()).then(d=>setAllMatches(d&&d.matches?d.matches:[])).catch(()=>setAllMatches([]));
+    const isPLmatch = (TCODE[match.homeTeam?.name]||'???')!=='???' && (TCODE[match.awayTeam?.name]||'???')!=='???';
+    if(isPLmatch){
+      fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
+      fetch('/api/matches').then(r=>r.json()).then(d=>setAllMatches(d&&d.matches?d.matches:[])).catch(()=>setAllMatches([]));
+    } else {
+      // Non-PL: AF-based H2H by team ids, and AF recent form for both teams combined.
+      const hid=match.homeTeam?.id, aid=match.awayTeam?.id;
+      if(hid&&aid){
+        fetch('/api/af/h2h?home='+hid+'&away='+aid).then(r=>r.json()).then(setH2h).catch(()=>setH2h({aggregates:null,matches:[]}));
+        Promise.all([
+          fetch('/api/af/team-form/'+hid).then(r=>r.json()).catch(()=>({matches:[]})),
+          fetch('/api/af/team-form/'+aid).then(r=>r.json()).catch(()=>({matches:[]})),
+        ]).then(([hf,af])=>{
+          const combined=[...(hf.matches||[]),...(af.matches||[])];
+          setAllMatches(combined);
+        }).catch(()=>setAllMatches([]));
+      } else { setH2h({aggregates:null,matches:[]}); setAllMatches([]); }
+    }
   },[match.id]);
 
   const homeStats={}, awayStats={};
@@ -5935,7 +6002,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
   const teamRecentMatches=(tid)=>{
     return (allMatches||[])
-      .filter(m=>m.status==='FINISHED'&&(m.homeTeam?.id===tid||m.awayTeam?.id===tid)&&m.score?.fullTime?.home!=null)
+      .filter(m=>(m.homeTeam?.id===tid||m.awayTeam?.id===tid)&&m.score?.fullTime?.home!=null)
       .sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate))
       .slice(-5).reverse();
   }
@@ -6107,9 +6174,9 @@ function MatchModal({match, onClose, openPlayer, openClub}){
               {!h2h&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
               {h2h&&<>
                 {h2h.aggregates&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
-                  {[[h2h.aggregates.homeTeam?.wins||0,TSHORT[match.homeTeam?.name],hc],[h2h.aggregates.numberOfMatches||0,'Played',null],[h2h.aggregates.awayTeam?.wins||0,TSHORT[match.awayTeam?.name],ac]].map(([v,l,code],i)=>(
+                  {[[h2h.aggregates.homeTeam?.wins||0,TSHORT[match.homeTeam?.name]||match.homeTeam?.name,hc,match.homeTeam?.crest],[h2h.aggregates.numberOfMatches||0,'Played',null,null],[h2h.aggregates.awayTeam?.wins||0,TSHORT[match.awayTeam?.name]||match.awayTeam?.name,ac,match.awayTeam?.crest]].map(([v,l,code,logo],i)=>(
                     <div key={i} style={{background:C.d3,borderRadius:9,padding:'10px 8px',textAlign:'center'}}>
-                      {code&&<div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={code} size={18}/></div>}
+                      {(code||logo)&&<div style={{display:'flex',justifyContent:'center',marginBottom:4}}><Badge code={code||'???'} size={18} logo={logo}/></div>}
                       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.teal,lineHeight:1}}>{v}</div>
                       <div style={{fontSize:10,color:C.muted,marginTop:2}}>{l}</div>
                     </div>
@@ -6119,11 +6186,11 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                   const mhc=TCODE[m.homeTeam?.name]||'???', mac=TCODE[m.awayTeam?.name]||'???';
                   return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d3,borderRadius:8,marginBottom:4}}>
                     <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:60}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</div>
-                    <Badge code={mhc} size={18}/>
+                    <Badge code={mhc} size={18} logo={m.homeTeam?.crest}/>
                     <span style={{fontSize:12,fontWeight:700,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.homeTeam?.name]||m.homeTeam?.name}</span>
                     <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,letterSpacing:2,flexShrink:0}}>{m.score?.fullTime?.home}-{m.score?.fullTime?.away}</div>
                     <span style={{fontSize:12,fontWeight:700,flex:1,textAlign:'right',color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.awayTeam?.name]||m.awayTeam?.name}</span>
-                    <Badge code={mac} size={18}/>
+                    <Badge code={mac} size={18} logo={m.awayTeam?.crest}/>
                   </div>);
                 })}
               </>}
@@ -6138,7 +6205,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                 const form=ms.map(m=>resultFor(m,team?.id));
                 return(<div key={code} style={{background:C.d3,borderRadius:10,padding:14,marginBottom:10}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-                    <Badge code={code} size={22}/>
+                    <Badge code={code} size={22} logo={team?.crest}/>
                     <div style={{fontWeight:700,fontSize:14,color:C.white,flex:1}}>{TSHORT[team?.name]||team?.name}</div>
                     <div style={{display:'flex',gap:4}}>{form.map((r,i)=><div key={i} style={{width:20,height:20,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark}}>{r}</div>)}</div>
                   </div>
@@ -6150,7 +6217,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                     return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid rgba(255,255,255,.05)'}}>
                       <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:55}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
                       <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{ih?'H':'A'}</div>
-                      <Badge code={oc} size={16}/>
+                      <Badge code={oc} size={16} logo={opp?.crest}/>
                       <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
                       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{mh}-{ma}</div>
                       <div style={{width:18,height:18,borderRadius:'50%',background:r==='W'?C.green:r==='D'?C.yellow:C.red,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{r}</div>
