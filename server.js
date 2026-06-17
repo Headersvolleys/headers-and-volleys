@@ -96,18 +96,19 @@ app.get('/api/matches', async (req, res) => {
 // Generic standings for any competition (league table, or groups for World Cup etc.)
 // Returns { groups: [ { name, table:[...] } ] } - one entry for leagues, several for group stages.
 const STANDINGS_COMPS = {
-  pl:{lid:39}, ucl:{lid:2}, championship:{lid:40}, worldcup:{lid:1},
+  pl:{lid:39}, ucl:{lid:2}, championship:{lid:40}, worldcup:{lid:1, season:2026},
   laliga:{lid:140}, seriea:{lid:135}, bundesliga:{lid:78}, ligue1:{lid:61},
   europa:{lid:3}, conference:{lid:848},
 };
 app.get('/api/comp-standings/:comp', async (req, res) => {
   const comp = STANDINGS_COMPS[req.params.comp];
   if(!comp) return res.status(404).json({error:'unknown competition'});
-  const cKey = 'cstand_'+req.params.comp+'_'+SEASON;
+  const seasonVal = comp.season || SEASON;
+  const cKey = 'cstand_'+req.params.comp+'_'+seasonVal;
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
-    const d = await af('/standings?league='+comp.lid+'&season='+SEASON+'', 30*MIN);
-    if(req.query.debug) return res.json({rawResponseLen:(d.response||[]).length, results:d.results, leagueName:d.response?.[0]?.league?.name, standingsBlocks:(d.response?.[0]?.league?.standings||[]).length, errors:d.errors});
+    const d = await af('/standings?league='+comp.lid+'&season='+seasonVal+'', 30*MIN);
+    if(req.query.debug) return res.json({season:seasonVal, rawResponseLen:(d.response||[]).length, results:d.results, leagueName:d.response?.[0]?.league?.name, standingsBlocks:(d.response?.[0]?.league?.standings||[]).length, errors:d.errors});
     const blocks = d.response?.[0]?.league?.standings || [];
     const groups = blocks.map(rows=>({
       name: rows[0]?.group || '',
