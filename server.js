@@ -4049,7 +4049,8 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const [tableSeason,setTableSeason]=useState(SEASON);
   const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===SEASON?300000:6*3600000);
   const {data:fixturesData} = useApi(isPL ? '/api/matches' : null, 300000);
-  const {data:clubFixData} = useApi(team?.id ? '/api/club/'+team.id+'/fixtures' : null, 1800000);
+  const afTeamId = isPL ? (afSquadData?.teamId || null) : (team?.id || null);
+  const {data:clubFixData} = useApi(afTeamId ? '/api/club/'+afTeamId+'/fixtures' : null, 1800000);
   const {data:scorersData} = useApi(isPL ? '/api/scorers?limit=100' : null, 600000);
   const {data:teamStats} = useApi(isPL && team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
   const {data:clubStatsData} = useApi(!isPL && team?.id && team?.leagueId ? '/api/club/'+team.id+'/stats?league='+team.leagueId : null, 6*3600000);
@@ -6003,7 +6004,9 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const lineupHasGrid=(lu)=>{
     const xi=(lu&&lu.startXI)||[];
     if(xi.length===0) return false;
-    return xi.some(p=>{ const g=p.player&&p.player.grid; return g && /^\d+:\d+$/.test(g); });
+    // count players with a usable "row:col" grid; treat as OK if most have it
+    const withGrid=xi.filter(p=>{ const g=p.player&&p.player.grid; return g && String(g).indexOf(':')>0; }).length;
+    return withGrid >= Math.max(7, Math.floor(xi.length*0.7));
   };
   const pitchOK = lineupHasGrid(homeLineup) && lineupHasGrid(awayLineup);
 
