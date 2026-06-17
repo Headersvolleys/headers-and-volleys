@@ -1767,6 +1767,7 @@ function CompStandings({compKey, title, onClose}){
   const groups=data?.groups||[];
   return(
     <div style={{position:'fixed',inset:0,background:C.dark,zIndex:400,overflowY:'auto'}}>
+      <div style={{maxWidth:520,margin:'0 auto',minHeight:'100%'}}>
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:10,display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.white,letterSpacing:.5,flex:1}}>{title} TABLE</div>
@@ -1804,6 +1805,7 @@ function CompStandings({compKey, title, onClose}){
             })}
           </div>
         ))}
+      </div>
       </div>
     </div>
   );
