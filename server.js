@@ -5637,14 +5637,14 @@ function SummaryStrip({items}){
   };
   const Row=(x,i,align)=>(
     <div key={i} style={{display:'flex',alignItems:'center',gap:5,flexDirection:align==='right'?'row-reverse':'row'}}>
-      <EventIcon kind={x.k==='goal'?'goal':x.k==='red'?'red':'misspen'} size={12}/>
+      {x.k!=='goal'&&<EventIcon kind={x.k==='red'?'red':'misspen'} size={12}/>}
       <span style={{fontSize:10.5,color:x.k==='red'?C.red:C.muted,fontWeight:600}}>{lbl(x)}</span>
     </div>
   );
   return(
     <div style={{display:'flex',gap:12,padding:'10px 2px 2px',borderTop:'1px solid rgba(15,32,39,.08)',marginTop:10}}>
       <div style={{flex:1,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-end'}}>{home.map((x,i)=>Row(x,i,'right'))}</div>
-      <div style={{width:18,flexShrink:0,display:'flex',justifyContent:'center',alignItems:'flex-start',paddingTop:1}}><EventIcon kind="goal" size={14}/></div>
+      <div style={{width:18,flexShrink:0}}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>{away.map((x,i)=>Row(x,i,'left'))}</div>
     </div>
   );
