@@ -154,8 +154,8 @@ app.get('/api/day', async (req, res) => {
       if(!groups[lid]) groups[lid]={lid, name:DAY_RANK[lid].name, rank:DAY_RANK[lid].rank, logo:x.league?.logo, round:x.league?.round, matches:[]};
       groups[lid].matches.push({
         id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
-        home:{name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
-        away:{name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
+        home:{id:x.teams?.home?.id, name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
+        away:{id:x.teams?.away?.id, name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
         goalsHome:x.goals?.home, goalsAway:x.goals?.away,
       });
     });
@@ -751,6 +751,7 @@ app.get('/api/af/h2h', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 6*60*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/fixtures/headtohead?h2h='+h+'-'+a+'&last=10', 6*60*MIN);
+    if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,1)});
     const raw = (d.response||[]).filter(x=>x.fixture?.status?.short==='FT'||x.fixture?.status?.short==='AET'||x.fixture?.status?.short==='PEN');
     let hw=0, aw=0, dr=0;
     const matches = raw.map(x=>{
@@ -783,6 +784,7 @@ app.get('/api/af/team-form/:teamId', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/fixtures?team='+tid+'&last=5', 30*MIN);
+    if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,1)});
     const matches = (d.response||[]).map(x=>({
       utcDate:x.fixture?.date,
       homeTeam:{id:x.teams?.home?.id, name:x.teams?.home?.name, crest:x.teams?.home?.logo},
@@ -2001,8 +2003,8 @@ function Matches({openPlayer, openClub}){
     setSel({
       id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
       status:fin?'FINISHED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':'SCHEDULED',
-      homeTeam:{name:m.home.name, crest:m.home.logo},
-      awayTeam:{name:m.away.name, crest:m.away.logo},
+      homeTeam:{id:m.home.id, name:m.home.name, crest:m.home.logo},
+      awayTeam:{id:m.away.id, name:m.away.name, crest:m.away.logo},
       score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
     });
   };
