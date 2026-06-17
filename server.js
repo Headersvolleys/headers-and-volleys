@@ -4026,7 +4026,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const teamFixtures = isPL
     ? (fixturesData?.matches||[]).filter(m=>m.homeTeam?.id===team?.id||m.awayTeam?.id===team?.id).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate))
     : (clubFixData?.matches||[]).map(m=>({
-        id:m.id, utcDate:m.utcDate,
+        id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
         status:(m.status==='FT'||m.status==='AET'||m.status==='PEN')?'FINISHED':(m.status==='NS'||m.status==='TBD')?'SCHEDULED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':m.status,
         homeTeam:{id:m.home?.id, name:m.home?.name, crest:m.home?.logo},
         awayTeam:{id:m.away?.id, name:m.away?.name, crest:m.away?.logo},
