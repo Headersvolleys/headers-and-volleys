@@ -867,6 +867,56 @@ app.get('/api/af/fixtures', async (req, res) => {
 });
 
 // Squad via API-Football (football-data.org /teams/:id 403s on current tier)
+// ---- Data-driven multi-league foundation (Phase 1) ----
+// Supported leagues for club/player browsing (top 5 + a couple useful extras)
+const LEAGUES = {
+  39:{name:'Premier League', country:'England'},
+  140:{name:'La Liga', country:'Spain'},
+  135:{name:'Serie A', country:'Italy'},
+  78:{name:'Bundesliga', country:'Germany'},
+  61:{name:'Ligue 1', country:'France'},
+};
+// All clubs in a league (id, name, crest) straight from API-Football.
+app.get('/api/league/:leagueId/teams', async (req, res) => {
+  const lid = req.params.leagueId;
+  if(!LEAGUES[lid]) return res.status(404).json({error:'unsupported league'});
+  const cKey='lgteams_'+lid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 12*60*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/teams?league='+lid+'&season='+SEASON+'', 12*60*MIN);
+    const teams = (d.response||[]).map(x=>({
+      id:x.team?.id, name:x.team?.name, code:x.team?.code, logo:x.team?.logo,
+      country:x.team?.country, founded:x.team?.founded, venue:x.venue?.name,
+    })).filter(t=>t.id).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const data = {league:LEAGUES[lid], leagueId:Number(lid), teams};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, teams:[]}); }
+});
+// Club profile by AF team ID (no name-matching). Squad + team info + recent/upcoming fixtures.
+app.get('/api/club/:teamId', async (req, res) => {
+  const tid = req.params.teamId;
+  const cKey='clubbyid_'+tid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 60*MIN) return res.json(afCache[cKey].data);
+  try {
+    const [info, squad] = await Promise.all([
+      af('/teams?id='+tid, 12*60*MIN).catch(()=>({response:[]})),
+      af('/players/squads?team='+tid, 6*60*MIN, true).catch(()=>({response:[]})),
+    ]);
+    const t = info.response?.[0] || {};
+    const roster = (squad.response?.[0]?.players || []).map(p=>({
+      id:p.id, name:p.name, age:p.age, number:p.number, position:p.position, photo:p.photo,
+    }));
+    const data = {
+      team:{ id:t.team?.id, name:t.team?.name, logo:t.team?.logo, country:t.team?.country, founded:t.team?.founded },
+      venue:{ name:t.venue?.name, city:t.venue?.city, capacity:t.venue?.capacity, image:t.venue?.image },
+      squad: roster,
+    };
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+
 app.get('/api/af/squad', async (req, res) => {
   try {
     const name = req.query.name || '';
