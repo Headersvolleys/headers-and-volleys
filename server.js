@@ -107,6 +107,7 @@ app.get('/api/comp-standings/:comp', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/standings?league='+comp.lid+'&season='+SEASON+'', 30*MIN);
+    if(req.query.debug) return res.json({rawResponseLen:(d.response||[]).length, results:d.results, leagueName:d.response?.[0]?.league?.name, standingsBlocks:(d.response?.[0]?.league?.standings||[]).length, errors:d.errors});
     const blocks = d.response?.[0]?.league?.standings || [];
     const groups = blocks.map(rows=>({
       name: rows[0]?.group || '',
@@ -1743,6 +1744,24 @@ function Cups(){
 
 // map day-view AF league id -> comp-standings key (only comps that have a table)
 const LID_TO_STANDINGS = {39:'pl',2:'ucl',40:'championship',1:'worldcup',140:'laliga',135:'seriea',78:'bundesliga',61:'ligue1',3:'europa',848:'conference'};
+function standZoneColor(pos, total, desc, compKey){
+  const d=(desc||'').toLowerCase();
+  if(d){
+    if(d.includes('champions league')||d.includes('promotion')) return C.teal;
+    if(d.includes('europa')) return C.blue;
+    if(d.includes('conference')) return '#16A34A';
+    if(d.includes('relegation')) return C.red;
+    if(d.includes('next round')||d.includes('knockout')||d.includes('round of 16')||d.includes('qualif')) return C.teal;
+  }
+  // PL fallback by position
+  if(compKey==='pl'){
+    if(pos<=4) return C.teal;
+    if(pos===5) return C.blue;
+    if(pos===6) return C.orange;
+    if(pos>=18) return C.red;
+  }
+  return null;
+}
 function CompStandings({compKey, title, onClose}){
   const {data,loading,error}=useApi('/api/comp-standings/'+compKey, 1800000);
   const groups=data?.groups||[];
@@ -1752,30 +1771,37 @@ function CompStandings({compKey, title, onClose}){
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
         <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:20,color:C.white,letterSpacing:.5,flex:1}}>{title} TABLE</div>
       </div>
-      <div style={{padding:16,paddingBottom:60}}>
+      <div style={{padding:'12px 10px',paddingBottom:60}}>
         {loading&&<div style={{padding:'30px 0',textAlign:'center'}}><Spinner/></div>}
         {error&&!loading&&<div style={{padding:24,color:C.red,fontSize:13}}>{error}</div>}
         {!loading&&!error&&!groups.length&&<div style={{padding:'30px 0',textAlign:'center',color:C.muted,fontSize:13}}>No table available for this competition.</div>}
         {groups.map((g,gi)=>(
-          <div key={gi} style={{marginBottom:18}}>
-            {g.name&&<div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>{g.name}</div>}
-            <div style={{display:'grid',gridTemplateColumns:'24px 1fr 26px 34px 34px',gap:4,padding:'0 8px 6px',alignItems:'center'}}>
+          <div key={gi} style={{marginBottom:16}}>
+            {g.name&&<div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:6,paddingLeft:4}}>{g.name}</div>}
+            {/* column header */}
+            <div style={{display:'grid',gridTemplateColumns:'22px 1fr 20px 20px 20px 20px 30px 28px',gap:3,padding:'0 8px 5px',alignItems:'center'}}>
               <div style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center'}}>#</div>
               <div/>
-              {['P','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center'}}>{h}</div>)}
+              {['P','W','D','L','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center'}}>{h}</div>)}
             </div>
-            {g.table.map((r,i)=>(
-              <div key={i} style={{display:'grid',gridTemplateColumns:'24px 1fr 26px 34px 34px',gap:4,alignItems:'center',background:C.d2,borderRadius:8,marginBottom:4,padding:'8px 8px'}}>
-                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.muted,textAlign:'center'}}>{r.position}</div>
-                <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                  {r.team.logo&&<img src={r.team.logo} alt="" style={{width:18,height:18,objectFit:'contain',flexShrink:0}}/>}
-                  <span style={{fontSize:12.5,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.team.name}</span>
+            {g.table.map((r,i)=>{
+              const zc = standZoneColor(r.position, g.table.length, r.desc, compKey);
+              return(
+              <div key={i} style={{display:'grid',gridTemplateColumns:'22px 1fr 20px 20px 20px 20px 30px 28px',gap:3,alignItems:'center',background:C.d2,borderRadius:8,marginBottom:4,padding:'8px 8px',borderLeft:'3px solid '+(zc||'transparent')}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:zc||C.muted,textAlign:'center'}}>{r.position}</div>
+                <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
+                  {r.team.logo&&<img src={r.team.logo} alt="" style={{width:17,height:17,objectFit:'contain',flexShrink:0}}/>}
+                  <span style={{fontSize:12,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.team.name}</span>
                 </div>
-                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{r.played}</div>
-                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{r.gd>0?'+':''}{r.gd}</div>
-                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.white,textAlign:'center'}}>{r.points}</div>
+                <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.played}</div>
+                <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.won}</div>
+                <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.draw}</div>
+                <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.lost}</div>
+                <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.gd>0?'+':''}{r.gd}</div>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,textAlign:'center'}}>{r.points}</div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ))}
       </div>
