@@ -4339,9 +4339,21 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
 
         {/* STATS */}
         {view==='stats'&&<>
-          {!teamStats&&<div style={{textAlign:'center',padding:30}}><Spinner size={22}/></div>}
-          {teamStats&&!teamStats.found&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:20}}>Detailed stats unavailable for this club.</div>}
-          {teamStats&&teamStats.found&&<>
+          {isPL&&!teamStats&&<div style={{textAlign:'center',padding:30}}><Spinner size={22}/></div>}
+          {isPL&&teamStats&&!teamStats.found&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:20}}>Detailed stats unavailable for this club.</div>}
+          {/* Season summary (non-PL, from AF team stats) */}
+          {!isPL&&clubStatsData?.stats&&<>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Season Summary</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:16}}>
+              {[['Played',clubStatsData.stats.played],['Wins',clubStatsData.stats.wins],['Draws',clubStatsData.stats.draws],['Losses',clubStatsData.stats.loses],['Goals For',clubStatsData.stats.goalsFor],['Goals Against',clubStatsData.stats.goalsAgainst],['Clean Sheets',clubStatsData.stats.cleanSheets],['Failed to Score',clubStatsData.stats.failedToScore]].filter(x=>x[1]!=null).map(([l,v],i)=>(
+                <div key={i} style={{background:C.d2,borderRadius:10,padding:'10px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:22,color:C.teal,lineHeight:1}}>{v}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3,textTransform:'uppercase'}}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </>}
+          {isPL&&teamStats&&teamStats.found&&<>
               {/* Goals by interval */}
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Goals by Interval</div>
               <div style={{background:C.d2,borderRadius:12,padding:'14px 12px',marginBottom:16}}>
@@ -4432,14 +4444,16 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   </div>
                 ))}
               </div>
+            </>}
 
-              {/* Results analysis */}
+              {/* Results analysis - works for any club (fixture-derived) */}
+              {teamFixtures.length>0&&<>
               <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Results Analysis</div>
               <div style={{background:C.d2,borderRadius:12,padding:'12px 14px',marginBottom:16}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+                {isPL&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
                   <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Record vs Top 6</span>
                   <span style={{fontSize:12,fontWeight:700}}><span style={{color:C.green}}>{t6w}W</span> <span style={{color:C.yellow}}>{t6d}D</span> <span style={{color:C.red}}>{t6l}L</span></span>
-                </div>
+                </div>}
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.05)'}}>
                   <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Longest Win Streak</span>
                   <span style={{fontSize:12,color:C.text,fontWeight:700}}>{bestWin} games</span>
@@ -4453,8 +4467,9 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   <span style={{fontSize:12,color:C.text}}>{biggestLoss?<><span style={{color:C.red,fontWeight:700}}>{biggestLoss.score}</span> vs {TSHORT[biggestLoss.opp]||biggestLoss.opp}</>:'-'}</span>
                 </div>
               </div>
+              </>}
 
-              {/* Squad depth chart */}
+              {/* Squad depth chart - works for any club */}
               {squad.length>0&&<>
                 <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Squad Depth</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginBottom:16}}>
@@ -4472,7 +4487,6 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                   })}
                 </div>
               </>}
-            </>}
         </>}
 
         {/* TABLE */}
