@@ -5989,22 +5989,28 @@ function MatchModal({match, onClose, openPlayer, openClub}){
     const an2 = TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'';
     fetch('/api/xg/match?home='+encodeURIComponent(hn2)+'&away='+encodeURIComponent(an2)+'&date='+matchDate)
       .then(r=>r.json()).then(d=>{ if(d.found) setUnderstatXG(d); }).catch(()=>{});
-    const isPLmatch = (TCODE[match.homeTeam?.name]||'???')!=='???' && (TCODE[match.awayTeam?.name]||'???')!=='???';
-    if(isPLmatch){
+    // Decide H2H/form source by DATA not league: matches carrying an AF fixture id
+    // (from day view or club fixtures) use the AF path; only football-data-sourced
+    // matches (PL list with an fd match id and no afIdDirect) use the fd path.
+    const hid=match.homeTeam?.id, aid=match.awayTeam?.id;
+    const useAF = match.afIdDirect || !match.id || (hid&&aid);
+    if(!useAF && match.id){
       fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>{});
       fetch('/api/matches').then(r=>r.json()).then(d=>setAllMatches(d&&d.matches?d.matches:[])).catch(()=>setAllMatches([]));
+    } else if(hid&&aid){
+      // AF-based H2H by team ids + AF recent form for both teams.
+      fetch('/api/af/h2h?home='+hid+'&away='+aid).then(r=>r.json()).then(setH2h).catch(()=>setH2h({aggregates:null,matches:[]}));
+      Promise.all([
+        fetch('/api/af/team-form/'+hid).then(r=>r.json()).catch(()=>({matches:[]})),
+        fetch('/api/af/team-form/'+aid).then(r=>r.json()).catch(()=>({matches:[]})),
+      ]).then(([hf,af])=>{
+        setAllMatches([...(hf.matches||[]),...(af.matches||[])]);
+      }).catch(()=>setAllMatches([]));
     } else {
-      // Non-PL: AF-based H2H by team ids, and AF recent form for both teams combined.
-      const hid=match.homeTeam?.id, aid=match.awayTeam?.id;
-      if(hid&&aid){
-        fetch('/api/af/h2h?home='+hid+'&away='+aid).then(r=>r.json()).then(setH2h).catch(()=>setH2h({aggregates:null,matches:[]}));
-        Promise.all([
-          fetch('/api/af/team-form/'+hid).then(r=>r.json()).catch(()=>({matches:[]})),
-          fetch('/api/af/team-form/'+aid).then(r=>r.json()).catch(()=>({matches:[]})),
-        ]).then(([hf,af])=>{
-          const combined=[...(hf.matches||[]),...(af.matches||[])];
-          setAllMatches(combined);
-        }).catch(()=>setAllMatches([]));
+      // Fallback: PL match with names but no ids - try fd path by match id.
+      if(match.id){
+        fetch('/api/h2h/'+match.id).then(r=>r.json()).then(setH2h).catch(()=>setH2h({aggregates:null,matches:[]}));
+        fetch('/api/matches').then(r=>r.json()).then(d=>setAllMatches(d&&d.matches?d.matches:[])).catch(()=>setAllMatches([]));
       } else { setH2h({aggregates:null,matches:[]}); setAllMatches([]); }
     }
   },[match.id]);
