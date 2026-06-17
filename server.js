@@ -146,7 +146,7 @@ app.get('/api/day', async (req, res) => {
   const cKey = 'day_'+date;
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 5*MIN) return res.json(afCache[cKey].data);
   try {
-    const d = await af('/fixtures?date='+date, 5*MIN);
+    const d = await af('/fixtures?date='+date+'&timezone=Europe/London', 5*MIN);
     const wanted = (d.response||[]).filter(x=>DAY_RANK[x.league?.id]!=null);
     const groups = {};
     wanted.forEach(x=>{
@@ -1813,7 +1813,7 @@ function CompStandings({compKey, title, onClose}){
 
 function MatchesDateStrip({selected, onPick}){
   const today=new Date(); today.setHours(0,0,0,0);
-  const iso=d=>d.toISOString().split('T')[0];
+  const iso=d=>{ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+dd; };
   // window around the selected date so a far calendar jump still shows context
   const base=new Date(selected+'T00:00:00'); base.setHours(0,0,0,0);
   const days=[];
@@ -1840,7 +1840,8 @@ function MatchesDateStrip({selected, onPick}){
   );
 }
 function Matches({openPlayer, openClub}){
-  const todayIso=new Date().toISOString().split('T')[0];
+  const _now=new Date();
+  const todayIso=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(_now.getDate()).padStart(2,'0');
   const [date,setDate]=useState(todayIso);
   const {data,loading,error}=useApi('/api/day?date='+date, 300000);
   const [sel,setSel]=useState(null);
