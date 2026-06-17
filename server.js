@@ -108,7 +108,6 @@ app.get('/api/comp-standings/:comp', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/standings?league='+comp.lid+'&season='+seasonVal+'', 30*MIN);
-    if(req.query.debug) return res.json({season:seasonVal, rawResponseLen:(d.response||[]).length, results:d.results, leagueName:d.response?.[0]?.league?.name, standingsBlocks:(d.response?.[0]?.league?.standings||[]).length, errors:d.errors});
     const blocks = d.response?.[0]?.league?.standings || [];
     const groups = blocks.map(rows=>({
       name: rows[0]?.group || '',
