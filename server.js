@@ -917,17 +917,16 @@ app.get('/api/club/:teamId', async (req, res) => {
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 
-// Club fixtures by AF team ID (whole season for a given league).
+// Club fixtures by AF team ID across ALL competitions (league, cups, europe).
 app.get('/api/club/:teamId/fixtures', async (req, res) => {
   const tid = req.params.teamId;
-  const lid = req.query.league;
-  const cKey='clubfix_'+tid+'_'+lid+'_'+SEASON;
+  const cKey='clubfixall_'+tid+'_'+SEASON;
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
-    const q = lid ? '/fixtures?team='+tid+'&league='+lid+'&season='+SEASON : '/fixtures?team='+tid+'&season='+SEASON;
-    const d = await af(q, 30*MIN);
+    const d = await af('/fixtures?team='+tid+'&season='+SEASON, 30*MIN);
     const matches = (d.response||[]).map(x=>({
       id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
+      comp:x.league?.name, compId:x.league?.id, compLogo:x.league?.logo,
       home:{id:x.teams?.home?.id, name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
       away:{id:x.teams?.away?.id, name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
       goalsHome:x.goals?.home, goalsAway:x.goals?.away,
@@ -949,9 +948,15 @@ app.get('/api/club/:teamId/stats', async (req, res) => {
     const s = d.response || {};
     const data = { stats: {
       played: s.fixtures?.played?.total, wins: s.fixtures?.wins?.total, draws: s.fixtures?.draws?.total, loses: s.fixtures?.loses?.total,
+      homeW: s.fixtures?.wins?.home, homeD: s.fixtures?.draws?.home, homeL: s.fixtures?.loses?.home,
+      awayW: s.fixtures?.wins?.away, awayD: s.fixtures?.draws?.away, awayL: s.fixtures?.loses?.away,
       goalsFor: s.goals?.for?.total?.total, goalsAgainst: s.goals?.against?.total?.total,
       cleanSheets: s.clean_sheet?.total, failedToScore: s.failed_to_score?.total,
-      form: s.form, biggestWin: s.biggest?.wins?.home||s.biggest?.wins?.away,
+      form: s.form,
+      formation: s.lineups?.length ? s.lineups.sort((a,b)=>b.played-a.played)[0]?.formation : null,
+      biggestWinHome: s.biggest?.wins?.home, biggestWinAway: s.biggest?.wins?.away,
+      biggestLossHome: s.biggest?.loses?.home, biggestLossAway: s.biggest?.loses?.away,
+      goalsForByMin: s.goals?.for?.minute, goalsAgainstByMin: s.goals?.against?.minute,
     }};
     afCache[cKey]={data, ts:Date.now()};
     res.json(data);
@@ -3993,7 +3998,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const [tableSeason,setTableSeason]=useState(SEASON);
   const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===SEASON?300000:6*3600000);
   const {data:fixturesData} = useApi(isPL ? '/api/matches' : null, 300000);
-  const {data:clubFixData} = useApi(!isPL && team?.id ? '/api/club/'+team.id+'/fixtures'+(team?.leagueId?'?league='+team.leagueId:'') : null, 1800000);
+  const {data:clubFixData} = useApi(team?.id ? '/api/club/'+team.id+'/fixtures' : null, 1800000);
   const {data:scorersData} = useApi(isPL ? '/api/scorers?limit=100' : null, 600000);
   const {data:teamStats} = useApi(isPL && team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
   const {data:clubStatsData} = useApi(!isPL && team?.id && team?.leagueId ? '/api/club/'+team.id+'/stats?league='+team.leagueId : null, 6*3600000);
@@ -4009,6 +4014,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const photoMap=photoMapData?.map||{};
   const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
   const [squadFilter, setSquadFilter] = useState('ALL');
+  const [fixFilter, setFixFilter] = useState('ALL');
   const [view, setView] = useState(initialView || 'overview');
 
   const fdSquad = teamData?.squad || [];
@@ -4022,11 +4028,9 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
-  // PL fixtures come from /api/matches (fd shape). Non-PL come from club fixtures (AF shape) - normalize to fd shape.
-  const teamFixtures = isPL
-    ? (fixturesData?.matches||[]).filter(m=>m.homeTeam?.id===team?.id||m.awayTeam?.id===team?.id).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate))
-    : (clubFixData?.matches||[]).map(m=>({
-        id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
+  // All clubs: fixtures from the ID-based all-competition endpoint (carries comp name + AF fixture id).
+  const teamFixtures = (clubFixData?.matches||[]).map(m=>({
+        id:m.id, afIdDirect:m.id, utcDate:m.utcDate, comp:m.comp, compId:m.compId, compLogo:m.compLogo,
         status:(m.status==='FT'||m.status==='AET'||m.status==='PEN')?'FINISHED':(m.status==='NS'||m.status==='TBD')?'SCHEDULED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':m.status,
         homeTeam:{id:m.home?.id, name:m.home?.name, crest:m.home?.logo},
         awayTeam:{id:m.away?.id, name:m.away?.name, crest:m.away?.logo},
@@ -4352,6 +4356,46 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>
               ))}
             </div>
+            {/* Goals by interval (AF minute buckets) */}
+            {clubStatsData.stats.goalsForByMin&&<>
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Goals by Interval</div>
+              <div style={{background:C.d2,borderRadius:12,padding:'14px 12px',marginBottom:16}}>
+                <div style={{display:'flex',gap:14,marginBottom:10,fontSize:9,fontWeight:700}}>
+                  <span style={{color:C.teal}}>&#9632; SCORED</span><span style={{color:C.red}}>&#9632; CONCEDED</span>
+                </div>
+                {['0-15','16-30','31-45','46-60','61-75','76-90'].map(b=>{
+                  const f=clubStatsData.stats.goalsForByMin[b]?.total||0, a=(clubStatsData.stats.goalsAgainstByMin?.[b]?.total)||0;
+                  const mx=Math.max(1,...['0-15','16-30','31-45','46-60','61-75','76-90'].map(k=>Math.max(clubStatsData.stats.goalsForByMin[k]?.total||0,(clubStatsData.stats.goalsAgainstByMin?.[k]?.total)||0)));
+                  return(<div key={b} style={{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+                    <span style={{fontSize:9,color:C.muted,fontWeight:700,width:38}}>{b}'</span>
+                    <div style={{flex:1}}>
+                      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}><div style={{height:7,background:C.teal,borderRadius:3,width:(f/mx*100)+'%',minWidth:f?6:0}}/><span style={{fontSize:9,color:C.text,fontWeight:700}}>{f}</span></div>
+                      <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{height:7,background:C.red,borderRadius:3,width:(a/mx*100)+'%',minWidth:a?6:0}}/><span style={{fontSize:9,color:C.muted,fontWeight:700}}>{a}</span></div>
+                    </div>
+                  </div>);
+                })}
+              </div>
+            </>}
+            {/* Team profile */}
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Team Profile</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>
+              {[['Formation',clubStatsData.stats.formation],['Clean Sheets',clubStatsData.stats.cleanSheets],['Failed to Score',clubStatsData.stats.failedToScore],['Biggest Win',clubStatsData.stats.biggestWinHome||clubStatsData.stats.biggestWinAway],['Biggest Loss',clubStatsData.stats.biggestLossHome||clubStatsData.stats.biggestLossAway]].filter(x=>x[1]!=null).map(([l,v],i)=>(
+                <div key={i} style={{background:C.d2,borderRadius:10,padding:'10px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:l==='Biggest Loss'?C.red:l==='Biggest Win'?C.green:C.teal,lineHeight:1}}>{v}</div>
+                  <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,marginTop:3,textTransform:'uppercase'}}>{l}</div>
+                </div>
+              ))}
+            </div>
+            {(clubStatsData.stats.homeW!=null||clubStatsData.stats.awayW!=null)&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:16}}>
+              <div style={{background:C.d2,borderRadius:10,padding:'10px',textAlign:'center'}}>
+                <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,textTransform:'uppercase',marginBottom:4}}>Home</div>
+                <div style={{fontSize:13,fontWeight:700}}><span style={{color:C.green}}>{clubStatsData.stats.homeW??0}W</span> <span style={{color:C.yellow}}>{clubStatsData.stats.homeD??0}D</span> <span style={{color:C.red}}>{clubStatsData.stats.homeL??0}L</span></div>
+              </div>
+              <div style={{background:C.d2,borderRadius:10,padding:'10px',textAlign:'center'}}>
+                <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3,textTransform:'uppercase',marginBottom:4}}>Away</div>
+                <div style={{fontSize:13,fontWeight:700}}><span style={{color:C.green}}>{clubStatsData.stats.awayW??0}W</span> <span style={{color:C.yellow}}>{clubStatsData.stats.awayD??0}D</span> <span style={{color:C.red}}>{clubStatsData.stats.awayL??0}L</span></div>
+              </div>
+            </div>}
           </>}
           {isPL&&teamStats&&teamStats.found&&<>
               {/* Goals by interval */}
@@ -4532,8 +4576,13 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
 
         {/* FIXTURES */}
         {view==='fixtures'&&<>
-          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>All Fixtures</div>
-          {[...teamFixtures].sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub} openMatch={openMatch}/>)}
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Fixtures</div>
+          <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:8,marginBottom:4,WebkitOverflowScrolling:'touch'}}>
+            {['ALL',...Array.from(new Set(teamFixtures.map(m=>m.comp).filter(Boolean)))].map(c=>(
+              <button key={c} onClick={()=>setFixFilter(c)} style={{flexShrink:0,whiteSpace:'nowrap',padding:'5px 12px',borderRadius:8,border:'1px solid '+(fixFilter===c?C.teal:C.d4),background:fixFilter===c?'rgba(10,191,184,.1)':C.d2,color:fixFilter===c?C.teal:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>{c==='ALL'?'All':c}</button>
+            ))}
+          </div>
+          {[...teamFixtures].filter(m=>fixFilter==='ALL'||m.comp===fixFilter).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={team?.id} openClub={openClub} openMatch={openMatch}/>)}
         </>}
 
       </div>
