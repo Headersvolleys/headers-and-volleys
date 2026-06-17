@@ -6064,9 +6064,13 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
 
   return(
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:500,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
-      <div style={{background:C.d2,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:520,maxHeight:'90vh',overflowY:'auto',animation:'slideUp .25s ease'}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4,position:'sticky',top:0,background:C.d2,zIndex:1}}>
+    <div style={{position:'fixed',inset:0,background:C.dark,zIndex:500,overflowY:'auto'}}>
+      <div style={{background:C.d2,width:'100%',maxWidth:520,minHeight:'100%',margin:'0 auto',overflowY:'auto'}}>
+        <div style={{padding:'12px 16px',borderBottom:'1px solid '+C.d4,display:'flex',alignItems:'center',gap:10,position:'sticky',top:0,background:C.d2,zIndex:2}}>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.white,letterSpacing:.5}}>MATCH</div>
+        </div>
+        <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4}}>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
             <div style={{flex:1,display:'flex',alignItems:'center',gap:8}}>
               <Badge code={hc} size={30} logo={match.homeTeam?.crest}/>
