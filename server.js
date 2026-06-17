@@ -112,7 +112,7 @@ app.get('/api/comp-standings/:comp', async (req, res) => {
     const groups = blocks.map(rows=>({
       name: rows[0]?.group || '',
       table: rows.map(r=>({
-        position:r.rank, team:{name:r.team?.name, logo:r.team?.logo},
+        position:r.rank, team:{id:r.team?.id, name:r.team?.name, logo:r.team?.logo},
         played:r.all?.played, won:r.all?.win, draw:r.all?.draw, lost:r.all?.lose,
         gf:r.all?.goals?.for, ga:r.all?.goals?.against, gd:r.goalsDiff, points:r.points,
         form:r.form, desc:r.description,
@@ -1952,32 +1952,66 @@ function Matches({openPlayer, openClub}){
 
 // -- TABLE -------------------------------------------------
 function Table({openClub}){
+  const LEAGUE_TABS=[
+    {key:'pl', comp:'pl', label:'Premier League', short:'PL', season:true},
+    {key:'laliga', comp:'laliga', label:'La Liga', short:'La Liga'},
+    {key:'seriea', comp:'seriea', label:'Serie A', short:'Serie A'},
+    {key:'bundesliga', comp:'bundesliga', label:'Bundesliga', short:'Bundesliga'},
+    {key:'ligue1', comp:'ligue1', label:'Ligue 1', short:'Ligue 1'},
+  ];
+  const [lg,setLg]=useState('pl');
   const [season,setSeason]=useState(SEASON);
-  const {data,loading,error}=useApi('/api/standings?season='+season, season===SEASON?300000:6*3600000);
+  const active=LEAGUE_TABS.find(l=>l.key===lg);
+  const isPL=lg==='pl';
+  // PL uses the rich /api/standings (form, zones). Others use generic comp-standings.
+  const {data:plData,loading:plLoad,error:plErr}=useApi(isPL?'/api/standings?season='+season:null, season===SEASON?300000:6*3600000);
+  const {data:compData,loading:compLoad,error:compErr}=useApi(!isPL?'/api/comp-standings/'+active.comp:null, 1800000);
+  const loading=isPL?plLoad:compLoad;
+  const error=isPL?plErr:compErr;
 
-  const table=data?.standings?.[0]?.table||[];
+  // normalize to one row shape
+  let table=[];
+  if(isPL){
+    table=(plData?.standings?.[0]?.table||[]).map(r=>({
+      position:r.position, team:{id:r.team?.id, name:r.team?.name, crest:r.team?.crest},
+      played:r.playedGames, won:r.won, draw:r.draw, lost:r.lost, gd:r.goalDifference, points:r.points,
+    }));
+  } else {
+    table=(compData?.groups?.[0]?.table||[]).map(r=>({
+      position:r.position, team:{id:r.team?.id, name:r.team?.name, crest:r.team?.logo, logo:r.team?.logo},
+      played:r.played, won:r.won, draw:r.draw, lost:r.lost, gd:r.gd, points:r.points,
+    }));
+  }
   const ZC={1:C.teal,2:C.teal,3:C.teal,4:C.teal,5:C.blue,6:C.orange,18:C.red,19:C.red,20:C.red};
-  const zoneName={1:'UCL',2:'UCL',3:'UCL',4:'UCL',5:'UEL',6:'UECL',18:'REL',19:'REL',20:'REL'};
   return(
     <div style={{paddingBottom:80}}>
       {/* Broadcast header bar */}
-      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
+      <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
           <div>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>PREMIER <span style={{color:C.teal}}>LEAGUE</span></div>
-            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Standings &middot; Tap a club</div>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5,lineHeight:.9}}>TABLES</div>
+            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Top 5 leagues &middot; Tap a club</div>
           </div>
-          <select value={season} onChange={e=>setSeason(Number(e.target.value))}
+          {isPL&&<select value={season} onChange={e=>setSeason(Number(e.target.value))}
             style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none',letterSpacing:.5}}>
             {SEASONS.map(y=><option key={y} value={y} style={{background:C.d2,color:C.text}}>{y}-{String(y+1).slice(2)}</option>)}
-          </select>
+          </select>}
+        </div>
+      </div>
+
+      {/* League switcher */}
+      <div style={{padding:'10px 12px 0'}}>
+        <div style={{display:'flex',gap:2,background:C.d3,borderRadius:11,padding:3,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+          {LEAGUE_TABS.map(l=>(
+            <button key={l.key} onClick={()=>setLg(l.key)} style={{flex:'1 0 auto',whiteSpace:'nowrap',padding:'8px 12px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:11.5,background:lg===l.key?C.teal:'transparent',color:lg===l.key?'#FFFFFF':C.muted}}>{l.short}</button>
+          ))}
         </div>
       </div>
 
       <div style={{padding:'12px 12px 0'}}>
       {loading&&<div style={{padding:'4px 0'}}><SkeletonRows n={12} h={46}/></div>}
-      {error&&!loading&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable for {season}-{String(season+1).slice(2)}.</div>}
+      {error&&!loading&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable.</div>}
       {!loading&&!error&&<>
       {/* column header */}
       <div style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,padding:'0 12px 6px',alignItems:'center'}}>
@@ -1987,8 +2021,7 @@ function Table({openClub}){
       </div>
       <div className="hv-stagger">
       {table.map(row=>{
-        const code=TCODE[row.team?.name]||'???', zc=ZC[row.position];
-        const tint = zc?zc+'14':'transparent';
+        const code=TCODE[row.team?.name]||'???', zc=isPL?ZC[row.position]:null;
         return(
           <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub(row.team)}
             style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,alignItems:'center',
@@ -2008,11 +2041,11 @@ function Table({openClub}){
               </div>
               <span style={{fontSize:13,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
             </div>
-            <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
+            <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.played}</div>
             <div style={{fontSize:11,color:C.text,textAlign:'center'}}>{row.won}</div>
             <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.draw}</div>
             <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.lost}</div>
-            <div style={{fontSize:11,fontWeight:700,color:row.goalDifference>=0?C.green:C.red,textAlign:'center'}}>{row.goalDifference>0?'+':''}{row.goalDifference}</div>
+            <div style={{fontSize:11,fontWeight:700,color:row.gd>=0?C.green:C.red,textAlign:'center'}}>{row.gd>0?'+':''}{row.gd}</div>
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',borderLeft:'1px solid rgba(255,255,255,.08)'}}>
               <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:21,color:C.white,lineHeight:1}}>{row.points}</span>
             </div>
@@ -2020,11 +2053,11 @@ function Table({openClub}){
         );
       })}
       </div>
-      <div style={{marginTop:14,padding:'12px',background:C.d2,borderRadius:10,display:'flex',gap:14,flexWrap:'wrap'}}>
+      {isPL&&<div style={{marginTop:14,padding:'12px',background:C.d2,borderRadius:10,display:'flex',gap:14,flexWrap:'wrap'}}>
         {[['Champions League',C.teal],['Europa League',C.blue],['Conference',C.orange],['Relegation',C.red]].map(([l,c])=>(
           <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:C.muted,fontWeight:600}}><div style={{width:10,height:10,borderRadius:3,background:c}}/>{l}</div>
         ))}
-      </div>
+      </div>}
       </>}
       </div>
     </div>
@@ -3908,28 +3941,31 @@ function FixRow({m,teamId,openClub,openMatch}){
 
 function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}){
   const code = TCODE[team?.name] || '???';
-  const {data:teamData, loading:tLoad} = useApi('/api/team/'+team?.id, 3600000);
-  const {data:afSquadData, loading:afSquadLoad} = useApi('/api/af/squad?name='+encodeURIComponent(team?.name||''), 6*3600000);
+  const isPL = code !== '???';  // PL clubs are in the hardcoded maps; others are data-driven by ID
+  const {data:teamData, loading:tLoad} = useApi(isPL ? '/api/team/'+team?.id : null, 3600000);
+  // PL: name-based squad (existing). Non-PL: ID-based club endpoint.
+  const {data:afSquadData, loading:afSquadLoad} = useApi(isPL ? '/api/af/squad?name='+encodeURIComponent(team?.name||'') : null, 6*3600000);
+  const {data:clubByIdData, loading:clubByIdLoad} = useApi(!isPL && team?.id ? '/api/club/'+team.id : null, 6*3600000);
   const {data:standData} = useApi('/api/standings', 300000);
   const [tableSeason,setTableSeason]=useState(SEASON);
   const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===SEASON?300000:6*3600000);
   const {data:fixturesData} = useApi('/api/matches', 300000);
   const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
-  const {data:teamStats} = useApi(team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
-  const {data:xgTeamsData} = useApi('/api/xg/teams', 30*60000);
-  const {data:photoMapData}=useApi('/api/scorer-photo-ids',6*3600000);
+  const {data:teamStats} = useApi(isPL && team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
+  const {data:xgTeamsData} = useApi(isPL ? '/api/xg/teams' : null, 30*60000);
+  const {data:photoMapData}=useApi(isPL ? '/api/scorer-photo-ids' : null,6*3600000);
   const photoMap=photoMapData?.map||{};
   const photoIdForId=(fdId)=> (fdId!=null && photoMap[fdId]!=null) ? photoMap[fdId] : null;
   const [squadFilter, setSquadFilter] = useState('ALL');
   const [view, setView] = useState(initialView || 'overview');
 
   const fdSquad = teamData?.squad || [];
-  const afSquad = afSquadData?.squad || [];
+  const afSquad = isPL ? (afSquadData?.squad || []) : (clubByIdData?.squad || []);
   // AF squad is the reliable source (has correct ids/photos). football-data
   // /teams/:id 403s on this tier, so its squad is unreliable - only use it if
   // AF genuinely returned players AND only as a last resort.
   const squad = afSquad.length>0 ? afSquad : (afSquadData ? [] : fdSquad);
-  const squadLoading = afSquadLoad;
+  const squadLoading = isPL ? afSquadLoad : clubByIdLoad;
   const positions = ['ALL','Goalkeeper','Defender','Midfielder','Forward'];
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
@@ -4037,7 +4073,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
       {/* Club hero */}
       <div style={{background:'linear-gradient(180deg, '+tc+'22 0%, '+C.d2+' 70%)',borderBottom:'1px solid '+C.d4,padding:'16px',borderTop:'3px solid '+tc}}>
         <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:10}}>
-          <Badge code={code} size={52}/>
+          <Badge code={code} size={52} logo={team?.logo||team?.crest}/>
           <div style={{flex:1}}>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:26,color:tc,letterSpacing:.5,lineHeight:1}}>{TSHORT[team?.name]||team?.name}</div>
             {teamData&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{teamData.venue}{teamData.founded?'  Est. '+teamData.founded:''}</div>}
