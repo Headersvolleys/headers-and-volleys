@@ -6145,12 +6145,12 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                     <div>
                       <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:14}}>
                         <div style={{textAlign:'center'}}>
-                          <div style={{fontSize:11,fontWeight:700,color:homeCol,marginBottom:4}}>{TSHORT[match.homeTeam?.name]}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:homeCol,marginBottom:4}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</div>
                           <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{homeLineup.formation}</div>
                           <PitchLineup lineup={homeLineup} side="home" teamCol={homeCol}/>
                         </div>
                         <div style={{textAlign:'center'}}>
-                          <div style={{fontSize:11,fontWeight:700,color:awayCol,marginBottom:4}}>{TSHORT[match.awayTeam?.name]}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:awayCol,marginBottom:4}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</div>
                           <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{awayLineup.formation}</div>
                           <PitchLineup lineup={awayLineup} side="away" teamCol={awayCol}/>
                         </div>
