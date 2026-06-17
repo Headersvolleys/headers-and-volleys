@@ -5638,7 +5638,7 @@ function SummaryStrip({items}){
   const Row=(x,i,align)=>(
     <div key={i} style={{display:'flex',alignItems:'center',gap:5,flexDirection:align==='right'?'row-reverse':'row'}}>
       {x.k!=='goal'&&<EventIcon kind={x.k==='red'?'red':'misspen'} size={12}/>}
-      <span style={{fontSize:10.5,color:x.k==='red'?C.text:C.muted,fontWeight:600}}>{lbl(x)}</span>
+      <span style={{fontSize:10.5,color:C.muted,fontWeight:600}}>{lbl(x)}</span>
     </div>
   );
   return(
