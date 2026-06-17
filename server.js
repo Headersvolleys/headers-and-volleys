@@ -5873,13 +5873,21 @@ function EventIcon({kind,size=18}){
     const ring=kind==='owngoal'?C.red:'#111';
     return(
       <svg width={s} height={s} viewBox="0 0 32 32" style={{display:'block'}}>
-        <circle cx="16" cy="16" r="15" fill="#fff" stroke={ring} strokeWidth="1.5"/>
-        <polygon points="16,11 20.2,14.1 18.6,19 13.4,19 11.8,14.1" fill="#111"/>
-        <polygon points="16,2 12.4,5 13.4,9.2 16,11 18.6,9.2 19.6,5" fill="#111"/>
-        <polygon points="29,12 24.5,11 21,13.7 20.2,14.1 21.5,18.5 26,19" fill="#111"/>
-        <polygon points="3,12 7.5,11 11,13.7 11.8,14.1 10.5,18.5 6,19" fill="#111"/>
-        <polygon points="24,28 25.5,23 21.5,19.8 18.6,19 17.5,23.5 21,27.5" fill="#111"/>
-        <polygon points="8,28 6.5,23 10.5,19.8 13.4,19 14.5,23.5 11,27.5" fill="#111"/>
+        <circle cx="16" cy="16" r="14.5" fill="#fff" stroke={ring} strokeWidth="1.5"/>
+        {/* central pentagon */}
+        <polygon points="16,9.5 21,13.2 19.1,19 12.9,19 11,13.2" fill="#111"/>
+        {/* outer black wedges around it */}
+        <polygon points="16,2.5 12.4,5.3 11,13.2 16,9.5 21,13.2 19.6,5.3" fill="#111" opacity="0"/>
+        <path d="M16 2.8 L19.4 5.2 L21 13.2 L16 9.5 L11 13.2 L12.6 5.2 Z" fill="none" stroke="#111" strokeWidth="1.4"/>
+        <path d="M30 13 L23.5 11.4 L21 13.2 L19.1 19 L24 22 Z" fill="none" stroke="#111" strokeWidth="1.4"/>
+        <path d="M2 13 L8.5 11.4 L11 13.2 L12.9 19 L8 22 Z" fill="none" stroke="#111" strokeWidth="1.4"/>
+        <path d="M24 22 L19.1 19 L12.9 19 L8 22 L11 28.5 L21 28.5 Z" fill="none" stroke="#111" strokeWidth="1.4"/>
+        {/* solid spots */}
+        <polygon points="16,3.4 19,5.4 18,9 14,9 13,5.4" fill="#111"/>
+        <polygon points="28.5,13.4 24.2,12.2 22.2,14 23,17.6 27.4,17.4" fill="#111"/>
+        <polygon points="3.5,13.4 7.8,12.2 9.8,14 9,17.6 4.6,17.4" fill="#111"/>
+        <polygon points="22.5,27.2 23.6,23 20.4,20.6 17,22 18.4,25.8" fill="#111"/>
+        <polygon points="9.5,27.2 8.4,23 11.6,20.6 15,22 13.6,25.8" fill="#111"/>
       </svg>
     );
   }
@@ -5888,9 +5896,14 @@ function EventIcon({kind,size=18}){
   }
   if(kind==='boot'){
     return(
-      <svg width={s} height={s} viewBox="0 0 24 24" style={{display:'block'}}>
-        <path d="M4 6 L9 6 L10 13 L19 14 Q21 14.3 21 16.5 L21 18 L4 18 Z" fill={C.orange}/>
-        <rect x="4" y="18" width="18" height="2" rx="1" fill={C.muted}/>
+      <svg width={s} height={s} viewBox="0 0 32 32" style={{display:'block'}}>
+        {/* boot silhouette pointing right */}
+        <path d="M3 9 C3 8 4 7.5 5 7.7 L9 8.5 C10 8.7 10.6 9.4 10.9 10.3 L12.2 14.5 L25 16.8 C28 17.4 29.5 19 29.6 21.2 L29.6 22.3 C29.6 23 29.1 23.5 28.4 23.5 L6 23.5 C4.3 23.5 3 22.2 3 20.5 Z" fill="#111"/>
+        {/* studs */}
+        <rect x="7" y="24" width="2.2" height="3" rx="1" fill="#111"/>
+        <rect x="13" y="24" width="2.2" height="3" rx="1" fill="#111"/>
+        <rect x="19" y="24" width="2.2" height="3" rx="1" fill="#111"/>
+        <rect x="25" y="24" width="2.2" height="3" rx="1" fill="#111"/>
       </svg>
     );
   }
@@ -5955,7 +5968,10 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const summaryItems = (finished && events && events.length>0) ? (()=>{
     const norm=s=>(s||'').toLowerCase().replace(/[^a-z]/g,'');
     const hn3=norm(TSHORT[match.homeTeam?.name]||match.homeTeam?.name);
-    const sideOf=(e)=>{ const en3=norm(e.team?.name||''); return en3.length>0&&(en3.includes(hn3.slice(0,5))||hn3.includes(en3.slice(0,5)))?'h':'a'; };
+    const sideOf=(e)=>{
+      if(e.team?.id!=null&&match.homeTeam?.id!=null) return e.team.id===match.homeTeam.id?'h':'a';
+      const en3=norm(e.team?.name||''); return en3.length>0&&(en3.includes(hn3.slice(0,5))||hn3.includes(en3.slice(0,5)))?'h':'a';
+    };
     const key=(e)=>{ if(e.type==='Goal') return e.detail==='Missed Penalty'?'miss':'goal'; if(e.type==='Card'&&e.detail==='Red Card') return 'red'; return null; };
     return events.map(e=>({k:key(e), side:sideOf(e), name:e.player?.name||'', og:e.detail==='Own Goal', pen:e.detail==='Penalty', min:(e.time?.elapsed||0)+(e.time?.extra?'+'+e.time.extra:'')})).filter(x=>x.k);
   })() : [];
@@ -6185,7 +6201,9 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                 const norm=s=>(s||'').toLowerCase().replace(/[^a-z]/g,'');
                 const hn3=norm(TSHORT[match.homeTeam?.name]||match.homeTeam?.name);
                 const en3=norm(e.team?.name||'');
-                const isHome=en3.length>0&&(en3.includes(hn3.slice(0,5))||hn3.includes(en3.slice(0,5)));
+                const isHome=(e.team?.id!=null&&match.homeTeam?.id!=null)
+                  ? e.team.id===match.homeTeam.id
+                  : (en3.length>0&&(en3.includes(hn3.slice(0,5))||hn3.includes(en3.slice(0,5))));
                 const isGoal=e.type==='Goal', isCard=e.type==='Card', isSub=e.type==='subst';
                 const isRed=isCard&&e.detail==='Red Card', isYellow=isCard&&e.detail==='Yellow Card';
                 const isOG=isGoal&&e.detail==='Own Goal';
