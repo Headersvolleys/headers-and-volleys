@@ -5799,9 +5799,9 @@ function StatBar({label, home, away, homeCol, awayCol}){
   );
 }
 
-function PitchLineup({lineup, side, teamCol: tc}){
+function PitchLineup({lineup, side, teamCol: tc, width}){
   if(!lineup) return null;
-  const W=160, H=300;
+  const W=width||160, H=Math.round((width||160)*1.875);
   const col = tc||C.teal;
   const lc = 'rgba(255,255,255,.25)';
   const players = (lineup.startXI||[]).map(p=>{
@@ -5827,12 +5827,12 @@ function PitchLineup({lineup, side, teamCol: tc}){
         <rect x={W*0.35} y="6" width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y="2" width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H*0.14} r="2" fill={lc}/>
-        <path d={"M 57 66 A 33 33 0 0 1 103 66"} fill="none" stroke={lc} strokeWidth="1.2"/>
+        <path d={"M "+(W*0.356)+" "+(H*0.22)+" A 33 33 0 0 1 "+(W*0.644)+" "+(H*0.22)} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.2} y={H-6-H*0.2} width={W*0.6} height={H*0.2} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.35} y={H-6-H*0.08} width={W*0.3} height={H*0.08} fill="none" stroke={lc} strokeWidth="1.2"/>
         <rect x={W*0.41} y={H-8} width={W*0.18} height="6" fill="none" stroke={lc} strokeWidth="1.5"/>
         <circle cx={W/2} cy={H-H*0.14} r="2" fill={lc}/>
-        <path d={"M 57 234 A 33 33 0 0 0 103 234"} fill="none" stroke={lc} strokeWidth="1.2"/>
+        <path d={"M "+(W*0.356)+" "+(H*0.78)+" A 33 33 0 0 0 "+(W*0.644)+" "+(H*0.78)} fill="none" stroke={lc} strokeWidth="1.2"/>
         <path d="M 4 16 A 10 10 0 0 1 14 6" fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M "+(W-4)+" 16 A 10 10 0 0 0 "+(W-14)+" 6"} fill="none" stroke={lc} strokeWidth="1"/>
         <path d={"M 4 "+(H-16)+" A 10 10 0 0 0 14 "+(H-6)} fill="none" stroke={lc} strokeWidth="1"/>
@@ -5841,13 +5841,14 @@ function PitchLineup({lineup, side, teamCol: tc}){
       {rowNums.map(rowNum=>{
         const yPct = 92-((rowNum-1)/Math.max(maxRow-1,1))*84;
         const row=byRow[rowNum];
+        const dotSz=Math.round(W*0.162), numFs=Math.max(9,Math.round(W*0.056)), nameFs=Math.max(7,Math.round(W*0.044));
         return row.map((player,pi)=>{
           const spread=row.length<=2?42:row.length===3?56:row.length===4?68:76;
           const xPct=row.length===1?50:(50-spread/2)+(pi/(row.length-1))*spread;
           return(
             <div key={player?.id||pi} style={{position:'absolute',left:xPct+'%',top:yPct+'%',transform:'translate(-50%,-50%)',textAlign:'center',zIndex:2}}>
-              <div style={{width:26,height:26,borderRadius:'50%',background:col,border:'2px solid rgba(255,255,255,.85)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff',margin:'0 auto',boxShadow:'0 2px 4px rgba(0,0,0,.5)'}}>{player?.number||''}</div>
-              <div style={{fontSize:7,color:'#fff',marginTop:1,lineHeight:1.2,whiteSpace:'nowrap',textShadow:'0 1px 3px rgba(0,0,0,.9)',maxWidth:44,overflow:'hidden',textOverflow:'ellipsis',marginLeft:-9}}>{(player?.name||'').split(' ').pop()}</div>
+              <div style={{width:dotSz,height:dotSz,borderRadius:'50%',background:col,border:'2px solid rgba(255,255,255,.85)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:numFs,fontWeight:700,color:'#fff',margin:'0 auto',boxShadow:'0 2px 4px rgba(0,0,0,.5)'}}>{player?.number||''}</div>
+              <div style={{fontSize:nameFs,color:'#fff',marginTop:2,lineHeight:1.2,whiteSpace:'nowrap',textShadow:'0 1px 3px rgba(0,0,0,.9)',maxWidth:W*0.4,overflow:'hidden',textOverflow:'ellipsis'}}>{(player?.name||'').split(' ').pop()}</div>
             </div>
           );
         });
@@ -5934,6 +5935,17 @@ function SummaryStrip({items}){
     </div>
   );
 }
+function SinglePitch({lineup, col, name, side, pitchWidth}){
+  return(
+    <div style={{textAlign:'center'}}>
+      <div style={{fontSize:13,fontWeight:700,color:col,marginBottom:2}}>{name}</div>
+      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>{lineup.formation}</div>
+      <div style={{display:'flex',justifyContent:'center'}}>
+        <PitchLineup lineup={lineup} side={side} teamCol={col} width={pitchWidth}/>
+      </div>
+    </div>
+  );
+}
 function MatchModal({match, onClose, openPlayer, openClub}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
@@ -5944,6 +5956,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const [allMatches, setAllMatches] = useState(null);
   const [tab, setTab] = useState('stats');
   const [lineupView, setLineupView] = useState('pitch');
+  const [pitchTeam, setPitchTeam] = useState('home');
   const [understatXG, setUnderstatXG] = useState(null);
 
   const hc = TCODE[match.homeTeam?.name]||'???';
@@ -6143,22 +6156,24 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                   </div>}
                   {pitchOK&&lineupView==='pitch'&&(
                     <div>
-                      <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:14}}>
-                        <div style={{textAlign:'center'}}>
-                          <div style={{fontSize:11,fontWeight:700,color:homeCol,marginBottom:4}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</div>
-                          <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{homeLineup.formation}</div>
-                          <PitchLineup lineup={homeLineup} side="home" teamCol={homeCol}/>
-                        </div>
-                        <div style={{textAlign:'center'}}>
-                          <div style={{fontSize:11,fontWeight:700,color:awayCol,marginBottom:4}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</div>
-                          <div style={{fontSize:10,color:C.muted,marginBottom:6}}>{awayLineup.formation}</div>
-                          <PitchLineup lineup={awayLineup} side="away" teamCol={awayCol}/>
-                        </div>
+                      {/* team toggle */}
+                      <div style={{display:'flex',gap:6,marginBottom:14,justifyContent:'center'}}>
+                        <button onClick={()=>setPitchTeam('home')} style={{flex:1,maxWidth:200,padding:'8px 10px',borderRadius:8,border:'1px solid '+(pitchTeam==='home'?homeCol:C.d4),background:pitchTeam==='home'?homeCol+'1a':C.d2,color:pitchTeam==='home'?C.white:C.muted,fontWeight:700,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                          <Badge code={hc} size={18} logo={match.homeTeam?.crest}/>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}
+                        </button>
+                        <button onClick={()=>setPitchTeam('away')} style={{flex:1,maxWidth:200,padding:'8px 10px',borderRadius:8,border:'1px solid '+(pitchTeam==='away'?awayCol:C.d4),background:pitchTeam==='away'?awayCol+'1a':C.d2,color:pitchTeam==='away'?C.white:C.muted,fontWeight:700,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                          <Badge code={ac} size={18} logo={match.awayTeam?.crest}/>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}
+                        </button>
                       </div>
-                      <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Substitutes</div>
-                      <div style={{display:'flex',gap:8}}>
-                        <div style={{flex:1}}>{(homeLineup.substitutes||[]).map((s,i)=><div key={i} style={{fontSize:11,color:C.muted,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><span style={{color:homeCol,fontWeight:700,marginRight:4}}>{s.player?.number}</span>{s.player?.name}</div>)}</div>
-                        <div style={{flex:1}}>{(awayLineup.substitutes||[]).map((s,i)=><div key={i} style={{fontSize:11,color:C.muted,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,.04)',textAlign:'right'}}>{s.player?.name}<span style={{color:awayCol,fontWeight:700,marginLeft:4}}>{s.player?.number}</span></div>)}</div>
+                      {pitchTeam==='home'
+                        ? <SinglePitch lineup={homeLineup} col={homeCol} name={TSHORT[match.homeTeam?.name]||match.homeTeam?.name} side="home" pitchWidth={300}/>
+                        : <SinglePitch lineup={awayLineup} col={awayCol} name={TSHORT[match.awayTeam?.name]||match.awayTeam?.name} side="away" pitchWidth={300}/>}
+                      <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Substitutes</div>
+                      <div>
+                        {((pitchTeam==='home'?homeLineup:awayLineup).substitutes||[]).map((s,i)=>{
+                          const col=pitchTeam==='home'?homeCol:awayCol;
+                          return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:C.text,padding:'5px 0',borderBottom:'1px solid rgba(0,0,0,.05)'}}><span style={{color:col,fontWeight:700,minWidth:20}}>{s.player?.number}</span>{s.player?.name}</div>);
+                        })}
                       </div>
                     </div>
                   )}
