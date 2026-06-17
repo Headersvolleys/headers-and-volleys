@@ -5617,9 +5617,38 @@ function EventIcon({kind,size=18}){
       </svg>
     );
   }
+  if(kind==='misspen'){
+    return(
+      <svg width={s} height={s} viewBox="0 0 32 32" style={{display:'block'}}>
+        <circle cx="16" cy="16" r="13" fill="#fff" stroke="#111" strokeWidth="1.5"/>
+        <polygon points="16,11 20.2,14.1 18.6,19 13.4,19 11.8,14.1" fill="#111"/>
+        <line x1="5" y1="27" x2="27" y2="5" stroke={C.red} strokeWidth="3" strokeLinecap="round"/>
+      </svg>
+    );
+  }
   return <div style={{width:s,height:s,borderRadius:'50%',background:C.d4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff'}}>?</div>;
 }
 
+function SummaryStrip({items}){
+  const home=items.filter(x=>x.side==='h'), away=items.filter(x=>x.side==='a');
+  const lbl=(x)=>{
+    const tag=x.k==='goal'?(x.og?' (OG)':x.pen?' (P)':''):x.k==='miss'?' (pen miss)':'';
+    return x.name.split(' ').slice(-1)[0]+' '+x.min+"'"+tag;
+  };
+  const Row=(x,i,align)=>(
+    <div key={i} style={{display:'flex',alignItems:'center',gap:5,flexDirection:align==='right'?'row-reverse':'row'}}>
+      <EventIcon kind={x.k==='goal'?'goal':x.k==='red'?'red':'misspen'} size={12}/>
+      <span style={{fontSize:10.5,color:x.k==='red'?C.red:C.muted,fontWeight:600}}>{lbl(x)}</span>
+    </div>
+  );
+  return(
+    <div style={{display:'flex',gap:12,padding:'10px 2px 2px',borderTop:'1px solid rgba(15,32,39,.08)',marginTop:10}}>
+      <div style={{flex:1,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-end'}}>{home.map((x,i)=>Row(x,i,'right'))}</div>
+      <div style={{width:18,flexShrink:0,display:'flex',justifyContent:'center',alignItems:'flex-start',paddingTop:1}}><EventIcon kind="goal" size={14}/></div>
+      <div style={{flex:1,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>{away.map((x,i)=>Row(x,i,'left'))}</div>
+    </div>
+  );
+}
 function MatchModal({match, onClose, openPlayer, openClub}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
@@ -5637,6 +5666,14 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const hg = match.score?.fullTime?.home;
   const ag = match.score?.fullTime?.away;
   const finished = match.status==='FINISHED';
+  // compact goal / red card / missed-pen summary for under the scoreline
+  const summaryItems = (finished && events && events.length>0) ? (()=>{
+    const norm=s=>(s||'').toLowerCase().replace(/[^a-z]/g,'');
+    const hn3=norm(TSHORT[match.homeTeam?.name]||match.homeTeam?.name);
+    const sideOf=(e)=>{ const en3=norm(e.team?.name||''); return en3.length>0&&(en3.includes(hn3.slice(0,5))||hn3.includes(en3.slice(0,5)))?'h':'a'; };
+    const key=(e)=>{ if(e.type==='Goal') return e.detail==='Missed Penalty'?'miss':'goal'; if(e.type==='Card'&&e.detail==='Red Card') return 'red'; return null; };
+    return events.map(e=>({k:key(e), side:sideOf(e), name:e.player?.name||'', og:e.detail==='Own Goal', pen:e.detail==='Penalty', min:(e.time?.elapsed||0)+(e.time?.extra?'+'+e.time.extra:'')})).filter(x=>x.k);
+  })() : [];
   const [homeColBase, awayColBase] = safeTeamCols(hc, ac);
   // stat-bar tint: PL clubs use their colours; others (no PL colour) get distinct defaults so the two bars differ
   const homeCol = hc==='???' ? C.teal : homeColBase;
@@ -5736,6 +5773,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
               </div>
             </div>
           </div>
+          {summaryItems.length>0&&<SummaryStrip items={summaryItems}/>}
           <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
             {['stats','lineup','events','h2h','form'].map(t=>(
               <button key={t} onClick={()=>setTab(t)} style={tab===t?tA:tS}>{t.toUpperCase()}</button>
