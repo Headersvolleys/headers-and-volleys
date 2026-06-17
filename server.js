@@ -751,7 +751,6 @@ app.get('/api/af/h2h', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 6*60*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/fixtures/headtohead?h2h='+h+'-'+a+'&last=10', 6*60*MIN);
-    if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,1)});
     const raw = (d.response||[]).filter(x=>x.fixture?.status?.short==='FT'||x.fixture?.status?.short==='AET'||x.fixture?.status?.short==='PEN');
     let hw=0, aw=0, dr=0;
     const matches = raw.map(x=>{
@@ -784,7 +783,6 @@ app.get('/api/af/team-form/:teamId', async (req, res) => {
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
     const d = await af('/fixtures?team='+tid+'&last=5', 30*MIN);
-    if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,1)});
     const matches = (d.response||[]).map(x=>({
       utcDate:x.fixture?.date,
       homeTeam:{id:x.teams?.home?.id, name:x.teams?.home?.name, crest:x.teams?.home?.logo},
@@ -5999,8 +5997,15 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const hns2=expandL(TSHORT[match.homeTeam?.name]||match.homeTeam?.name||'');
   const ans2=expandL(TSHORT[match.awayTeam?.name]||match.awayTeam?.name||'');
   const lineupMatch=(lName,ourNorm)=>{const fn=normL(lName||'');return fn.includes(ourNorm.slice(0,5))||ourNorm.includes(fn.slice(0,5));};
-  const homeLineup=lineups.find(l=>lineupMatch(l.team?.name,hns2))||null;
-  const awayLineup=lineups.find(l=>lineupMatch(l.team?.name,ans2))||null;
+  const homeLineup=lineups.find(l=>lineupMatch(l.team?.name,hns2))||lineups.find(l=>l.team?.id===match.homeTeam?.id)||lineups[0]||null;
+  const awayLineup=lineups.find(l=>lineupMatch(l.team?.name,ans2))||lineups.find(l=>l.team?.id===match.awayTeam?.id)||(lineups.length>1?lineups[1]:null)||null;
+
+  const lineupHasGrid=(lu)=>{
+    const xi=(lu&&lu.startXI)||[];
+    if(xi.length===0) return false;
+    return xi.some(p=>{ const g=p.player&&p.player.grid; return g && /^\d+:\d+$/.test(g); });
+  };
+  const pitchOK = lineupHasGrid(homeLineup) && lineupHasGrid(awayLineup);
 
   const teamRecentMatches=(tid)=>{
     return (allMatches||[])
@@ -6064,7 +6069,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <div>
               {afLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
               {!afLoading&&!afId&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Match stats not available</div>}
-              {!afLoading&&afId&&Object.keys(homeStats).length===0&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
+              {!afLoading&&afId&&Object.keys(homeStats).length===0&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Stats unavailable for this game</div>}
               {!afLoading&&afId&&Object.keys(homeStats).length>0&&(
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
@@ -6091,11 +6096,11 @@ function MatchModal({match, onClose, openPlayer, openClub}){
               {!afLoading&&(!homeLineup||!awayLineup)&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Lineups not available</div>}
               {!afLoading&&homeLineup&&awayLineup&&(
                 <>
-                  <div style={{display:'flex',gap:6,marginBottom:14}}>
+                  {pitchOK&&<div style={{display:'flex',gap:6,marginBottom:14}}>
                     <button onClick={()=>setLineupView('pitch')} style={lineupView==='pitch'?tA:tS}>Pitch</button>
                     <button onClick={()=>setLineupView('list')} style={lineupView==='list'?tA:tS}>List</button>
-                  </div>
-                  {lineupView==='pitch'&&(
+                  </div>}
+                  {pitchOK&&lineupView==='pitch'&&(
                     <div>
                       <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:14}}>
                         <div style={{textAlign:'center'}}>
@@ -6116,11 +6121,11 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                       </div>
                     </div>
                   )}
-                  {lineupView==='list'&&(
+                  {(!pitchOK||lineupView==='list')&&(
                     <div style={{display:'flex',gap:10}}>
-                      {[{lineup:homeLineup,code:hc,col:homeCol,name:TSHORT[match.homeTeam?.name]},{lineup:awayLineup,code:ac,col:awayCol,name:TSHORT[match.awayTeam?.name]}].map(({lineup,code,col,name})=>(
+                      {[{lineup:homeLineup,code:hc,col:homeCol,name:TSHORT[match.homeTeam?.name]||match.homeTeam?.name,crest:match.homeTeam?.crest},{lineup:awayLineup,code:ac,col:awayCol,name:TSHORT[match.awayTeam?.name]||match.awayTeam?.name,crest:match.awayTeam?.crest}].map(({lineup,code,col,name,crest})=>(
                         <div key={code} style={{flex:1}}>
-                          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><Badge code={code} size={18}/><div><div style={{fontSize:11,fontWeight:700,color:col}}>{name}</div><div style={{fontSize:10,color:C.muted}}>{lineup.formation}</div></div></div>
+                          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><Badge code={code} size={18} logo={crest}/><div><div style={{fontSize:11,fontWeight:700,color:col}}>{name}</div><div style={{fontSize:10,color:C.muted}}>{lineup.formation}</div></div></div>
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,marginBottom:4}}>STARTING XI</div>
                           {(lineup.startXI||[]).map((p,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 0',borderBottom:'1px solid rgba(255,255,255,.04)'}}><div style={{width:16,height:16,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff',flexShrink:0}}>{p.player?.number}</div><div style={{flex:1,minWidth:0}}><div onClick={()=>openPlayer&&p.player?.id&&openPlayer({id:p.player.id,name:p.player.name,position:p.player.pos,teamName:code===hc?match.homeTeam?.name:match.awayTeam?.name},code===hc?match.homeTeam?.id:match.awayTeam?.id)} style={{fontSize:11,color:openPlayer?C.teal:C.white,cursor:openPlayer?'pointer':'default',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.player?.name}</div><div style={{fontSize:9,color:C.muted}}>{p.player?.pos}</div></div></div>)}
                           <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,margin:'8px 0 4px'}}>SUBS</div>
