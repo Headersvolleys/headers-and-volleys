@@ -917,6 +917,48 @@ app.get('/api/club/:teamId', async (req, res) => {
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 
+// Club fixtures by AF team ID (whole season for a given league).
+app.get('/api/club/:teamId/fixtures', async (req, res) => {
+  const tid = req.params.teamId;
+  const lid = req.query.league;
+  const cKey='clubfix_'+tid+'_'+lid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
+  try {
+    const q = lid ? '/fixtures?team='+tid+'&league='+lid+'&season='+SEASON : '/fixtures?team='+tid+'&season='+SEASON;
+    const d = await af(q, 30*MIN);
+    const matches = (d.response||[]).map(x=>({
+      id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
+      home:{id:x.teams?.home?.id, name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
+      away:{id:x.teams?.away?.id, name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
+      goalsHome:x.goals?.home, goalsAway:x.goals?.away,
+    })).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));
+    const data={matches};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, matches:[]}); }
+});
+// Team season stats by AF team ID + league.
+app.get('/api/club/:teamId/stats', async (req, res) => {
+  const tid = req.params.teamId;
+  const lid = req.query.league;
+  if(!lid) return res.json({stats:null});
+  const cKey='clubstats_'+tid+'_'+lid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 60*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/teams/statistics?team='+tid+'&league='+lid+'&season='+SEASON, 60*MIN);
+    const s = d.response || {};
+    const data = { stats: {
+      played: s.fixtures?.played?.total, wins: s.fixtures?.wins?.total, draws: s.fixtures?.draws?.total, loses: s.fixtures?.loses?.total,
+      goalsFor: s.goals?.for?.total?.total, goalsAgainst: s.goals?.against?.total?.total,
+      cleanSheets: s.clean_sheet?.total, failedToScore: s.failed_to_score?.total,
+      form: s.form, biggestWin: s.biggest?.wins?.home||s.biggest?.wins?.away,
+    }};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, stats:null}); }
+});
+
+
 app.get('/api/af/squad', async (req, res) => {
   try {
     const name = req.query.name || '';
@@ -1952,6 +1994,7 @@ function Matches({openPlayer, openClub}){
 
 // -- TABLE -------------------------------------------------
 function Table({openClub}){
+  const LEAGUE_IDS={pl:39,laliga:140,seriea:135,bundesliga:78,ligue1:61};
   const LEAGUE_TABS=[
     {key:'pl', comp:'pl', label:'Premier League', short:'PL', season:true},
     {key:'laliga', comp:'laliga', label:'La Liga', short:'La Liga'},
@@ -2023,7 +2066,7 @@ function Table({openClub}){
       {table.map(row=>{
         const code=TCODE[row.team?.name]||'???', zc=isPL?ZC[row.position]:null;
         return(
-          <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub(row.team)}
+          <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub({...row.team, leagueId:LEAGUE_IDS[lg]})}
             style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,alignItems:'center',
               background:'linear-gradient(90deg,'+(zc?zc+'1f':'rgba(255,255,255,.02)')+' 0%, '+C.d2+' 22%)',
               borderRadius:10,marginBottom:5,padding:'10px 12px',cursor:'pointer',
@@ -3931,7 +3974,7 @@ function FixRow({m,teamId,openClub,openMatch}){
         <div style={{fontSize:9,color:fin?C.muted:C.teal,fontWeight:600}}>{fin?'FT':dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
       </div>
       <div style={{fontSize:10,color:C.muted,flexShrink:0}}>{isHome?'H':'A'}</div>
-      <Badge code={oppCode} size={18}/>
+      <Badge code={oppCode} size={18} logo={opp?.crest}/>
       <span style={{fontSize:12,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[opp?.name]||opp?.name}</span>
       {fin&&<div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.white,letterSpacing:1,flexShrink:0}}>{hg}-{ag}</div>}
       {fin&&<div style={{width:20,height:20,borderRadius:'50%',background:col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:C.dark,flexShrink:0}}>{won?'W':drew?'D':'L'}</div>}
@@ -3949,9 +3992,18 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:standData} = useApi('/api/standings', 300000);
   const [tableSeason,setTableSeason]=useState(SEASON);
   const {data:tableSeasonData} = useApi('/api/standings?season='+tableSeason, tableSeason===SEASON?300000:6*3600000);
-  const {data:fixturesData} = useApi('/api/matches', 300000);
-  const {data:scorersData} = useApi('/api/scorers?limit=100', 600000);
+  const {data:fixturesData} = useApi(isPL ? '/api/matches' : null, 300000);
+  const {data:clubFixData} = useApi(!isPL && team?.id ? '/api/club/'+team.id+'/fixtures'+(team?.leagueId?'?league='+team.leagueId:'') : null, 1800000);
+  const {data:scorersData} = useApi(isPL ? '/api/scorers?limit=100' : null, 600000);
   const {data:teamStats} = useApi(isPL && team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
+  const {data:clubStatsData} = useApi(!isPL && team?.id && team?.leagueId ? '/api/club/'+team.id+'/stats?league='+team.leagueId : null, 6*3600000);
+  const compKeyForLeague={140:'laliga',135:'seriea',78:'bundesliga',61:'ligue1'}[team?.leagueId];
+  const {data:nonPLStand} = useApi(!isPL && compKeyForLeague ? '/api/comp-standings/'+compKeyForLeague : null, 1800000);
+  // normalized inner-table rows (PL season-aware, non-PL from comp-standings)
+  const innerTableRows = isPL
+    ? (tableSeasonData?.standings?.[0]?.table||[]).map(r=>({position:r.position, team:r.team, played:r.playedGames, won:r.won, draw:r.draw, lost:r.lost, gd:r.goalDifference, points:r.points}))
+    : (nonPLStand?.groups?.[0]?.table||[]).map(r=>({position:r.position, team:{id:r.team?.id, name:r.team?.name, crest:r.team?.logo}, played:r.played, won:r.won, draw:r.draw, lost:r.lost, gd:r.gd, points:r.points}));
+  const innerTableLoading = isPL ? !tableSeasonData : !nonPLStand;
   const {data:xgTeamsData} = useApi(isPL ? '/api/xg/teams' : null, 30*60000);
   const {data:photoMapData}=useApi(isPL ? '/api/scorer-photo-ids' : null,6*3600000);
   const photoMap=photoMapData?.map||{};
@@ -3970,9 +4022,16 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const filtered = squadFilter==='ALL' ? squad : squad.filter(p=>normPos(p.position)===squadFilter);
 
   const tableRow = standData?.standings?.[0]?.table?.find(r=>r.team?.id===team?.id);
-  const teamFixtures = (fixturesData?.matches||[])
-    .filter(m=>m.homeTeam?.id===team?.id||m.awayTeam?.id===team?.id)
-    .sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate));
+  // PL fixtures come from /api/matches (fd shape). Non-PL come from club fixtures (AF shape) - normalize to fd shape.
+  const teamFixtures = isPL
+    ? (fixturesData?.matches||[]).filter(m=>m.homeTeam?.id===team?.id||m.awayTeam?.id===team?.id).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate))
+    : (clubFixData?.matches||[]).map(m=>({
+        id:m.id, utcDate:m.utcDate,
+        status:(m.status==='FT'||m.status==='AET'||m.status==='PEN')?'FINISHED':(m.status==='NS'||m.status==='TBD')?'SCHEDULED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':m.status,
+        homeTeam:{id:m.home?.id, name:m.home?.name, crest:m.home?.logo},
+        awayTeam:{id:m.away?.id, name:m.away?.name, crest:m.away?.logo},
+        score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
+      })).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate));
   const recent = teamFixtures.filter(m=>m.status==='FINISHED').slice(0,5);
   const upcoming = teamFixtures.filter(m=>m.status==='SCHEDULED'||m.status==='TIMED').slice(0,5);
 
@@ -4420,31 +4479,31 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         {view==='table'&&<>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,gap:8}}>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>League Table</div>
-            <select value={tableSeason} onChange={e=>setTableSeason(Number(e.target.value))}
+            {isPL&&<select value={tableSeason} onChange={e=>setTableSeason(Number(e.target.value))}
               style={{background:C.d3,color:C.text,border:'1px solid '+C.d4,borderRadius:7,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer',outline:'none'}}>
               {SEASONS.map(y=><option key={y} value={y}>{y}-{String(y+1).slice(2)}</option>)}
-            </select>
+            </select>}
           </div>
-          {!tableSeasonData&&<div style={{textAlign:'center',padding:24}}><Spinner size={20}/></div>}
-          {tableSeasonData&&(tableSeasonData.standings?.[0]?.table||[]).length===0&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:16}}>Table unavailable for this season.</div>}
-          {tableSeasonData&&(tableSeasonData.standings?.[0]?.table||[]).length>0&&<>
+          {innerTableLoading&&<div style={{textAlign:'center',padding:24}}><Spinner size={20}/></div>}
+          {!innerTableLoading&&innerTableRows.length===0&&<div style={{color:C.muted,fontSize:12,textAlign:'center',padding:16}}>Table unavailable.</div>}
+          {!innerTableLoading&&innerTableRows.length>0&&<>
           <div style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'4px 8px',marginBottom:4}}>
             {['#','','P','W','D','L','GD','Pts'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:i>1?'center':'left'}}>{h}</div>)}
           </div>
-          {(tableSeasonData?.standings?.[0]?.table||[]).map(row=>{
+          {innerTableRows.map(row=>{
             const rCode=TCODE[row.team?.name]||'???';
             const zc={4:C.blue,5:C.orange,6:C.yellow,18:C.red,19:C.red,20:C.red}[row.position];
             const isThis=(row.team?.name===team?.name)||(row.team?.id===team?.id);
             return(
-              <div key={row.position} onClick={()=>!isThis&&openClub&&openClub(row.team,'table')}
+              <div key={row.position} onClick={()=>!isThis&&openClub&&openClub({...row.team, leagueId:team?.leagueId},'table')}
                 style={{display:'grid',gridTemplateColumns:'22px 1fr 26px 26px 26px 26px 34px 40px',gap:3,padding:'8px 8px',alignItems:'center',background:isThis?tc+'22':C.d2,borderRadius:8,marginBottom:3,borderLeft:'3px solid '+(isThis?tc:(zc||C.d4)),cursor:isThis?'default':'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:isThis?tc:(zc||C.muted)}}>{row.position}</div>
                 <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><TeamCrest code={rCode} logo={row.team?.crest} size={17}/><span style={{fontSize:12,fontWeight:isThis?800:700,color:isThis?C.white:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span></div>
-                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.playedGames}</div>
+                <div style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.played}</div>
                 <div style={{fontSize:11,color:C.green,textAlign:'center',fontWeight:600}}>{row.won}</div>
                 <div style={{fontSize:11,color:C.yellow,textAlign:'center',fontWeight:600}}>{row.draw}</div>
                 <div style={{fontSize:11,color:C.red,textAlign:'center',fontWeight:600}}>{row.lost}</div>
-                <div style={{fontSize:11,color:row.goalDifference>=0?C.text:C.red,textAlign:'center'}}>{row.goalDifference>0?'+':''}{row.goalDifference}</div>
+                <div style={{fontSize:11,color:row.gd>=0?C.text:C.red,textAlign:'center'}}>{row.gd>0?'+':''}{row.gd}</div>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.white,textAlign:'center'}}>{row.points}</div>
               </div>
             );
