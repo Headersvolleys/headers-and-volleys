@@ -2118,7 +2118,7 @@ function Table({openClub}){
         <div/>
         {['P','W','D','L','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center',letterSpacing:.5}}>{h}</div>)}
       </div>
-      <div className="hv-stagger">
+      <div key={lg} className="hv-stagger">
       {table.map(row=>{
         const code=TCODE[row.team?.name]||'???', zc=isPL?ZC[row.position]:null;
         return(
