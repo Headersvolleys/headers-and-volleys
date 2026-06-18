@@ -4195,7 +4195,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const topNats=Object.entries(natCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return(
-    <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
+    <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
       {/* Header */}
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100,display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
@@ -5426,7 +5426,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const dobFmt = dobValid ? dobDate.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : null;
 
   return(
-    <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
+    <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
       {/* Header */}
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100,display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
@@ -6084,7 +6084,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
   return(
     <div style={{position:'fixed',inset:0,background:C.dark,zIndex:500,overflowY:'auto'}}>
-      <div className="hv-screen" style={{background:C.d2,width:'100%',maxWidth:520,minHeight:'100%',margin:'0 auto',overflowY:'auto'}}>
+      <div style={{background:C.d2,width:'100%',maxWidth:520,minHeight:'100%',margin:'0 auto',overflowY:'auto'}}>
         <div style={{padding:'12px 16px',borderBottom:'1px solid '+C.d4,display:'flex',alignItems:'center',gap:10,position:'sticky',top:0,background:C.d2,zIndex:2}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.white,letterSpacing:.5}}>MATCH</div>
