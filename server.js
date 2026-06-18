@@ -2248,9 +2248,9 @@ function Table({openClub, openLeague}){
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
-          <div onClick={()=>openLeague&&openLeague(lg)} style={{cursor:openLeague?'pointer':'default'}}>
+          <div>
             <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5,lineHeight:.9}}>{active?active.label.toUpperCase():'TABLES'}</div>
-            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>{openLeague?'Tap for league profile':'Top 5 leagues'} &middot; Tap a club below</div>
+            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Top 5 leagues &middot; Tap a club</div>
           </div>
           {isPL&&<select value={season} onChange={e=>setSeason(Number(e.target.value))}
             style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none',letterSpacing:.5}}>
@@ -2266,6 +2266,7 @@ function Table({openClub, openLeague}){
             <button key={l.key} onClick={()=>setLg(l.key)} style={{flex:'1 0 auto',whiteSpace:'nowrap',padding:'8px 12px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:11.5,background:lg===l.key?C.teal:'transparent',color:lg===l.key?'#FFFFFF':C.muted}}>{l.short}</button>
           ))}
         </div>
+        {openLeague&&<button onClick={()=>openLeague(lg)} className="hv-press" style={{marginTop:8,width:'100%',padding:'9px',borderRadius:9,border:'1px solid '+C.teal,background:'rgba(10,191,184,.08)',color:C.teal,fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:12.5,cursor:'pointer',letterSpacing:.3}}>View {active?active.label:'League'} Profile {'>'}</button>}
       </div>
 
       <div style={{padding:'12px 12px 0'}}>
