@@ -2113,8 +2113,103 @@ function Matches({openPlayer, openClub, openMatch}){
   );
 }
 
+// -- LEAGUE PROFILE ----------------------------------------
+// Maps the Table league key to ids/labels/competition keys used by the APIs.
+const LEAGUE_META={
+  pl:{lid:39, comp:'pl', label:'Premier League', logo:'https://media.api-sports.io/football/leagues/39.png'},
+  laliga:{lid:140, comp:'laliga', label:'La Liga', logo:'https://media.api-sports.io/football/leagues/140.png'},
+  seriea:{lid:135, comp:'seriea', label:'Serie A', logo:'https://media.api-sports.io/football/leagues/135.png'},
+  bundesliga:{lid:78, comp:'bundesliga', label:'Bundesliga', logo:'https://media.api-sports.io/football/leagues/78.png'},
+  ligue1:{lid:61, comp:'ligue1', label:'Ligue 1', logo:'https://media.api-sports.io/football/leagues/61.png'},
+};
+function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initialView}){
+  const meta=LEAGUE_META[leagueKey]||LEAGUE_META.pl;
+  const isPL=leagueKey==='pl';
+  const [view,setView]=useState(initialView||'table');
+  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
+
+  // Standings (same sources as the Table tab)
+  const {data:plData,loading:plLoad}=useApi(isPL?'/api/standings':null, 300000);
+  const {data:compData,loading:compLoad}=useApi(!isPL?'/api/comp-standings/'+meta.comp:null, 1800000);
+  const loading=isPL?plLoad:compLoad;
+  let table=[];
+  if(isPL){
+    table=(plData?.standings?.[0]?.table||[]).map(r=>({position:r.position, team:{id:r.team?.id, name:r.team?.name, crest:r.team?.crest}, played:r.playedGames, won:r.won, draw:r.draw, lost:r.lost, gd:r.goalDifference, points:r.points}));
+  } else {
+    table=(compData?.groups?.[0]?.table||[]).map(r=>({position:r.position, team:{id:r.team?.id, name:r.team?.name, crest:r.team?.logo, logo:r.team?.logo}, played:r.played, won:r.won, draw:r.draw, lost:r.lost, gd:r.gd, points:r.points}));
+  }
+  const ZC={1:C.teal,2:C.teal,3:C.teal,4:C.teal,5:C.blue,6:C.orange,18:C.red,19:C.red,20:C.red};
+  const LEAGUE_IDS={pl:39,laliga:140,seriea:135,bundesliga:78,ligue1:61};
+
+  return(
+    <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
+      {/* Header */}
+      <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
+          <img src={meta.logo} onError={e=>{e.target.style.display='none';}} style={{width:30,height:30,objectFit:'contain'}} alt=""/>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.white,letterSpacing:.5,lineHeight:1}}>{meta.label.toUpperCase()}</div>
+        </div>
+        <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2,WebkitOverflowScrolling:'touch'}}>
+          {[['table','Table'],['fixtures','Fixtures'],['news','News'],['players','Player Stats'],['teams','Team Stats']].map(([v,label])=>(
+            <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div key={view} className="hv-fade-tab" style={{padding:'12px 12px 0'}}>
+        {/* TABLE */}
+        {view==='table'&&<>
+          {loading&&<div style={{padding:'4px 0'}}><SkeletonRows n={12} h={46}/></div>}
+          {!loading&&!table.length&&<div style={{padding:24,color:C.muted,fontSize:13,textAlign:'center'}}>Table unavailable.</div>}
+          {!loading&&table.length>0&&<>
+            <div style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,padding:'0 12px 6px',alignItems:'center'}}>
+              <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:1}}>#</div>
+              <div/>
+              {['P','W','D','L','GD','PTS'].map((h,i)=><div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,textAlign:'center',letterSpacing:.5}}>{h}</div>)}
+            </div>
+            <div className="hv-stagger">
+            {table.map(row=>{
+              const code=TCODE[row.team?.name]||'???', zc=isPL?ZC[row.position]:null;
+              return(
+                <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub({...row.team, leagueId:LEAGUE_IDS[leagueKey]})}
+                  style={{display:'grid',gridTemplateColumns:'34px 1fr 26px 26px 26px 26px 34px 42px',gap:4,alignItems:'center',
+                    background:'linear-gradient(90deg,'+(zc?zc+'1f':'rgba(255,255,255,.02)')+' 0%, '+C.d2+' 22%)',
+                    borderRadius:10,marginBottom:5,padding:'10px 12px',cursor:'pointer',
+                    boxShadow:'0 1px 0 rgba(0,0,0,.3), 0 2px 8px rgba(0,0,0,.18)',
+                    borderLeft:'3px solid '+(zc||'transparent')}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <div style={{width:24,height:24,borderRadius:6,background:zc?zc:'rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:zc?C.dark:C.muted,lineHeight:1}}>{row.position}</span>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                    <Badge code={code} size={22} logo={row.team?.crest||row.team?.logo}/>
+                    <span style={{fontSize:13,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
+                  </div>
+                  <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.played}</div>
+                  <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.won}</div>
+                  <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.draw}</div>
+                  <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.lost}</div>
+                  <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.gd>0?'+':''}{row.gd}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.white,textAlign:'center'}}>{row.points}</div>
+                </div>
+              );
+            })}
+            </div>
+          </>}
+        </>}
+
+        {/* Other tabs - coming in later stages */}
+        {view!=='table'&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
+      </div>
+    </div>
+  );
+}
+
 // -- TABLE -------------------------------------------------
-function Table({openClub}){
+function Table({openClub, openLeague}){
   const LEAGUE_IDS={pl:39,laliga:140,seriea:135,bundesliga:78,ligue1:61};
   const LEAGUE_TABS=[
     {key:'pl', comp:'pl', label:'Premier League', short:'PL', season:true},
@@ -2153,9 +2248,9 @@ function Table({openClub}){
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
-          <div>
-            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5,lineHeight:.9}}>TABLES</div>
-            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Top 5 leagues &middot; Tap a club</div>
+          <div onClick={()=>openLeague&&openLeague(lg)} style={{cursor:openLeague?'pointer':'default'}}>
+            <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5,lineHeight:.9}}>{active?active.label.toUpperCase():'TABLES'}</div>
+            <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>{openLeague?'Tap for league profile':'Top 5 leagues'} &middot; Tap a club below</div>
           </div>
           {isPL&&<select value={season} onChange={e=>setSeason(Number(e.target.value))}
             style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none',letterSpacing:.5}}>
@@ -6402,6 +6497,7 @@ function App(){
   const openPlayer=(player,teamId,fromTab)=>{ if(!player||!teamId) return; pushPage({type:'player',player,teamId,fromTab}); };
   const openClub=(team, initialView)=>{ if(!team) return; pushPage({type:'club',team,initialView}); };
   const openMatchPage=(m)=>{ if(!m) return; pushPage({type:'match',match:m}); };
+  const openLeague=(leagueKey, initialView)=>{ if(!leagueKey) return; pushPage({type:'league',leagueKey,initialView}); };
   const goBack=()=>setStack(s=>{
     const top = s[s.length-1];
     const rest = s.slice(0,-1);
@@ -6420,6 +6516,7 @@ function App(){
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
   if(page?.type==='match') return <MatchModal match={page.match} initialTab={page.tab} initialPitchTeam={page.pitchTeam} onStateChange={(st)=>setStack(s=>{ const i=s.length-1; if(i<0||s[i].type!=='match') return s; const cp=[...s]; cp[i]={...cp[i],tab:st.tab,pitchTeam:st.pitchTeam}; return cp; })} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
+  if(page?.type==='league') return <LeagueModal leagueKey={page.leagueKey} initialView={page.initialView} onClose={goBack} openClub={openClub} openPlayer={openPlayer} openMatch={openMatchPage}/>;
   if(page?.type==='club') return <><ClubModal team={page.team} initialView={page.initialView} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatchPage}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
 
   return(
@@ -6434,7 +6531,7 @@ function App(){
       <div style={{animation:'fadeIn .2s ease'}}>
         {tab==='matches'&&<Matches openPlayer={openPlayer} openClub={openClub} openMatch={openMatchPage}/>}
         {tab==='predict'&&<Predictions/>}
-        {tab==='table'&&<Table openClub={openClub}/>}
+        {tab==='table'&&<Table openClub={openClub} openLeague={openLeague}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='games'&&<MiniGames openPlayer={openPlayer} openClub={openClub}/>}
         {tab==='news'&&<NewsPage/>}
