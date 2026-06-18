@@ -1040,20 +1040,30 @@ app.get('/api/transfers', async (req, res) => {
   try {
     const d = await af(q, 6*60*MIN);
     if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,2)});
-    // Flatten into a simple list of moves
+    const cleanFee = (t)=>{ if(!t||t==='N/A'||t==='null'||t==='-') return null; return t; };
+    const teamId = team ? Number(team) : null;
     const moves = [];
     (d.response||[]).forEach(p=>{
       (p.transfers||[]).forEach(t=>{
+        const inId=t.teams?.in?.id, outId=t.teams?.out?.id;
+        // For a club query, direction is relative to the queried team.
+        const dir = teamId ? (inId===teamId ? 'in' : outId===teamId ? 'out' : null) : null;
         moves.push({
           playerId:p.player?.id, playerName:p.player?.name,
-          date:t.date, type:t.type,
-          fromName:t.teams?.out?.name, fromLogo:t.teams?.out?.logo,
-          toName:t.teams?.in?.name, toLogo:t.teams?.in?.logo,
+          date:t.date, fee:cleanFee(t.type), dir,
+          fromName:t.teams?.out?.name, fromLogo:t.teams?.out?.logo, fromId:outId,
+          toName:t.teams?.in?.name, toLogo:t.teams?.in?.logo, toId:inId,
         });
       });
     });
     moves.sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const data = {moves};
+    let out = moves;
+    if(teamId){
+      // Club feed is noisy: keep only moves involving this club, within recent windows.
+      const cutoff = Date.now() - 2*365*24*60*60*1000; // last ~2 years
+      out = moves.filter(m=>m.dir && m.date && new Date(m.date).getTime()>=cutoff);
+    }
+    const data = {moves: out};
     afCache[cKey]={data, ts:Date.now()};
     res.json(data);
   } catch(e){ res.status(500).json({error:e.message, moves:[]}); }
@@ -4117,6 +4127,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const {data:fixturesData} = useApi(isPL ? '/api/matches' : null, 300000);
   const afTeamId = isPL ? (afSquadData?.teamId || null) : (team?.id || null);
   const {data:clubFixData} = useApi(afTeamId ? '/api/club/'+afTeamId+'/fixtures' : null, 1800000);
+  const {data:clubTransfersData, loading:transfersLoading} = useApi(afTeamId ? '/api/transfers?team='+afTeamId : null, 6*3600000);
   const {data:scorersData} = useApi(isPL ? '/api/scorers?limit=100' : null, 600000);
   const {data:teamStats} = useApi(isPL && team?.name ? '/api/team-stats?name='+encodeURIComponent(team.name) : null, 6*3600000);
   const {data:clubStatsData} = useApi(!isPL && team?.id && team?.leagueId ? '/api/club/'+team.id+'/stats?league='+team.leagueId : null, 6*3600000);
@@ -4270,7 +4281,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
         </div>
         {/* Tab bar */}
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}}>
-          {['overview','squad','stats','table','fixtures'].map(v=>(
+          {['overview','squad','stats','table','fixtures','transfers'].map(v=>(
             <button key={v} onClick={()=>setView(v)} style={view===v?{...tS,borderColor:tc,color:tc,background:tc+'14'}:tS}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>
           ))}
         </div>
@@ -4712,6 +4723,38 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>);
               })
             : [...teamFixtures].filter(m=>m.comp===fixFilter).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate)).map((m,i)=><FixRow key={i} m={m} teamId={afTeamId} openClub={openClub} openMatch={openMatch}/>)}
+        </>}
+
+        {view==='transfers'&&<>
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:10}}>Recent Transfers</div>
+          {transfersLoading&&<div style={{textAlign:'center',padding:24}}><Spinner size={22}/></div>}
+          {!transfersLoading&&(!clubTransfersData||!(clubTransfersData.moves||[]).length)&&
+            <div style={{color:C.muted,fontSize:13,textAlign:'center',padding:24}}>No recent transfer activity available.</div>}
+          {!transfersLoading&&clubTransfersData&&(clubTransfersData.moves||[]).length>0&&
+            <div className="hv-anim">
+              {(clubTransfersData.moves||[]).map((m,i)=>{
+                const isIn=m.dir==='in';
+                const otherName=isIn?m.fromName:m.toName, otherLogo=isIn?m.fromLogo:m.toLogo;
+                return(
+                  <div key={i} onClick={()=>m.playerId&&openPlayer&&openPlayer({id:m.playerId,name:m.playerName,teamName:team?.name},afTeamId)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:C.d2,borderRadius:10,marginBottom:6,cursor:m.playerId&&openPlayer?'pointer':'default'}}>
+                    <div style={{width:30,textAlign:'center',flexShrink:0}}>
+                      <span style={{fontSize:15,fontWeight:700,color:isIn?C.green:C.red}}>{isIn?'\u2193':'\u2191'}</span>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.playerName}</div>
+                      <div style={{fontSize:11,color:C.muted,display:'flex',alignItems:'center',gap:5,marginTop:2}}>
+                        {otherLogo&&<img src={otherLogo} onError={e=>{e.target.style.display='none';}} style={{width:14,height:14,objectFit:'contain'}} alt=""/>}
+                        <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{isIn?'from ':'to '}{otherName||'\u2014'}</span>
+                      </div>
+                    </div>
+                    <div style={{textAlign:'right',flexShrink:0}}>
+                      {m.fee&&<div style={{fontSize:12,fontWeight:700,color:C.gold}}>{m.fee}</div>}
+                      <div style={{fontSize:10,color:C.muted}}>{m.date?.slice(0,7)||''}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
         </>}
 
       </div>
