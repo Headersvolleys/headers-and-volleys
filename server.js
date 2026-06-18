@@ -1987,28 +1987,27 @@ function MatchesDateStrip({selected, onPick}){
     </div>
   );
 }
-function Matches({openPlayer, openClub}){
+function Matches({openPlayer, openClub, openMatch}){
   const _now=new Date();
   const todayIso=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(_now.getDate()).padStart(2,'0');
   const [date,setDate]=useState(todayIso);
   const {data,loading,error}=useApi('/api/day?date='+date, 300000);
-  const [sel,setSel]=useState(null);
   const [tableComp,setTableComp]=useState(null); // {key,title}
   const groups=data?.groups||[];
-  // adapt a day-view match (AF shape) into the shape MatchModal expects, with the AF id pre-resolved
-  const openMatch=(m)=>{
+  // adapt a day-view match (AF shape) into the shape MatchModal expects, then open via the App stack
+  const openMatchRow=(m)=>{
     const fin=m.status==='FT'||m.status==='AET'||m.status==='PEN';
-    setSel({
+    const built={
       id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
       status:fin?'FINISHED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':'SCHEDULED',
       homeTeam:{id:m.home.id, name:m.home.name, crest:m.home.logo},
       awayTeam:{id:m.away.id, name:m.away.name, crest:m.away.logo},
       score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
-    });
+    };
+    if(openMatch) openMatch(built);
   };
   return(
     <div style={{paddingBottom:80}}>
-      {sel&&<MatchModal match={sel} onClose={()=>setSel(null)} openPlayer={openPlayer} openClub={openClub}/>}
       {tableComp&&<CompStandings compKey={tableComp.key} title={tableComp.title} onClose={()=>setTableComp(null)}/>}
       {/* Header */}
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 14px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
@@ -2040,7 +2039,7 @@ function Matches({openPlayer, openClub}){
               <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3,flex:1}}>{g.name}</div>
               {LID_TO_STANDINGS[g.lid]&&<button onClick={()=>setTableComp({key:LID_TO_STANDINGS[g.lid],title:g.name})} style={{background:'rgba(10,191,184,.12)',border:'1px solid '+C.teal,color:C.teal,fontSize:10.5,fontWeight:700,borderRadius:7,padding:'4px 10px',cursor:'pointer',letterSpacing:.3}}>Table</button>}
             </div>
-            {g.matches.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatch(m)}/>)}
+            {g.matches.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatchRow(m)}/>)}
           </div>
         ))}
       </div>
@@ -5318,7 +5317,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
 
   // Hero enrichment from API-Football player object
   const cp = career?.player || {};
-  const photoUrl = cp.id ? '/api/af/photo/'+cp.id : null;
+  const photoId = cp.id || player?.id || player?.afId || null;
+  const photoUrl = photoId ? '/api/af/photo/'+photoId : null;
   const dobRaw = p?.dateOfBirth || cp.birth?.date || null;
   const dobDate = dobRaw ? new Date(dobRaw) : null;
   const dobValid = dobDate && !isNaN(dobDate);
@@ -6327,6 +6327,7 @@ function App(){
   const pushPage = (pg)=>setStack(s=>[...s, pg]);
   const openPlayer=(player,teamId,fromTab)=>{ if(!player||!teamId) return; pushPage({type:'player',player,teamId,fromTab}); };
   const openClub=(team, initialView)=>{ if(!team) return; pushPage({type:'club',team,initialView}); };
+  const openMatchPage=(m)=>{ if(!m) return; pushPage({type:'match',match:m}); };
   const goBack=()=>setStack(s=>{
     const top = s[s.length-1];
     const rest = s.slice(0,-1);
@@ -6344,7 +6345,8 @@ function App(){
   const openMatch=(m)=>{ if(!m) return; setMatchOverlay(m); };
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
-  if(page?.type==='club') return <><ClubModal team={page.team} initialView={page.initialView} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatch}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
+  if(page?.type==='match') return <MatchModal match={page.match} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
+  if(page?.type==='club') return <><ClubModal team={page.team} initialView={page.initialView} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatchPage}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
 
   return(
     <div style={{minHeight:'100vh',background:C.dark}}>
@@ -6356,7 +6358,7 @@ function App(){
         <div style={{background:C.d3,border:'1px solid '+C.d4,borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600,color:C.muted}}>LIVE <span style={{color:C.green,marginLeft:4}}>*</span></div>
       </nav>
       <div style={{animation:'fadeIn .2s ease'}}>
-        {tab==='matches'&&<Matches openPlayer={openPlayer} openClub={openClub}/>}
+        {tab==='matches'&&<Matches openPlayer={openPlayer} openClub={openClub} openMatch={openMatchPage}/>}
         {tab==='predict'&&<Predictions/>}
         {tab==='table'&&<Table openClub={openClub}/>}
         {tab==='stats'&&<Stats openPlayer={openPlayer} openClub={openClub}/>}
