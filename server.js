@@ -3850,7 +3850,7 @@ function MiniGames({openPlayer, openClub}){
   ];
 
   return(
-    <div style={{paddingBottom:80}}>
+    <div className="hv-anim" style={{paddingBottom:80}}>
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{paddingLeft:8}}>
@@ -4780,6 +4780,7 @@ function Stats({openPlayer, openClub}){
         ))}
       </div>
 
+      <div key={view} className="hv-fade-tab">
       {/* TOP SCORERS */}
       {view==='scorers'&&<>
         {scorers.slice(0,limit).map((s,i)=>(
@@ -4878,6 +4879,7 @@ function Stats({openPlayer, openClub}){
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
