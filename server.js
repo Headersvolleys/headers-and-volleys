@@ -5965,7 +5965,7 @@ function SinglePitch({lineup, col, name, side, pitchWidth, openPlayer, teamId, t
     </div>
   );
 }
-function MatchModal({match, onClose, openPlayer, openClub}){
+function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPitchTeam, onStateChange}){
   const [afId, setAfId] = useState(null);
   const [afLoading, setAfLoading] = useState(true);
   const [stats, setStats] = useState([]);
@@ -5973,9 +5973,10 @@ function MatchModal({match, onClose, openPlayer, openClub}){
   const [events, setEvents] = useState([]);
   const [h2h, setH2h] = useState(null);
   const [allMatches, setAllMatches] = useState(null);
-  const [tab, setTab] = useState('stats');
+  const [tab, setTab] = useState(initialTab || 'stats');
   const [lineupView, setLineupView] = useState('pitch');
-  const [pitchTeam, setPitchTeam] = useState('home');
+  const [pitchTeam, setPitchTeam] = useState(initialPitchTeam || 'home');
+  useEffect(()=>{ if(onStateChange) onStateChange({tab, pitchTeam}); },[tab, pitchTeam]);
   const [understatXG, setUnderstatXG] = useState(null);
 
   const hc = TCODE[match.homeTeam?.name]||'???';
@@ -6345,7 +6346,7 @@ function App(){
   const openMatch=(m)=>{ if(!m) return; setMatchOverlay(m); };
 
   if(page?.type==='player') return <PlayerModal player={page.player} teamId={page.teamId} onClose={goBack} openClub={openClub}/>;
-  if(page?.type==='match') return <MatchModal match={page.match} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
+  if(page?.type==='match') return <MatchModal match={page.match} initialTab={page.tab} initialPitchTeam={page.pitchTeam} onStateChange={(st)=>setStack(s=>{ const i=s.length-1; if(i<0||s[i].type!=='match') return s; const cp=[...s]; cp[i]={...cp[i],tab:st.tab,pitchTeam:st.pitchTeam}; return cp; })} onClose={goBack} openPlayer={openPlayer} openClub={openClub}/>;
   if(page?.type==='club') return <><ClubModal team={page.team} initialView={page.initialView} onClose={goBack} openPlayer={openPlayer} openClub={openClub} openMatch={openMatchPage}/>{matchOverlay&&<MatchModal match={matchOverlay} onClose={()=>setMatchOverlay(null)} openPlayer={openPlayer} openClub={openClub}/>}</>;
 
   return(
