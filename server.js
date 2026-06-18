@@ -93,11 +93,18 @@ app.get('/api/news', async (req, res) => {
 });
 
 // Transfer rumours: filter the news feed for transfer-related stories.
-const RUMOUR_RE=/\b(transfer|signing|signs|sign|move|bid|deal|linked|target|join|joins|loan|swoop|interest(?:ed)?|agree(?:s|d)?|fee|contract|wages|release clause|medical|swap|approach|talks|offer|negotiat|set to|close to|wants|chase|pursue|exit|sell|sold|buy|bought|capture|snap up|verbal|personal terms|done deal|here we go)\b/i;
+// Require strong, transfer-specific signals to avoid false positives.
+const RUMOUR_STRONG=/\b(transfer window|transfer fee|transfer target|transfer saga|transfer deal|transfer news|deadline day|release clause|loan move|loan deal|loan spell|on loan|done deal|here we go|medical (?:at|ahead|booked|complete)|personal terms|swap deal|club[- ]record (?:fee|signing|deal)|sign(?:s|ed|ing) for|signing of|joins? (?:on|from)|completes? (?:a )?(?:move|transfer|signing)|sealed a (?:move|transfer)|(?:bid|offer) of \W?[\d,.]+\s?(?:m|million|bn)|\W[\d,.]+\s?(?:m|million)\s+(?:move|transfer|deal|signing|bid|fee))\b/i;
+const RUMOUR_WINDOW=/\b(window watch|transfers? round-?up|deals? round-?up|ins and outs|every (?:done )?deal)\b/i;
+const RUMOUR_EXCLUDE=/\b(killer|shooting|shot dead|arrest|court|trial|prison|jail|sportswashing|behind closed doors|death|died|funeral|crash|injury blow|war|protest)\b/i;
 app.get('/api/rumours', async (req, res) => {
   try {
     const news = await getAllNews();
-    const items = (news.items||[]).filter(it=>RUMOUR_RE.test(it.title+' '+(it.desc||'')));
+    const items = (news.items||[]).filter(it=>{
+      const txt = it.title+' '+(it.desc||'');
+      if(RUMOUR_EXCLUDE.test(txt)) return false;
+      return RUMOUR_STRONG.test(txt) || RUMOUR_WINDOW.test(txt);
+    });
     res.json({items, fetched:news.fetched, sources:[...new Set(items.map(i=>i.src))]});
   } catch(e){ res.status(500).json({error:e.message, items:[]}); }
 });
@@ -1059,11 +1066,14 @@ app.get('/api/transfers', async (req, res) => {
     moves.sort((a,b)=>new Date(b.date)-new Date(a.date));
     let out = moves;
     if(teamId){
-      // Club feed is noisy: keep only moves involving this club, within recent windows.
-      const cutoff = Date.now() - 2*365*24*60*60*1000; // last ~2 years
-      out = moves.filter(m=>m.dir && m.date && new Date(m.date).getTime()>=cutoff);
+      // Club feed is noisy: keep only moves with a clear direction for this club,
+      // prefer recent ones, but always show the most recent if any exist.
+      const directional = moves.filter(m=>m.dir);
+      const cutoff = Date.now() - 3*365*24*60*60*1000; // last ~3 years
+      const recent = directional.filter(m=>m.date && new Date(m.date).getTime()>=cutoff);
+      out = (recent.length ? recent : directional).slice(0, 40);
     }
-    const data = {moves: out};
+    const data = {moves: out, rawCount: moves.length};
     afCache[cKey]={data, ts:Date.now()};
     res.json(data);
   } catch(e){ res.status(500).json({error:e.message, moves:[]}); }
@@ -3879,7 +3889,7 @@ function NewsPage(){
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{paddingLeft:8}}>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>FOOTBALL <span style={{color:C.teal}}>{view==='rumours'?'TRANSFERS':'NEWS'}</span></div>
-          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>{view==='rumours'?'Transfer talk &middot; rumours &amp; done deals':'Latest headlines &middot; updated hourly'}</div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>{view==='rumours'?'Transfer talk \u00B7 rumours & done deals':'Latest headlines \u00B7 updated hourly'}</div>
         </div>
       </div>
       <div style={{padding:'12px 16px 0',display:'flex',gap:8}}>
