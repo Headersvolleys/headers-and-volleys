@@ -35,6 +35,9 @@ const NEWS_FEEDS=[
   {src:'Daily Mail', url:'https://www.dailymail.co.uk/sport/football/index.rss'},
   {src:'This Is Anfield', url:'https://www.thisisanfield.com/feed/'},
   {src:'Gunnerblog', url:'https://gunnerblog.com/feed/'},
+  {src:'Sky Sports', url:'https://www.skysports.com/rss/12040'},
+  {src:'TEAMtalk', url:'https://www.teamtalk.com/feed'},
+  {src:'Guardian Transfers', url:'https://www.theguardian.com/football/transfer-window/rss'},
 ];
 function parseRss(xml, src){
   const items=[];
@@ -63,30 +66,43 @@ function parseRss(xml, src){
   }
   return items;
 }
-app.get('/api/news', async (req, res) => {
+// Shared: fetch + parse all feeds, dedupe, cap per source. Cached 15min.
+async function getAllNews(){
   const cKey='news_all';
-  if(cache[cKey] && Date.now()-cache[cKey].ts < 15*MIN) return res.json(cache[cKey].data);
+  if(cache[cKey] && Date.now()-cache[cKey].ts < 15*MIN) return cache[cKey].data;
+  const fetchFeed=(f)=>{
+    const ctl=new AbortController();
+    const to=setTimeout(()=>ctl.abort(), 6000);
+    return fetch(f.url,{signal:ctl.signal,headers:{'User-Agent':'Mozilla/5.0 (compatible; HVNewsBot/1.0)','Accept':'application/rss+xml,application/xml,text/xml,*/*'}})
+      .then(r=>r.ok?r.text():'').then(x=>x?parseRss(x,f.src):[]).catch(()=>[]).finally(()=>clearTimeout(to));
+  };
+  const results = await Promise.all(NEWS_FEEDS.map(fetchFeed));
+  let items=[].concat(...results);
+  const seen=new Set(); items=items.filter(it=>{const k=it.title.toLowerCase().slice(0,50); if(seen.has(k))return false; seen.add(k); return true;});
+  items.sort((a,b)=>b.ts-a.ts);
+  const perSrc={}; const capped=[];
+  for(const it of items){ perSrc[it.src]=(perSrc[it.src]||0)+1; if(perSrc[it.src]<=18) capped.push(it); }
+  items=capped.slice(0,80);
+  const data={items, fetched:Date.now(), sources:[...new Set(items.map(i=>i.src))]};
+  cache[cKey]={data, ts:Date.now()};
+  return data;
+}
+app.get('/api/news', async (req, res) => {
+  try { res.json(await getAllNews()); }
+  catch(e){ res.status(500).json({error:e.message, items:[]}); }
+});
+
+// Transfer rumours: filter the news feed for transfer-related stories.
+const RUMOUR_RE=/\b(transfer|signing|signs|sign|move|bid|deal|linked|target|join|joins|loan|swoop|interest(?:ed)?|agree(?:s|d)?|fee|contract|wages|release clause|medical|swap|approach|talks|offer|negotiat|set to|close to|wants|chase|pursue|exit|sell|sold|buy|bought|capture|snap up|verbal|personal terms|done deal|here we go)\b/i;
+app.get('/api/rumours', async (req, res) => {
   try {
-    const fetchFeed=(f)=>{
-      const ctl=new AbortController();
-      const to=setTimeout(()=>ctl.abort(), 6000); // 6s per feed
-      return fetch(f.url,{signal:ctl.signal,headers:{'User-Agent':'Mozilla/5.0 (compatible; HVNewsBot/1.0)','Accept':'application/rss+xml,application/xml,text/xml,*/*'}})
-        .then(r=>r.ok?r.text():'').then(x=>x?parseRss(x,f.src):[]).catch(()=>[]).finally(()=>clearTimeout(to));
-    };
-    const results = await Promise.all(NEWS_FEEDS.map(fetchFeed));
-    let items=[].concat(...results);
-    // dedupe by title
-    const seen=new Set(); items=items.filter(it=>{const k=it.title.toLowerCase().slice(0,50); if(seen.has(k))return false; seen.add(k); return true;});
-    items.sort((a,b)=>b.ts-a.ts);
-    // cap each source so one prolific outlet (e.g. Daily Mail) does not dominate
-    const perSrc={}; const capped=[];
-    for(const it of items){ perSrc[it.src]=(perSrc[it.src]||0)+1; if(perSrc[it.src]<=18) capped.push(it); }
-    items=capped.slice(0,80);
-    const data={items, fetched:Date.now(), sources:[...new Set(items.map(i=>i.src))]};
-    cache[cKey]={data, ts:Date.now()};
-    res.json(data);
+    const news = await getAllNews();
+    const items = (news.items||[]).filter(it=>RUMOUR_RE.test(it.title+' '+(it.desc||'')));
+    res.json({items, fetched:news.fetched, sources:[...new Set(items.map(i=>i.src))]});
   } catch(e){ res.status(500).json({error:e.message, items:[]}); }
 });
+
+
 
 app.get('/api/matches', async (req, res) => {
   try { res.json(await fd('/competitions/PL/matches?season='+SEASON+'', 5*MIN)); }
@@ -3811,8 +3827,8 @@ function timeAgo(ts){
   const h=Math.floor(m/60); if(h<24) return h+'h ago';
   const d=Math.floor(h/24); return d+'d ago';
 }
-function NewsList({filter, limit}){
-  const {data,loading}=useApi('/api/news',900000);
+function NewsList({filter, limit, endpoint}){
+  const {data,loading}=useApi(endpoint||'/api/news',900000);
   let items=data?.items||[];
   if(filter){
     const f=filter.toLowerCase();
@@ -3844,17 +3860,24 @@ function NewsList({filter, limit}){
   );
 }
 function NewsPage(){
+  const [view,setView]=useState('news');
+  const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer'};
+  const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
   return(
     <div style={{paddingBottom:80}}>
       <div style={{background:'linear-gradient(120deg,#E8F3F2 0%,#FFFFFF 60%)',padding:'18px 16px 16px',borderBottom:'1px solid '+C.d4,position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{paddingLeft:8}}>
-          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>FOOTBALL <span style={{color:C.teal}}>NEWS</span></div>
-          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Latest headlines &middot; updated hourly</div>
+          <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:34,color:C.white,letterSpacing:2,lineHeight:.9}}>FOOTBALL <span style={{color:C.teal}}>{view==='rumours'?'TRANSFERS':'NEWS'}</span></div>
+          <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>{view==='rumours'?'Transfer talk &middot; rumours &amp; done deals':'Latest headlines &middot; updated hourly'}</div>
         </div>
       </div>
-      <div style={{padding:16}}>
-        <NewsList/>
+      <div style={{padding:'12px 16px 0',display:'flex',gap:8}}>
+        <button onClick={()=>setView('news')} className="hv-press" style={view==='news'?tA:tS}>All News</button>
+        <button onClick={()=>setView('rumours')} className="hv-press" style={view==='rumours'?tA:tS}>Transfers</button>
+      </div>
+      <div key={view} className="hv-fade-tab" style={{padding:16}}>
+        <NewsList endpoint={view==='rumours'?'/api/rumours':'/api/news'}/>
       </div>
     </div>
   );
