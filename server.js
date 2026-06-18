@@ -6117,7 +6117,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <button onClick={onClose} style={{...tS,marginLeft:'auto'}}>Close</button>
           </div>
         </div>
-        <div style={{padding:16}}>
+        <div key={tab} className="hv-fade-tab" style={{padding:16}}>
 
           {tab==='stats'&&(
             <div>
