@@ -1014,6 +1014,36 @@ app.get('/api/club/:teamId/stats', async (req, res) => {
   } catch(e){ res.status(500).json({error:e.message, stats:null}); }
 });
 
+// Transfers by team or player (API-Football). Used to gauge transfer-data coverage.
+app.get('/api/transfers', async (req, res) => {
+  const team = req.query.team, player = req.query.player;
+  if(!team && !player) return res.status(400).json({error:'team or player required'});
+  const q = team ? '/transfers?team='+team : '/transfers?player='+player;
+  const cKey = 'transfers_'+(team||('p'+player));
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 6*60*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af(q, 6*60*MIN);
+    if(req.query.debug) return res.json({results:d.results, errors:d.errors, sample:(d.response||[]).slice(0,2)});
+    // Flatten into a simple list of moves
+    const moves = [];
+    (d.response||[]).forEach(p=>{
+      (p.transfers||[]).forEach(t=>{
+        moves.push({
+          playerId:p.player?.id, playerName:p.player?.name,
+          date:t.date, type:t.type,
+          fromName:t.teams?.out?.name, fromLogo:t.teams?.out?.logo,
+          toName:t.teams?.in?.name, toLogo:t.teams?.in?.logo,
+        });
+      });
+    });
+    moves.sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const data = {moves};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, moves:[]}); }
+});
+
+
 
 app.get('/api/af/squad', async (req, res) => {
   try {
