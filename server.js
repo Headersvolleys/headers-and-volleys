@@ -1413,6 +1413,8 @@ body{background:#FFFFFF;color:#0F2027;font-family:'DM Sans',sans-serif;max-width
 .hv-card{transition:transform .18s ease, box-shadow .25s ease, border-color .2s ease}
 .hv-skel{background:linear-gradient(90deg,#EEF5F4 0%,#E0EDEC 40%,#EEF5F4 80%);background-size:600px 100%;animation:hvShimmer 1.3s linear infinite;border-radius:8px}
 .hv-fade-tab{animation:hvFadeUp .3s ease both}
+.hv-screen{animation:hvScreenIn .28s cubic-bezier(.22,.61,.36,1) both}
+@keyframes hvScreenIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 input[type=number]{-moz-appearance:textfield}
 </style>
@@ -1607,6 +1609,7 @@ function useCrests(){
   },[]);
 }
 function Spinner({size=36}){return <div style={{width:size,height:size,border:'3px solid '+C.d4,borderTop:'3px solid '+C.teal,borderRadius:'50%',margin:'0 auto',animation:'spin 1s linear infinite'}}/>;}
+function FadeIn({children, style}){ return <div className="hv-anim" style={style}>{children}</div>; }
 
 function Skeleton({w='100%',h=14,r=8,mb=0,style={}}){
   return <div className="hv-skel" style={{width:w,height:h,borderRadius:r,marginBottom:mb,...style}}/>;
@@ -4192,7 +4195,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
   const topNats=Object.entries(natCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return(
-    <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
+    <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
       {/* Header */}
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100,display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
@@ -5423,7 +5426,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const dobFmt = dobValid ? dobDate.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : null;
 
   return(
-    <div style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
+    <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
       {/* Header */}
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100,display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
@@ -6081,7 +6084,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
 
   return(
     <div style={{position:'fixed',inset:0,background:C.dark,zIndex:500,overflowY:'auto'}}>
-      <div style={{background:C.d2,width:'100%',maxWidth:520,minHeight:'100%',margin:'0 auto',overflowY:'auto'}}>
+      <div className="hv-screen" style={{background:C.d2,width:'100%',maxWidth:520,minHeight:'100%',margin:'0 auto',overflowY:'auto'}}>
         <div style={{padding:'12px 16px',borderBottom:'1px solid '+C.d4,display:'flex',alignItems:'center',gap:10,position:'sticky',top:0,background:C.d2,zIndex:2}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:18,color:C.white,letterSpacing:.5}}>MATCH</div>
@@ -6117,7 +6120,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <button onClick={onClose} style={{...tS,marginLeft:'auto'}}>Close</button>
           </div>
         </div>
-        <div style={{padding:16}}>
+        <div key={tab} className="hv-fade-tab" style={{padding:16}}>
 
           {tab==='stats'&&(
             <div>
@@ -6125,7 +6128,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
               {!afLoading&&!afId&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Match stats not available</div>}
               {!afLoading&&afId&&Object.keys(homeStats).length===0&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>Stats unavailable for this game</div>}
               {!afLoading&&afId&&Object.keys(homeStats).length>0&&(
-                <div>
+                <div className="hv-anim">
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
                     <div style={{display:'flex',alignItems:'center',gap:6}}><Badge code={hc} size={20} logo={match.homeTeam?.crest}/><span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</span></div>
                     <span style={{fontSize:10,color:C.muted}}>STATS</span>
@@ -6199,7 +6202,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
             <div>
               {afLoading&&<div style={{textAlign:'center',padding:20}}><Spinner size={24}/></div>}
               {!afLoading&&(!events||events.length===0)&&<div style={{color:C.muted,fontSize:13,textAlign:'center',padding:20}}>No events recorded</div>}
-              {!afLoading&&events&&events.length>0&&[...events].sort((a,b)=>a.time?.elapsed-b.time?.elapsed).map((e,i)=>{
+              {!afLoading&&events&&events.length>0&&<div className="hv-anim">{[...events].sort((a,b)=>a.time?.elapsed-b.time?.elapsed).map((e,i)=>{
                 const norm=s=>(s||'').toLowerCase().replace(/[^a-z]/g,'');
                 const hn3=norm(TSHORT[match.homeTeam?.name]||match.homeTeam?.name);
                 const en3=norm(e.team?.name||'');
@@ -6230,7 +6233,7 @@ function MatchModal({match, onClose, openPlayer, openClub}){
                     <div style={{textAlign:'left'}}>{!isHome&&<>{nameNode}{detailNode&&<div style={{marginTop:1,display:'flex',justifyContent:'flex-start'}}>{detailNode}</div>}</>}</div>
                   </div>
                 );
-              })}
+              })}</div>
             </div>
           )}
 
