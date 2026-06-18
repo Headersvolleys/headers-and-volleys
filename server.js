@@ -5307,6 +5307,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
   const rawPos = p?.position || xgData?.position || career?.seasonStats?.[0]?.position || career?.player?.position || player?.position || null;
   const posDisplay = normPos(rawPos);
   const code = TCODE[team?.name] || TCODE[player?.teamName] || '???';
+  // Non-PL clubs aren't in the PL crest maps; build the AF club logo from the team id.
+  const clubLogo = (code==='???' && (team?.id||teamId)) ? 'https://media.api-sports.io/football/teams/'+(team?.id||teamId)+'.png' : (team?.logo||team?.crest||null);
   const tc = teamCol(code);
   const flagUrl = flag(p?.nationality);
   const {data:standData} = useApi('/api/standings', 300000);
@@ -5441,7 +5443,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
             <div style={{width:78,height:78,borderRadius:'50%',flexShrink:0,background:C.d3,border:'2px solid '+tc,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center'}}>
               {photoUrl
                 ? <img src={photoUrl} onError={e=>{e.target.style.display='none';}} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
-                : <Badge code={code} size={44}/>}
+                : <Badge code={code} size={44} logo={clubLogo}/>}
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:.5,lineHeight:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p?.name}</div>
@@ -5451,7 +5453,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
                 {posDisplay&&<span style={{fontSize:11,color:tc,fontWeight:700,background:'rgba(255,255,255,.06)',padding:'2px 8px',borderRadius:5}}>{posDisplay}</span>}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8}}>
-                <Badge code={code} size={18}/>
+                <Badge code={code} size={18} logo={clubLogo}/>
                 <span onClick={()=>openClub&&openClub(team)} style={{fontSize:12,color:C.teal,fontWeight:700,cursor:openClub?'pointer':'default'}}>{TSHORT[team?.name]||team?.name}</span>
                 {p?.shirtNumber&&<span style={{fontSize:12,color:C.muted,marginLeft:2}}>#{p.shirtNumber}</span>}
               </div>
@@ -5469,6 +5471,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
         {loading&&<div style={{textAlign:'center',padding:40}}><Spinner size={28}/></div>}
 
         {!loading&&<>
+          {allSeasons.length===0 && !hasVals(s) && (career?.trophies||[]).length===0 &&
+            <div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:10,padding:'14px 16px',marginBottom:14,fontSize:12.5,color:C.muted,lineHeight:1.5}}>Detailed stats aren&apos;t available for this player. They may play outside the top-5 European leagues, where our data coverage is limited.</div>}
           {/* Season stats with selector */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,gap:8}}>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>{seasonLabel}</div>
@@ -5704,7 +5708,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           {team&&<>
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Club</div>
             <div onClick={()=>openClub&&openClub(team)} style={{background:C.d2,borderRadius:10,padding:'12px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
-              <Badge code={TCODE[team?.name]||'???'} size={36}/>
+              <Badge code={TCODE[team?.name]||'???'} size={36} logo={clubLogo}/>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:C.teal}}>{TSHORT[team?.name]||team?.name}</div>
                 {tableRow&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>
