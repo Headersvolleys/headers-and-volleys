@@ -2324,7 +2324,13 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
         </>}
 
         {/* Other tabs - coming in later stages */}
-        {(view==='news'||view==='players'||view==='teams')&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
+        {/* NEWS */}
+        {view==='news'&&<div style={{paddingTop:2}}>
+          <NewsList filter={isPL?null:meta.label}/>
+        </div>}
+
+        {/* Other tabs - coming in later stages */}
+        {(view==='players'||view==='teams')&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
       </div>
     </div>
   );
