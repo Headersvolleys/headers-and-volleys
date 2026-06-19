@@ -971,10 +971,11 @@ app.get('/api/league/:leagueId/teams', async (req, res) => {
 app.get('/api/league/:leagueId/fixtures', async (req, res) => {
   const lid = req.params.leagueId;
   if(!LEAGUES[lid]) return res.status(404).json({error:'unsupported league'});
-  const cKey='lgfix_'+lid+'_'+SEASON;
+  const season = req.query.season || String(SEASON);
+  const cKey='lgfix_'+lid+'_'+season;
   if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
   try {
-    const d = await af('/fixtures?league='+lid+'&season='+SEASON, 30*MIN);
+    const d = await af('/fixtures?league='+lid+'&season='+season, 30*MIN);
     const matches = (d.response||[]).map(x=>({
       id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
       home:{id:x.teams?.home?.id, name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
@@ -2152,6 +2153,10 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
   const {data:plData,loading:plLoad}=useApi(isPL?'/api/standings':null, 300000);
   const {data:compData,loading:compLoad}=useApi(!isPL?'/api/comp-standings/'+meta.comp:null, 1800000);
   const {data:fixData,loading:fixLoad}=useApi('/api/league/'+meta.lid+'/fixtures', 1800000);
+  const [fxSeason,setFxSeason]=useState(SEASON);
+  const {data:fxTabData,loading:fxTabLoad}=useApi('/api/league/'+meta.lid+'/fixtures?season='+fxSeason, fxSeason===SEASON?1800000:6*3600000);
+  const [fxMode,setFxMode]=useState('round'); // round | date | team
+  const [fxTeam,setFxTeam]=useState('ALL');
   const loading=isPL?plLoad:compLoad;
   let table=[];
   if(isPL){
@@ -2178,6 +2183,20 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
     awayTeam:{id:m.away?.id, name:m.away?.name, crest:m.away?.logo},
     score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
   });
+
+  // Fixtures tab: team list + grouped fixtures (computed in body to avoid JSX IIFEs)
+  const fxAll = fxTabData?.matches || [];
+  const fxTeams = [...new Map(fxAll.flatMap(m=>[[m.home?.id,m.home],[m.away?.id,m.away]]).filter(p=>p[0]).map(p=>[p[0],p[1]])).values()].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  let fxShown = fxAll;
+  if(fxMode==='team'&&fxTeam!=='ALL') fxShown = fxAll.filter(m=>m.home?.id===Number(fxTeam)||m.away?.id===Number(fxTeam));
+  const fxGroups = [];
+  if(fxMode==='round'){
+    const byR={}; fxShown.forEach(m=>{const k=m.round||'Other'; (byR[k]=byR[k]||[]).push(m);});
+    Object.keys(byR).sort((a,b)=>{const na=parseInt((a.match(/\d+/)||[0])[0]); const nb=parseInt((b.match(/\d+/)||[0])[0]); return na-nb;}).forEach(k=>fxGroups.push({label:(k||'').replace(/^.*-\s*/,'Matchday '), matches:byR[k]}));
+  } else {
+    const byD={}; fxShown.forEach(m=>{const k=m.utcDate?new Date(m.utcDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}):'TBD'; (byD[k]=byD[k]||[]).push(m);});
+    Object.keys(byD).forEach(k=>fxGroups.push({label:k, matches:byD[k]}));
+  }
 
   return(
     <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -2278,8 +2297,34 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
           </>}
         </>}
 
+        {/* FIXTURES */}
+        {view==='fixtures'&&<>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
+            <select value={fxSeason} onChange={e=>setFxSeason(Number(e.target.value))} style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none'}}>
+              {SEASONS.map(y=><option key={y} value={y} style={{background:C.d2,color:C.text}}>{y}-{String(y+1).slice(2)}</option>)}
+            </select>
+            {[['round','Gameweek'],['date','Date'],['team','Team']].map(([m,l])=>(
+              <button key={m} onClick={()=>setFxMode(m)} style={fxMode===m?tA:tS}>{l}</button>
+            ))}
+          </div>
+          {fxMode==='team'&&<div style={{marginBottom:10}}>
+            <select value={fxTeam} onChange={e=>setFxTeam(e.target.value)} style={{width:'100%',background:C.d2,color:C.text,border:'1px solid '+C.d4,borderRadius:9,padding:'9px 12px',fontSize:13,fontWeight:700,outline:'none'}}>
+              <option value="ALL">All teams</option>
+              {fxTeams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>}
+          {fxTabLoad&&<div style={{padding:'4px 0'}}><SkeletonRows n={8} h={56}/></div>}
+          {!fxTabLoad&&!fxGroups.length&&<div style={{padding:30,textAlign:'center',color:C.muted,fontSize:13}}>No fixtures available for this season yet.</div>}
+          {!fxTabLoad&&fxGroups.map((g,gi)=>(
+            <div key={gi} style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.teal,letterSpacing:.5,textTransform:'uppercase',marginBottom:8,paddingLeft:2}}>{g.label}</div>
+              {g.matches.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatch&&openMatch(adaptLeagueMatch(m))}/>)}
+            </div>
+          ))}
+        </>}
+
         {/* Other tabs - coming in later stages */}
-        {view!=='table'&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
+        {(view==='news'||view==='players'||view==='teams')&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
       </div>
     </div>
   );
