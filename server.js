@@ -987,6 +987,62 @@ app.get('/api/league/:leagueId/fixtures', async (req, res) => {
     res.json(data);
   } catch(e){ res.status(500).json({error:e.message, matches:[]}); }
 });
+// League player-stat leaderboards (Top 5 per category). Per-90s computed from raw AF stats.
+app.get('/api/league/:leagueId/player-stats', async (req, res) => {
+  const lid = req.params.leagueId;
+  if(!LEAGUES[lid]) return res.status(404).json({error:'unsupported league'});
+  const cKey='lgpstats_'+lid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 6*60*MIN) return res.json(afCache[cKey].data);
+  try {
+    // Pull league players (paginated). Cap pages to stay within rate limits; the
+    // stat leaders are all near the top regardless, and each page is ~20 players.
+    let players=[], page=1, totalPages=1;
+    do {
+      const pd = await af('/players?league='+lid+'&season='+SEASON+'&page='+page, 6*60*MIN);
+      (pd.response||[]).forEach(r=>{
+        const st=(r.statistics||[]).find(s=>String(s.league?.id)===String(lid)) || r.statistics?.[0];
+        if(!st) return;
+        players.push({
+          id:r.player?.id, name:r.player?.name, team:st.team?.name, teamId:st.team?.id, teamLogo:st.team?.logo,
+          minutes:st.games?.minutes||0, goals:st.goals?.total||0, assists:st.goals?.assists||0,
+          shotsOn:st.shots?.on||0, passes:st.passes?.total||0, keyPasses:st.passes?.key||0,
+        });
+      });
+      totalPages = pd.paging?.total || 1;
+      page++;
+    } while(page<=totalPages && page<=18);
+
+    const per90=(v,min)=> min>=270 ? +((v/min)*90).toFixed(2) : null; // need >=3 full games
+    players.forEach(p=>{
+      p.goals90=per90(p.goals,p.minutes);
+      p.shotsOn90=per90(p.shotsOn,p.minutes);
+      p.passes90=per90(p.passes,p.minutes);
+      p.keyPasses90=per90(p.keyPasses,p.minutes);
+      p.chances90=p.keyPasses90; // chances created ~= key passes in AF's model
+    });
+    const top=(key,n)=>[...players].filter(p=>p[key]!=null&&p[key]>0).sort((a,b)=>b[key]-a[key]).slice(0,n||5);
+
+    // xG (PL only, via Understat)
+    let xgTotal=[], xg90=[];
+    if(String(lid)==='39'){
+      try{
+        const us=await fetchUnderstat('https://understat.com/league/EPL/'+SEASON+'');
+        const xs=(us.players||[]).map(p=>({name:p.player_name, team:p.team_title, xG:+parseFloat(p.xG).toFixed(2), mins:+p.time}));
+        xgTotal=[...xs].sort((a,b)=>b.xG-a.xG).slice(0,5);
+        xg90=[...xs].filter(p=>p.mins>=270).map(p=>({...p, xG90:+((p.xG/p.mins)*90).toFixed(2)})).sort((a,b)=>b.xG90-a.xG90).slice(0,5);
+      }catch(e){}
+    }
+
+    const data={
+      goals:top('goals'), assists:top('assists'), minutes:top('minutes'),
+      goals90:top('goals90'), shotsOn90:top('shotsOn90'), passes90:top('passes90'),
+      keyPasses90:top('keyPasses90'), chances90:top('chances90'),
+      xgTotal, xg90, isPL:String(lid)==='39',
+    };
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
 // Club profile by AF team ID (no name-matching). Squad + team info + recent/upcoming fixtures.
 app.get('/api/club/:teamId', async (req, res) => {
   const tid = req.params.teamId;
@@ -2142,6 +2198,28 @@ const LEAGUE_META={
   bundesliga:{lid:78, comp:'bundesliga', label:'Bundesliga', logo:'https://media.api-sports.io/football/leagues/78.png'},
   ligue1:{lid:61, comp:'ligue1', label:'Ligue 1', logo:'https://media.api-sports.io/football/leagues/61.png'},
 };
+function StatLeader({title, rows, valKey, suffix, openPlayer}){
+  if(!rows||!rows.length) return null;
+  return(
+    <div style={{marginBottom:18}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>{title}</div>
+      {rows.map((p,i)=>(
+        <div key={i} onClick={()=>p.id&&openPlayer&&openPlayer({id:p.id,name:p.name,teamName:p.team},p.teamId)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:p.id&&openPlayer?'pointer':'default'}}>
+          <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:i===0?C.gold:C.muted,width:18,textAlign:'center'}}>{i+1}</span>
+          {p.id?<PlayerThumb id={p.id} size={30}/>:<div style={{width:30,height:30,borderRadius:'50%',background:C.d3}}/>}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(p.name||'').split(' ').slice(-2).join(' ')}</div>
+            <div style={{fontSize:10,color:C.muted,display:'flex',alignItems:'center',gap:5}}>
+              {p.teamLogo&&<img src={p.teamLogo} onError={e=>{e.target.style.display='none';}} style={{width:13,height:13,objectFit:'contain'}} alt=""/>}
+              <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.team||''}</span>
+            </div>
+          </div>
+          <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:19,color:C.white,flexShrink:0}}>{p[valKey]}{suffix||''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initialView}){
   const meta=LEAGUE_META[leagueKey]||LEAGUE_META.pl;
   const isPL=leagueKey==='pl';
@@ -2153,6 +2231,7 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
   const {data:plData,loading:plLoad}=useApi(isPL?'/api/standings':null, 300000);
   const {data:compData,loading:compLoad}=useApi(!isPL?'/api/comp-standings/'+meta.comp:null, 1800000);
   const {data:fixData,loading:fixLoad}=useApi('/api/league/'+meta.lid+'/fixtures', 1800000);
+  const {data:pStatsData,loading:pStatsLoad}=useApi(view==='players'?'/api/league/'+meta.lid+'/player-stats':null, 6*3600000);
   const [fxSeason,setFxSeason]=useState(SEASON);
   const {data:fxTabData,loading:fxTabLoad}=useApi('/api/league/'+meta.lid+'/fixtures?season='+fxSeason, fxSeason===SEASON?1800000:6*3600000);
   const [fxMode,setFxMode]=useState('round'); // round | date | team
@@ -2329,8 +2408,27 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
           <NewsList filter={isPL?null:meta.label}/>
         </div>}
 
+        {/* PLAYER STATS */}
+        {view==='players'&&<>
+          {pStatsLoad&&<div style={{padding:'4px 0'}}><SkeletonRows n={10} h={46}/></div>}
+          {!pStatsLoad&&pStatsData&&<>
+            <StatLeader title="Top Goalscorers" rows={pStatsData.goals} valKey="goals" openPlayer={openPlayer}/>
+            <StatLeader title="Top Assists" rows={pStatsData.assists} valKey="assists" openPlayer={openPlayer}/>
+            <StatLeader title="Goals per 90" rows={pStatsData.goals90} valKey="goals90" openPlayer={openPlayer}/>
+            <StatLeader title="Total xG" rows={pStatsData.xgTotal} valKey="xG" openPlayer={openPlayer}/>
+            <StatLeader title="xG per 90" rows={pStatsData.xg90} valKey="xG90" openPlayer={openPlayer}/>
+            {!pStatsData.isPL&&<div style={{background:C.d2,border:'1px solid '+C.d4,borderRadius:9,padding:'12px 14px',marginBottom:18,fontSize:11.5,color:C.muted,lineHeight:1.5}}>xG data is currently available for the Premier League only.</div>}
+            <StatLeader title="Shots on Target per 90" rows={pStatsData.shotsOn90} valKey="shotsOn90" openPlayer={openPlayer}/>
+            <StatLeader title="Chances Created per 90" rows={pStatsData.chances90} valKey="chances90" openPlayer={openPlayer}/>
+            <StatLeader title="Key Passes per 90" rows={pStatsData.keyPasses90} valKey="keyPasses90" openPlayer={openPlayer}/>
+            <StatLeader title="Passes per 90" rows={pStatsData.passes90} valKey="passes90" openPlayer={openPlayer}/>
+            <StatLeader title="Minutes Played" rows={pStatsData.minutes} valKey="minutes" openPlayer={openPlayer}/>
+          </>}
+          {!pStatsLoad&&!pStatsData&&<div style={{padding:30,textAlign:'center',color:C.muted,fontSize:13}}>Player stats unavailable.</div>}
+        </>}
+
         {/* Other tabs - coming in later stages */}
-        {(view==='players'||view==='teams')&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
+        {view==='teams'&&<div style={{padding:40,textAlign:'center',color:C.muted,fontSize:13}}>Coming soon.</div>}
       </div>
     </div>
   );
