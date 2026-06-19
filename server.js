@@ -967,6 +967,25 @@ app.get('/api/league/:leagueId/teams', async (req, res) => {
     res.json(data);
   } catch(e){ res.status(500).json({error:e.message, teams:[]}); }
 });
+// All fixtures for a league this season (with round/gameweek), normalised.
+app.get('/api/league/:leagueId/fixtures', async (req, res) => {
+  const lid = req.params.leagueId;
+  if(!LEAGUES[lid]) return res.status(404).json({error:'unsupported league'});
+  const cKey='lgfix_'+lid+'_'+SEASON;
+  if(afCache[cKey] && Date.now()-afCache[cKey].ts < 30*MIN) return res.json(afCache[cKey].data);
+  try {
+    const d = await af('/fixtures?league='+lid+'&season='+SEASON, 30*MIN);
+    const matches = (d.response||[]).map(x=>({
+      id:x.fixture?.id, utcDate:x.fixture?.date, status:x.fixture?.status?.short, round:x.league?.round,
+      home:{id:x.teams?.home?.id, name:x.teams?.home?.name, logo:x.teams?.home?.logo, winner:x.teams?.home?.winner},
+      away:{id:x.teams?.away?.id, name:x.teams?.away?.name, logo:x.teams?.away?.logo, winner:x.teams?.away?.winner},
+      goalsHome:x.goals?.home, goalsAway:x.goals?.away,
+    })).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));
+    const data = {matches};
+    afCache[cKey]={data, ts:Date.now()};
+    res.json(data);
+  } catch(e){ res.status(500).json({error:e.message, matches:[]}); }
+});
 // Club profile by AF team ID (no name-matching). Squad + team info + recent/upcoming fixtures.
 app.get('/api/club/:teamId', async (req, res) => {
   const tid = req.params.teamId;
@@ -2125,13 +2144,14 @@ const LEAGUE_META={
 function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initialView}){
   const meta=LEAGUE_META[leagueKey]||LEAGUE_META.pl;
   const isPL=leagueKey==='pl';
-  const [view,setView]=useState(initialView||'table');
+  const [view,setView]=useState(initialView||'overview');
   const tS={padding:'7px 14px',borderRadius:8,border:'1px solid '+C.d4,background:'transparent',color:C.muted,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'};
   const tA={...tS,borderColor:C.teal,color:C.teal,background:'rgba(10,191,184,.08)'};
 
   // Standings (same sources as the Table tab)
   const {data:plData,loading:plLoad}=useApi(isPL?'/api/standings':null, 300000);
   const {data:compData,loading:compLoad}=useApi(!isPL?'/api/comp-standings/'+meta.comp:null, 1800000);
+  const {data:fixData,loading:fixLoad}=useApi('/api/league/'+meta.lid+'/fixtures', 1800000);
   const loading=isPL?plLoad:compLoad;
   let table=[];
   if(isPL){
@@ -2141,6 +2161,23 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
   }
   const ZC={1:C.teal,2:C.teal,3:C.teal,4:C.teal,5:C.blue,6:C.orange,18:C.red,19:C.red,20:C.red};
   const LEAGUE_IDS={pl:39,laliga:140,seriea:135,bundesliga:78,ligue1:61};
+
+  // Upcoming round: the round of the next not-yet-finished fixture, grouped together.
+  const allFix = fixData?.matches || [];
+  const fin = m => m.status==='FT'||m.status==='AET'||m.status==='PEN';
+  const now = Date.now();
+  const nextFix = allFix.find(m => !fin(m) && m.utcDate && new Date(m.utcDate).getTime() >= now - 3*3600*1000) || allFix.find(m=>!fin(m));
+  const nextRound = nextFix?.round || null;
+  const roundFixtures = nextRound ? allFix.filter(m=>m.round===nextRound) : [];
+  const roundLabel = (nextRound||'').replace(/^.*-\s*/,'Matchday ');
+  // adapt a league fixture (AF shape) into the MatchModal shape, opened via the App stack
+  const adaptLeagueMatch=(m)=>({
+    id:m.id, afIdDirect:m.id, utcDate:m.utcDate,
+    status:(m.status==='FT'||m.status==='AET'||m.status==='PEN')?'FINISHED':(m.status==='1H'||m.status==='2H'||m.status==='HT'||m.status==='ET')?'IN_PLAY':'SCHEDULED',
+    homeTeam:{id:m.home?.id, name:m.home?.name, crest:m.home?.logo},
+    awayTeam:{id:m.away?.id, name:m.away?.name, crest:m.away?.logo},
+    score:{fullTime:{home:m.goalsHome, away:m.goalsAway}},
+  });
 
   return(
     <div className="hv-screen" style={{minHeight:'100vh',background:C.dark,overflowY:'auto',paddingBottom:40}}>
@@ -2152,13 +2189,53 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.white,letterSpacing:.5,lineHeight:1}}>{meta.label.toUpperCase()}</div>
         </div>
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2,WebkitOverflowScrolling:'touch'}}>
-          {[['table','Table'],['fixtures','Fixtures'],['news','News'],['players','Player Stats'],['teams','Team Stats']].map(([v,label])=>(
+          {[['overview','Overview'],['table','Table'],['fixtures','Fixtures'],['news','News'],['players','Player Stats'],['teams','Team Stats']].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)} style={view===v?tA:tS}>{label}</button>
           ))}
         </div>
       </div>
 
       <div key={view} className="hv-fade-tab" style={{padding:'12px 12px 0'}}>
+        {/* OVERVIEW */}
+        {view==='overview'&&<>
+          {/* Mini table - top 6 */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>Standings</div>
+            <button onClick={()=>setView('table')} style={{background:'transparent',border:'none',color:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>Full table {'>'}</button>
+          </div>
+          {loading&&<div style={{padding:'4px 0'}}><SkeletonRows n={6} h={40}/></div>}
+          {!loading&&table.slice(0,6).map(row=>{
+            const code=TCODE[row.team?.name]||'???', zc=isPL?ZC[row.position]:null;
+            return(
+              <div key={row.position} className="hv-press" onClick={()=>openClub&&openClub({...row.team, leagueId:LEAGUE_IDS[leagueKey]})}
+                style={{display:'grid',gridTemplateColumns:'28px 1fr 34px 42px',gap:6,alignItems:'center',background:C.d2,borderRadius:9,marginBottom:4,padding:'9px 12px',cursor:'pointer',borderLeft:'3px solid '+(zc||'transparent')}}>
+                <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:zc||C.muted,textAlign:'center'}}>{row.position}</span>
+                <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                  <Badge code={code} size={20} logo={row.team?.crest||row.team?.logo}/>
+                  <span style={{fontSize:12.5,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
+                </div>
+                <span style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.played}</span>
+                <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:17,color:C.white,textAlign:'center'}}>{row.points}</span>
+              </div>
+            );
+          })}
+
+          {/* Upcoming round */}
+          {roundFixtures.length>0&&<>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',margin:'16px 0 8px'}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase'}}>{roundLabel||'Upcoming Round'}</div>
+              <button onClick={()=>setView('fixtures')} style={{background:'transparent',border:'none',color:C.muted,fontSize:11,fontWeight:700,cursor:'pointer'}}>All fixtures {'>'}</button>
+            </div>
+            {roundFixtures.map(m=><CupMatchRow key={m.id} m={m} onClick={()=>openMatch&&openMatch(adaptLeagueMatch(m))}/>)}
+          </>}
+
+          {/* Latest news */}
+          <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',margin:'16px 0 8px'}}>Latest News</div>
+          <div style={{marginBottom:16}}>
+            <NewsList filter={isPL?null:meta.label} limit={5}/>
+          </div>
+        </>}
+
         {/* TABLE */}
         {view==='table'&&<>
           {loading&&<div style={{padding:'4px 0'}}><SkeletonRows n={12} h={46}/></div>}
