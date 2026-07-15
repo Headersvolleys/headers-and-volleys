@@ -1704,13 +1704,22 @@ function Badge({code,size=24,logo,name}){
   // colour + initials source priority: real PL colours -> name -> logo-id -> code
   const hashKey = realCode || name || logo || code || '?';
   const [bg,acc] = (realCode && CC[realCode]) ? CC[realCode] : discColour(hashKey);
-  let initials;
-  if(realCode){ initials=realCode.slice(0,3); }
-  else if(name){
-    const words=String(name).replace(/\b(FC|AFC|CF|SC|AC|SS|US|RC|CD|UD|VfL|VfB|TSG|SV|BSC|FK)\b/gi,'').trim().split(/\s+/).filter(Boolean);
-    initials = words.length>=2 ? (words[0][0]+words[1][0]) : (words[0]||'?').slice(0,3);
-    initials = initials.toUpperCase();
-  } else { initials='?'; }
+  let initials = '?';
+  if(realCode){
+    initials = realCode.slice(0,3);
+  } else if(name){
+    const cleaned = String(name).replace(/\b(FC|AFC|CF|SC|AC|SS|US|RC|CD|UD|VfL|VfB|TSG|SV|BSC|FK)\b/gi,'').trim();
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if(words.length>=2 && words[0] && words[1]){
+      initials = (words[0][0]+words[1][0]).toUpperCase();
+    } else if(words.length===1 && words[0]){
+      initials = words[0].slice(0,3).toUpperCase();
+    } else {
+      // everything stripped away - fall back to the raw name
+      const raw = String(name).trim();
+      initials = raw ? raw.slice(0,3).toUpperCase() : '?';
+    }
+  }
   return React.createElement('svg',{width:size,height:size,viewBox:'0 0 40 40',style:{flexShrink:0,display:'block'}},
     React.createElement('circle',{cx:20,cy:20,r:19,fill:bg,stroke:acc,strokeWidth:2}),
     React.createElement('text',{x:20,y:25,textAnchor:'middle',fontSize:initials.length>2?12:14,fontWeight:900,fontFamily:'Arial,sans-serif',fill:acc,letterSpacing:-0.5},initials)
