@@ -2193,7 +2193,7 @@ function StatLeader({title, rows, valKey, suffix, openPlayer}){
       {rows.map((p,i)=>(
         <div key={i} onClick={()=>p.id&&openPlayer&&openPlayer({id:p.id,name:p.name,teamName:p.team},p.teamId)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:p.id&&openPlayer?'pointer':'default'}}>
           <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:i===0?C.gold:C.muted,width:18,textAlign:'center'}}>{i+1}</span>
-          {p.id?<PlayerThumb id={p.id} size={30} name={p.name}/>:<div style={{width:30,height:30,borderRadius:'50%',background:C.d3}}/>}
+          {p.id?<PlayerThumb id={p.id} size={30} team={p.team}/>:<div style={{width:30,height:30,borderRadius:'50%',background:C.d3}}/>}
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(p.name||'').split(' ').slice(-2).join(' ')}</div>
             <div style={{fontSize:10,color:C.muted,display:'flex',alignItems:'center',gap:5}}>
@@ -2367,7 +2367,7 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
         {view==='fixtures'&&<>
           <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
             <select value={fxSeason} onChange={e=>setFxSeason(Number(e.target.value))} style={{background:'rgba(10,191,184,.12)',color:C.teal,border:'1px solid '+C.teal,borderRadius:20,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',outline:'none'}}>
-              {SEASONS.map(y=><option key={y} value={y} style={{background:C.d2,color:C.text}}>{y}-{String(y+1).slice(2)}</option>)}
+              {[SEASON+1,...SEASONS].map(y=><option key={y} value={y} style={{background:C.d2,color:C.text}}>{y}-{String(y+1).slice(2)}</option>)}
             </select>
             {[['round','Gameweek'],['date','Date'],['team','Team']].map(([m,l])=>(
               <button key={m} onClick={()=>setFxMode(m)} style={fxMode===m?tA:tS}>{l}</button>
@@ -4680,7 +4680,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Top Performers</div>
             <div style={{display:'flex',gap:8,marginBottom:16}}>
               {topScorer&&<div onClick={()=>openPlayer&&openPlayer({...topScorer.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={photoIdForId(topScorer.player?.id)} size={38} name={topScorer.player?.name}/>
+                <PlayerThumb id={photoIdForId(topScorer.player?.id)} size={38} team={topScorer.team?.name}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP SCORER</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topScorer.player?.name||'').split(' ').pop()}</div>
@@ -4688,7 +4688,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>
               </div>}
               {topAssister&&<div onClick={()=>openPlayer&&openPlayer({...topAssister.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={photoIdForId(topAssister.player?.id)} size={38} name={topAssister.player?.name}/>
+                <PlayerThumb id={photoIdForId(topAssister.player?.id)} size={38} team={topAssister.team?.name}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP ASSISTS</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topAssister.player?.name||'').split(' ').pop()}</div>
@@ -4770,7 +4770,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,afId:p.id,teamName:team?.name},team?.id,'squad')} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
-                <PlayerThumb id={p.id||p.afId} size={34} name={p.name}/>
+                <PlayerThumb id={p.id||p.afId} size={34} team={p.team?.name||p.team}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
                   {p.nationality&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
@@ -5081,7 +5081,7 @@ function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label,photoId
     <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
       <div style={{position:'relative',flexShrink:0,width:36,height:36}}>
-        <PlayerThumb id={photoId} size={36} name={p.player?.name||p.name}/>
+        <PlayerThumb id={photoId} size={36} team={p.team?.name||p.team}/>
         <div style={{position:'absolute',right:-3,bottom:-3,background:C.d2,borderRadius:'50%',padding:1}}><Badge code={code} size={16}/></div>
       </div>
       <div style={{flex:1,minWidth:0}}>
@@ -5466,17 +5466,13 @@ function PlayerInfoRow({label, value}){
   );
 }
 
-function PlayerThumb({id, size=34, name}){
-  // Player photos removed for licensing; render initials disc coloured from the name.
-  if(name){
-    const words=String(name).trim().split(/\s+/).filter(Boolean);
-    const initials=(words.length>=2 ? words[0][0]+words[words.length-1][0] : (words[0]||'?').slice(0,2)).toUpperCase();
-    const [bg,acc]=discColour(name);
-    return React.createElement('svg',{width:size,height:size,viewBox:'0 0 40 40',style:{flexShrink:0,display:'block'}},
-      React.createElement('circle',{cx:20,cy:20,r:20,fill:bg}),
-      React.createElement('text',{x:20,y:26,textAnchor:'middle',fontSize:15,fontWeight:800,fontFamily:'Arial,sans-serif',fill:acc},initials)
-    );
+function PlayerThumb({id, size=34, name, team, code}){
+  // Player photos removed for licensing; show the player's CLUB disc.
+  const teamCode = code || (team ? TCODE[team] : null) || '???';
+  if(team || (code && code!=='???')){
+    return <Badge code={teamCode} size={size} name={team}/>;
   }
+  // no club info: neutral silhouette
   return <div style={{width:size,height:size,borderRadius:'50%',background:C.d4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width={size*0.55} height={size*0.55} viewBox="0 0 24 24" fill={C.muted}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></div>;
 }
 
@@ -5825,7 +5821,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
           <div style={{position:'absolute',top:0,left:0,width:5,height:'100%',background:tc}}/>
           <div style={{display:'flex',alignItems:'center',gap:14,padding:'18px 16px 16px 20px'}}>
             <div style={{flexShrink:0}}>
-              <PlayerThumb id={photoId} size={78} name={p?.name}/>
+              <PlayerThumb id={photoId} size={78} code={code} team={team?.name}/>
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:.5,lineHeight:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p?.name}</div>
@@ -5919,7 +5915,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
                       style={{display:'flex',alignItems:'center',gap:8,padding:'6px 4px',cursor:'pointer',borderRadius:6}}
                       onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <PlayerThumb id={sq.id} size={26} name={sq.name}/>
+                      <PlayerThumb id={sq.id} size={26} code={code}/>
                       <span style={{fontSize:12,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sq.name}</span>
                       <span style={{fontSize:10,color:C.muted}}>{normPos(sq.position)}</span>
                     </div>
