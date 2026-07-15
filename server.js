@@ -1639,6 +1639,17 @@ const TEAM_HONOURS={
   'Wolves':[['League Titles',3],['FA Cup',4],['League Cup',2],['European Cup / CL',0],['Europa / UEFA Cup',0]],
 };
 const CC={'ARS':['#EF0107','#FFD700'],'AVL':['#670E36','#95BFE5'],'BHA':['#0057B8','#fff'],'BOU':['#DA291C','#000'],'BRE':['#E30613','#fff'],'BUR':['#6C1D45','#97D700'],'CHE':['#034694','#FFD700'],'CRY':['#1B458F','#C4122E'],'EVE':['#003399','#FFD700'],'FUL':['#CC0000','#fff'],'LEE':['#FFCD00','#1D428A'],'LIV':['#C8102E','#FFD700'],'MCI':['#6CABDD','#1C2C5B'],'MUN':['#DA291C','#FFD700'],'NEW':['#241F20','#fff'],'NFO':['#DD0000','#fff'],'SUN':['#EB172B','#fff'],'TOT':['#132257','#fff'],'WHU':['#7A263A','#60CDFF'],'WOL':['#231F20','#FDB913']};
+// Stable colour from a team name/code (for clubs without an entry in CC, e.g. non-PL).
+// Same input always yields the same disc colour. Returns [bg, accent].
+function discColour(key){
+  const s=String(key||'?');
+  let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; }
+  const hue=h%360;
+  const sat=58+(h>>9)%18;   // 58-76%
+  const light=32+(h>>15)%12; // 32-44% (dark enough for white text)
+  const bg='hsl('+hue+','+sat+'%,'+light+'%)';
+  return [bg,'#ffffff'];
+}
 
 function normPos(raw){
   if(!raw) return '-';
@@ -1683,49 +1694,26 @@ function safeTeamCols(hCode, aCode) {
 const CRESTS = {};
 let CRESTS_LOADED = false;
 
-function TeamCrest({code, logo, size=18}){
-  // Use the code-based Badge when we recognise the club; otherwise fall back
-  // to a logo URL (e.g. AF crest for historical/relegated clubs in past tables).
-  if(code && code!=='???') return <Badge code={code} size={size}/>;
-  if(logo) return <img src={logo} width={size} height={size} style={{objectFit:'contain',flexShrink:0,maxWidth:size,maxHeight:size}} alt=""/>;
-  return <Badge code={code||'???'} size={size}/>;
+function TeamCrest({code, logo, size=18, name}){
+  // Crests removed for licensing; always render the colour-disc Badge.
+  return <Badge code={code||'???'} size={size} logo={logo} name={name}/>;
 }
 
-function Badge({code,size=24,logo}){
-  const [bg,acc]=CC[code]||['#333','#fff'];
-  const [err,setErr]=useState(false);
-  const [logoErr,setLogoErr]=useState(false);
-  const [loaded,setLoaded]=useState(false);
-  const crest=CRESTS[code];
-
-  useEffect(()=>{
-    if(CRESTS_LOADED&&CRESTS[code]) setLoaded(true);
-  },[code]);
-
-  // Direct logo URL (e.g. API-Football crest for non-PL clubs) takes priority when present.
-  if(logo&&!logoErr){
-    return(
-      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
-        <img src={logo} width={size} height={size}
-          style={{objectFit:'contain',display:'block',maxWidth:size,maxHeight:size}}
-          onError={()=>setLogoErr(true)}
-          alt={code||''}/>
-      </div>
-    );
-  }
-  if(crest&&!err){
-    return(
-      <div style={{width:size,height:size,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'transparent'}}>
-        <img src={crest} width={size} height={size}
-          style={{objectFit:'contain',display:'block',maxWidth:size,maxHeight:size}}
-          onError={()=>setErr(true)}
-          alt={code}/>
-      </div>
-    );
-  }
+function Badge({code,size=24,logo,name}){
+  const realCode = code && code!=='???' ? code : null;
+  // colour + initials source priority: real PL colours -> name -> logo-id -> code
+  const hashKey = realCode || name || logo || code || '?';
+  const [bg,acc] = (realCode && CC[realCode]) ? CC[realCode] : discColour(hashKey);
+  let initials;
+  if(realCode){ initials=realCode.slice(0,3); }
+  else if(name){
+    const words=String(name).replace(/\b(FC|AFC|CF|SC|AC|SS|US|RC|CD|UD|VfL|VfB|TSG|SV|BSC|FK)\b/gi,'').trim().split(/\s+/).filter(Boolean);
+    initials = words.length>=2 ? (words[0][0]+words[1][0]) : (words[0]||'?').slice(0,3);
+    initials = initials.toUpperCase();
+  } else { initials='?'; }
   return React.createElement('svg',{width:size,height:size,viewBox:'0 0 40 40',style:{flexShrink:0,display:'block'}},
-    React.createElement('circle',{cx:20,cy:20,r:19,fill:bg,stroke:acc,strokeWidth:2.5}),
-    React.createElement('text',{x:20,y:26,textAnchor:'middle',fontSize:11,fontWeight:900,fontFamily:'Arial,sans-serif',fill:acc,letterSpacing:-0.5},(code||'?').slice(0,3))
+    React.createElement('circle',{cx:20,cy:20,r:19,fill:bg,stroke:acc,strokeWidth:2}),
+    React.createElement('text',{x:20,y:25,textAnchor:'middle',fontSize:initials.length>2?12:14,fontWeight:900,fontFamily:'Arial,sans-serif',fill:acc,letterSpacing:-0.5},initials)
   );
 }
 
@@ -1977,7 +1965,7 @@ function CupMatchRow({m, onClick}){
   const col=live?C.orange:fin?C.muted:C.teal;
   const Side=({s,score,won})=>(
     <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
-      {s.logo?<img src={s.logo} alt="" style={{width:20,height:20,objectFit:'contain',flexShrink:0}}/>:<div style={{width:20,height:20,flexShrink:0}}/>}
+      <Badge code={TCODE[s.name]||'???'} size={20} name={s.name}/>
       <span style={{fontSize:12.5,fontWeight:won?700:600,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</span>
     </div>
   );
@@ -2081,7 +2069,7 @@ function CompStandings({compKey, title, onClose}){
               <div key={i} style={{display:'grid',gridTemplateColumns:'22px 1fr 20px 20px 20px 20px 30px 28px',gap:3,alignItems:'center',background:C.d2,borderRadius:8,marginBottom:4,padding:'8px 8px',borderLeft:'3px solid '+(zc||'transparent')}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:zc||C.muted,textAlign:'center'}}>{r.position}</div>
                 <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
-                  {r.team.logo&&<img src={r.team.logo} alt="" style={{width:17,height:17,objectFit:'contain',flexShrink:0}}/>}
+                  <Badge code={TCODE[r.team.name]||'???'} size={17} name={r.team.name}/>
                   <span style={{fontSize:12,fontWeight:700,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.team.name}</span>
                 </div>
                 <div style={{fontSize:10.5,color:C.muted,textAlign:'center'}}>{r.played}</div>
@@ -2177,7 +2165,6 @@ function Matches({openPlayer, openClub, openMatch}){
         {!loading&&groups.map(g=>(
           <div key={g.lid} style={{marginBottom:18}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-              {g.logo&&<img src={g.logo} alt="" style={{width:18,height:18,objectFit:'contain'}}/>}
               <div style={{fontSize:12,fontWeight:700,color:C.text,letterSpacing:.3,flex:1}}>{g.name}</div>
               {LID_TO_STANDINGS[g.lid]&&<button onClick={()=>setTableComp({key:LID_TO_STANDINGS[g.lid],title:g.name})} style={{background:'rgba(10,191,184,.12)',border:'1px solid '+C.teal,color:C.teal,fontSize:10.5,fontWeight:700,borderRadius:7,padding:'4px 10px',cursor:'pointer',letterSpacing:.3}}>Table</button>}
             </div>
@@ -2206,11 +2193,11 @@ function StatLeader({title, rows, valKey, suffix, openPlayer}){
       {rows.map((p,i)=>(
         <div key={i} onClick={()=>p.id&&openPlayer&&openPlayer({id:p.id,name:p.name,teamName:p.team},p.teamId)} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:p.id&&openPlayer?'pointer':'default'}}>
           <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:i===0?C.gold:C.muted,width:18,textAlign:'center'}}>{i+1}</span>
-          {p.id?<PlayerThumb id={p.id} size={30}/>:<div style={{width:30,height:30,borderRadius:'50%',background:C.d3}}/>}
+          {p.id?<PlayerThumb id={p.id} size={30} name={p.name}/>:<div style={{width:30,height:30,borderRadius:'50%',background:C.d3}}/>}
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(p.name||'').split(' ').slice(-2).join(' ')}</div>
             <div style={{fontSize:10,color:C.muted,display:'flex',alignItems:'center',gap:5}}>
-              {p.teamLogo&&<img src={p.teamLogo} onError={e=>{e.target.style.display='none';}} style={{width:13,height:13,objectFit:'contain'}} alt=""/>}
+              {p.team&&<Badge code={'???'} size={13} name={p.team}/>}
               <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.team||''}</span>
             </div>
           </div>
@@ -2283,7 +2270,7 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
       <div style={{background:C.d2,borderBottom:'1px solid '+C.d4,padding:'12px 16px',position:'sticky',top:0,zIndex:100}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:C.teal,fontSize:24,cursor:'pointer',lineHeight:1,padding:0}}>{'<'}</button>
-          <img src={meta.logo} onError={e=>{e.target.style.display='none';}} style={{width:30,height:30,objectFit:'contain'}} alt=""/>
+          <Badge code={'???'} size={30} name={meta.label}/>
           <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:24,color:C.white,letterSpacing:.5,lineHeight:1}}>{meta.label.toUpperCase()}</div>
         </div>
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2,WebkitOverflowScrolling:'touch'}}>
@@ -2309,7 +2296,7 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
                 style={{display:'grid',gridTemplateColumns:'28px 1fr 34px 42px',gap:6,alignItems:'center',background:C.d2,borderRadius:9,marginBottom:4,padding:'9px 12px',cursor:'pointer',borderLeft:'3px solid '+(zc||'transparent')}}>
                 <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:zc||C.muted,textAlign:'center'}}>{row.position}</span>
                 <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                  <Badge code={code} size={20} logo={row.team?.crest||row.team?.logo}/>
+                  <Badge code={code} size={20} name={row.team?.name}/>
                   <span style={{fontSize:12.5,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
                 </div>
                 <span style={{fontSize:11,color:C.muted,textAlign:'center'}}>{row.played}</span>
@@ -2360,7 +2347,7 @@ function LeagueModal({leagueKey, onClose, openClub, openPlayer, openMatch, initi
                     </div>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                    <Badge code={code} size={22} logo={row.team?.crest||row.team?.logo}/>
+                    <Badge code={code} size={22} name={row.team?.name}/>
                     <span style={{fontSize:13,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[row.team?.name]||row.team?.name}</span>
                   </div>
                   <div style={{fontSize:12,color:C.muted,textAlign:'center'}}>{row.played}</div>
@@ -2475,7 +2462,7 @@ function Table({openClub, openLeague}){
         <div style={{position:'absolute',top:0,left:0,bottom:0,width:5,background:'linear-gradient(180deg,'+C.teal+','+C.blue+')'}}/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,paddingLeft:8}}>
           <div onClick={()=>openLeague&&openLeague(lg)} style={{display:'flex',alignItems:'center',gap:10,cursor:openLeague?'pointer':'default'}}>
-            <img src={'https://media.api-sports.io/football/leagues/'+LEAGUE_IDS[lg]+'.png'} onError={e=>{e.target.style.display='none';}} style={{width:34,height:34,objectFit:'contain',flexShrink:0}} alt=""/>
+            <Badge code={'???'} size={34} name={active?active.label:String(lg)}/>
             <div>
               <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:1.5,lineHeight:.9}}>{active?active.label.toUpperCase():'TABLES'}</div>
               <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginTop:3}}>Top 5 leagues &middot; Tap a club</div>
@@ -3826,15 +3813,10 @@ function draftGrade(avg){
 function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 
 function DraftPhoto({player, size}){
-  const [err,setErr]=useState(false);
   if(player.isLegend){
     return <img src={LEGEND_SILHOUETTE} alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
   }
-  const id=DRAFT_IDS[player.n];
-  if(id && !err){
-    return <img src={'https://media.api-sports.io/football/players/'+id+'.png'} onError={()=>setErr(true)} alt="" style={{width:size,height:size,objectFit:'cover',objectPosition:'top center'}}/>;
-  }
-  // no id, or image failed: silhouette-style initial fallback
+  // Player photos removed for licensing: initial-style fallback.
   return <div style={{width:size,height:size,display:'flex',alignItems:'center',justifyContent:'center'}}>
     <span style={{fontFamily:'Bebas Neue,sans-serif',fontSize:size*0.4,color:'rgba(255,255,255,.35)'}}>{player.n.split(' ').pop().slice(0,1)}</span>
   </div>;
@@ -4431,7 +4413,7 @@ function FixRow({m,teamId,openClub,openMatch}){
       {/* home team (name then crest, right-aligned) */}
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,minWidth:0}}>
         <span style={{fontSize:12,color:C.text,fontWeight:homeWon?800:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textAlign:'right'}}>{hName}</span>
-        <Badge code={hCode} size={20} logo={m.homeTeam?.crest}/>
+        <Badge code={hCode} size={20} name={m.homeTeam?.name}/>
       </div>
       {/* score */}
       <div style={{flexShrink:0,minWidth:46,textAlign:'center'}}>
@@ -4441,7 +4423,7 @@ function FixRow({m,teamId,openClub,openMatch}){
       </div>
       {/* away team (crest then name, left-aligned) */}
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'flex-start',gap:6,minWidth:0}}>
-        <Badge code={aCode} size={20} logo={m.awayTeam?.crest}/>
+        <Badge code={aCode} size={20} name={m.awayTeam?.name}/>
         <span style={{fontSize:12,color:C.text,fontWeight:awayWon?800:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{aName}</span>
       </div>
     </div>
@@ -4698,7 +4680,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             <div style={{fontSize:10,fontWeight:700,color:C.teal,letterSpacing:.6,textTransform:'uppercase',marginBottom:8}}>Top Performers</div>
             <div style={{display:'flex',gap:8,marginBottom:16}}>
               {topScorer&&<div onClick={()=>openPlayer&&openPlayer({...topScorer.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={photoIdForId(topScorer.player?.id)} size={38}/>
+                <PlayerThumb id={photoIdForId(topScorer.player?.id)} size={38} name={topScorer.player?.name}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP SCORER</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topScorer.player?.name||'').split(' ').pop()}</div>
@@ -4706,7 +4688,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 </div>
               </div>}
               {topAssister&&<div onClick={()=>openPlayer&&openPlayer({...topAssister.player,teamName:team?.name},team?.id,'overview')} style={{flex:1,background:C.d2,borderRadius:10,padding:'12px',cursor:openPlayer?'pointer':'default',display:'flex',alignItems:'center',gap:10}}>
-                <PlayerThumb id={photoIdForId(topAssister.player?.id)} size={38}/>
+                <PlayerThumb id={photoIdForId(topAssister.player?.id)} size={38} name={topAssister.player?.name}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:8,color:C.muted,fontWeight:700,letterSpacing:.3}}>TOP ASSISTS</div>
                   <div style={{fontSize:12,color:C.white,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(topAssister.player?.name||'').split(' ').pop()}</div>
@@ -4788,7 +4770,7 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
             return(
               <div key={i} onClick={()=>openPlayer&&openPlayer({...p,afId:p.id,teamName:team?.name},team?.id,'squad')} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:C.d2,borderRadius:9,marginBottom:4,cursor:'pointer'}}>
                 <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:24,flexShrink:0,textAlign:'center'}}>{p.number||p.shirtNumber||'-'}</div>
-                <PlayerThumb id={p.id||p.afId} size={34}/>
+                <PlayerThumb id={p.id||p.afId} size={34} name={p.name}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:C.white,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</div>
                   {p.nationality&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
@@ -5049,7 +5031,6 @@ function ClubModal({team, onClose, openPlayer, openClub, openMatch, initialView}
                 const games=[...teamFixtures].filter(m=>m.comp===cmp).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));
                 return(<div key={cmp} style={{marginBottom:14}}>
                   <div style={{display:'flex',alignItems:'center',gap:6,margin:'4px 2px 6px'}}>
-                    {games[0]?.compLogo&&<img src={games[0].compLogo} alt="" style={{width:16,height:16,objectFit:'contain'}}/>}
                     <span style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.6,textTransform:'uppercase'}}>{cmp}</span>
                   </div>
                   {games.map((m,i)=><FixRow key={i} m={m} teamId={afTeamId} openClub={openClub} openMatch={openMatch}/>)}
@@ -5100,7 +5081,7 @@ function PlayerRow({p,i,stat,statCol,statLabel,stat2,stat2Col,stat2Label,photoId
     <div style={{display:'flex',alignItems:'center',gap:8,background:C.d2,borderRadius:9,padding:'9px 12px',marginBottom:5,borderLeft:'3px solid '+(i===0?C.gold:i===1?'#C0C0C0':i===2?'#CD7F32':C.d4)}}>
       <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:15,color:C.muted,width:20,flexShrink:0,textAlign:'right'}}>{i+1}</div>
       <div style={{position:'relative',flexShrink:0,width:36,height:36}}>
-        <PlayerThumb id={photoId} size={36}/>
+        <PlayerThumb id={photoId} size={36} name={p.player?.name||p.name}/>
         <div style={{position:'absolute',right:-3,bottom:-3,background:C.d2,borderRadius:'50%',padding:1}}><Badge code={code} size={16}/></div>
       </div>
       <div style={{flex:1,minWidth:0}}>
@@ -5485,11 +5466,18 @@ function PlayerInfoRow({label, value}){
   );
 }
 
-function PlayerThumb({id, size=34}){
-  const [err,setErr]=useState(false);
-  useEffect(()=>{ setErr(false); },[id]);
-  if(!id||err) return <div style={{width:size,height:size,borderRadius:'50%',background:C.d4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width={size*0.55} height={size*0.55} viewBox="0 0 24 24" fill={C.muted}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></div>;
-  return <img src={'/api/af/photo/'+id} onError={()=>setErr(true)} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',flexShrink:0,background:C.d4}} alt=""/>;
+function PlayerThumb({id, size=34, name}){
+  // Player photos removed for licensing; render initials disc coloured from the name.
+  if(name){
+    const words=String(name).trim().split(/\s+/).filter(Boolean);
+    const initials=(words.length>=2 ? words[0][0]+words[words.length-1][0] : (words[0]||'?').slice(0,2)).toUpperCase();
+    const [bg,acc]=discColour(name);
+    return React.createElement('svg',{width:size,height:size,viewBox:'0 0 40 40',style:{flexShrink:0,display:'block'}},
+      React.createElement('circle',{cx:20,cy:20,r:20,fill:bg}),
+      React.createElement('text',{x:20,y:26,textAnchor:'middle',fontSize:15,fontWeight:800,fontFamily:'Arial,sans-serif',fill:acc},initials)
+    );
+  }
+  return <div style={{width:size,height:size,borderRadius:'50%',background:C.d4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width={size*0.55} height={size*0.55} viewBox="0 0 24 24" fill={C.muted}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></div>;
 }
 
 function PlayerStatBox({label, value, col, sub}){
@@ -5715,7 +5703,6 @@ function PlayerModal({player, teamId, onClose, openClub}){
   // Hero enrichment from API-Football player object
   const cp = career?.player || {};
   const photoId = cp.id || player?.id || player?.afId || null;
-  const photoUrl = photoId ? '/api/af/photo/'+photoId : null;
   const dobRaw = p?.dateOfBirth || cp.birth?.date || null;
   const dobDate = dobRaw ? new Date(dobRaw) : null;
   const dobValid = dobDate && !isNaN(dobDate);
@@ -5837,10 +5824,8 @@ function PlayerModal({player, teamId, onClose, openClub}){
         <div style={{borderRadius:16,marginBottom:14,overflow:'hidden',position:'relative',background:'linear-gradient(135deg,'+tc+'22 0%,'+C.d2+' 55%)',border:'1px solid '+C.d4}}>
           <div style={{position:'absolute',top:0,left:0,width:5,height:'100%',background:tc}}/>
           <div style={{display:'flex',alignItems:'center',gap:14,padding:'18px 16px 16px 20px'}}>
-            <div style={{width:78,height:78,borderRadius:'50%',flexShrink:0,background:C.d3,border:'2px solid '+tc,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center'}}>
-              {photoUrl
-                ? <img src={photoUrl} onError={e=>{e.target.style.display='none';}} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
-                : <Badge code={code} size={44} logo={clubLogo}/>}
+            <div style={{flexShrink:0}}>
+              <PlayerThumb id={photoId} size={78} name={p?.name}/>
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:30,color:C.white,letterSpacing:.5,lineHeight:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p?.name}</div>
@@ -5934,7 +5919,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
                       style={{display:'flex',alignItems:'center',gap:8,padding:'6px 4px',cursor:'pointer',borderRadius:6}}
                       onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <PlayerThumb id={sq.id} size={26}/>
+                      <PlayerThumb id={sq.id} size={26} name={sq.name}/>
                       <span style={{fontSize:12,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sq.name}</span>
                       <span style={{fontSize:10,color:C.muted}}>{normPos(sq.position)}</span>
                     </div>
@@ -6138,7 +6123,7 @@ function PlayerModal({player, teamId, onClose, openClub}){
                   <div key={i} style={{display:'grid',gridTemplateColumns:'46px 1fr 30px 30px 30px 38px',gap:4,padding:'9px 12px',borderBottom:i<career.seasonStats.slice(0,10).length-1?'1px solid rgba(255,255,255,.04)':'none',alignItems:'center',background:i%2?'rgba(255,255,255,.012)':'transparent'}}>
                     <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{sn.season}/{String(sn.season+1).slice(2)}</div>
                     <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-                      {sn.teamLogo?<img src={sn.teamLogo} style={{width:16,height:16,objectFit:'contain',flexShrink:0}} alt=""/>:code?<Badge code={code} size={16}/>:null}
+                      {code?<Badge code={code} size={16}/>:sn.team?<Badge code={'???'} size={16} name={sn.team}/>:null}
                       <span style={{fontSize:11,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sn.team}</span>
                     </div>
                     <div style={{textAlign:'center',fontFamily:'Bebas Neue,sans-serif',fontSize:14,color:C.text}}>{sn.goals??'-'}</div>
@@ -6160,11 +6145,11 @@ function PlayerModal({player, teamId, onClose, openClub}){
                 return(
                   <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,.04)'}}>
                     <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
-                      {fromCode?<Badge code={fromCode} size={20}/>:t.fromLogo?<img src={t.fromLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
+                      {fromCode?<Badge code={fromCode} size={20}/>:t.from?<Badge code={'???'} size={20} name={t.from}/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
                       <div style={{fontSize:11,color:C.text,flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.from||'?'}</div>
                       <div style={{fontSize:10,color:C.muted,flexShrink:0,padding:'0 4px'}}>to</div>
                       <div style={{fontSize:11,color:C.white,fontWeight:700,flex:1,textAlign:'right',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.to||'?'}</div>
-                      {toCode?<Badge code={toCode} size={20}/>:t.toLogo?<img src={t.toLogo} style={{width:20,height:20,objectFit:'contain'}} alt=""/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
+                      {toCode?<Badge code={toCode} size={20}/>:t.to?<Badge code={'???'} size={20} name={t.to}/>:<div style={{width:20,height:20,borderRadius:'50%',background:C.d4}}/>}
                     </div>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                       <div style={{fontSize:10,color:C.muted}}>{t.date?.slice(0,7)||''}</div>
@@ -6203,15 +6188,10 @@ function StatBar({label, home, away, homeCol, awayCol}){
 }
 
 function PitchPlayer({player, dotSz, numFs, col}){
-  const [imgOk, setImgOk] = useState(true);
-  const photo = player?.id ? 'https://media.api-sports.io/football/players/'+player.id+'.png' : null;
-  const numBadge = Math.round(dotSz*0.42);
+  // Player photos removed for licensing; always render the team-colour number disc.
   return(
     <div style={{position:'relative',width:dotSz,height:dotSz,margin:'0 auto'}}>
-      {photo&&imgOk
-        ? <img src={photo} alt="" onError={()=>setImgOk(false)} style={{width:dotSz,height:dotSz,borderRadius:'50%',objectFit:'cover',objectPosition:'top center',background:col,border:'2px solid rgba(255,255,255,.85)',boxShadow:'0 2px 4px rgba(0,0,0,.5)',display:'block'}}/>
-        : <div style={{width:dotSz,height:dotSz,borderRadius:'50%',background:col,border:'2px solid rgba(255,255,255,.85)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:numFs,fontWeight:700,color:'#fff',boxShadow:'0 2px 4px rgba(0,0,0,.5)'}}>{player?.number||''}</div>}
-      {photo&&imgOk&&player?.number!=null&&<div style={{position:'absolute',bottom:-2,right:-2,minWidth:numBadge,height:numBadge,padding:'0 3px',borderRadius:numBadge,background:col,border:'1.5px solid #fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:Math.max(7,Math.round(numFs*0.72)),fontWeight:700,color:'#fff',lineHeight:1}}>{player.number}</div>}
+      <div style={{width:dotSz,height:dotSz,borderRadius:'50%',background:col,border:'2px solid rgba(255,255,255,.85)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:numFs,fontWeight:700,color:'#fff',boxShadow:'0 2px 4px rgba(0,0,0,.5)'}}>{player?.number||''}</div>
     </div>
   );
 }
@@ -6506,7 +6486,7 @@ function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPi
         <div style={{padding:'16px 16px 12px',borderBottom:'1px solid '+C.d4}}>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
             <div style={{flex:1,display:'flex',alignItems:'center',gap:8}}>
-              <Badge code={hc} size={30} logo={match.homeTeam?.crest}/>
+              <Badge code={hc} size={30} name={match.homeTeam?.name}/>
               <div>
                 <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</div>
                 {homeLineup&&<div style={{fontSize:10,color:C.muted}}>{homeLineup.formation}</div>}
@@ -6522,7 +6502,7 @@ function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPi
                   <div style={{fontWeight:700,fontSize:14,color:C.white}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</div>
                   {awayLineup&&<div style={{fontSize:10,color:C.muted,textAlign:'right'}}>{awayLineup.formation}</div>}
                 </div>
-                <Badge code={ac} size={30} logo={match.awayTeam?.crest}/>
+                <Badge code={ac} size={30} name={match.awayTeam?.name}/>
               </div>
             </div>
           </div>
@@ -6544,9 +6524,9 @@ function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPi
               {!afLoading&&afId&&Object.keys(homeStats).length>0&&(
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}><Badge code={hc} size={20} logo={match.homeTeam?.crest}/><span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</span></div>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}><Badge code={hc} size={20} name={match.homeTeam?.name}/><span style={{fontSize:12,fontWeight:700,color:homeCol}}>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}</span></div>
                     <span style={{fontSize:10,color:C.muted}}>STATS</span>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:12,fontWeight:700,color:awayCol}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</span><Badge code={ac} size={20} logo={match.awayTeam?.crest}/></div>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:12,fontWeight:700,color:awayCol}}>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}</span><Badge code={ac} size={20} name={match.awayTeam?.name}/></div>
                   </div>
                   {(xGHome!=null||xGAway!=null)&&<div style={{marginBottom:4}}><StatBar label="xG (Official)" home={xGHome??0} away={xGAway??0} homeCol={homeCol} awayCol={awayCol}/></div>}
                   {understatXG&&<div style={{marginBottom:4}}><StatBar label="xG (Understat)" home={understatXG.home?.xg} away={understatXG.away?.xg} homeCol={homeCol} awayCol={awayCol}/></div>}
@@ -6576,10 +6556,10 @@ function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPi
                       {/* team toggle */}
                       <div style={{display:'flex',gap:6,marginBottom:14,justifyContent:'center'}}>
                         <button onClick={()=>setPitchTeam('home')} style={{flex:1,maxWidth:200,padding:'8px 10px',borderRadius:8,border:'1px solid '+(pitchTeam==='home'?homeCol:C.d4),background:pitchTeam==='home'?homeCol+'1a':C.d2,color:pitchTeam==='home'?C.white:C.muted,fontWeight:700,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                          <Badge code={hc} size={18} logo={match.homeTeam?.crest}/>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}
+                          <Badge code={hc} size={18} name={match.homeTeam?.name}/>{TSHORT[match.homeTeam?.name]||match.homeTeam?.name}
                         </button>
                         <button onClick={()=>setPitchTeam('away')} style={{flex:1,maxWidth:200,padding:'8px 10px',borderRadius:8,border:'1px solid '+(pitchTeam==='away'?awayCol:C.d4),background:pitchTeam==='away'?awayCol+'1a':C.d2,color:pitchTeam==='away'?C.white:C.muted,fontWeight:700,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                          <Badge code={ac} size={18} logo={match.awayTeam?.crest}/>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}
+                          <Badge code={ac} size={18} name={match.awayTeam?.name}/>{TSHORT[match.awayTeam?.name]||match.awayTeam?.name}
                         </button>
                       </div>
                       {pitchTeam==='home'
@@ -6668,11 +6648,11 @@ function MatchModal({match, onClose, openPlayer, openClub, initialTab, initialPi
                   const mhc=TCODE[m.homeTeam?.name]||'???', mac=TCODE[m.awayTeam?.name]||'???';
                   return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:C.d3,borderRadius:8,marginBottom:4}}>
                     <div style={{fontSize:10,color:C.muted,flexShrink:0,minWidth:60}}>{new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</div>
-                    <Badge code={mhc} size={18} logo={m.homeTeam?.crest}/>
+                    <Badge code={mhc} size={18} name={m.homeTeam?.name}/>
                     <span style={{fontSize:12,fontWeight:700,flex:1,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.homeTeam?.name]||m.homeTeam?.name}</span>
                     <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:16,color:C.white,letterSpacing:2,flexShrink:0}}>{m.score?.fullTime?.home}-{m.score?.fullTime?.away}</div>
                     <span style={{fontSize:12,fontWeight:700,flex:1,textAlign:'right',color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{TSHORT[m.awayTeam?.name]||m.awayTeam?.name}</span>
-                    <Badge code={mac} size={18} logo={m.awayTeam?.crest}/>
+                    <Badge code={mac} size={18} name={m.awayTeam?.name}/>
                   </div>);
                 })}
               </>}
