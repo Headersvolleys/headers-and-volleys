@@ -13,7 +13,7 @@ const cache = {};
 
 // Current season (football-data.org and API-Football both use the START year, e.g. 2025 = 2025-26 season).
 // When the new season's data is live in the APIs, change this ONE number.
-const SEASON = 2025;
+const SEASON = 2026;
 async function fd(endpoint, ttl) {
   const now = Date.now();
   if (cache[endpoint] && now - cache[endpoint].ts < ttl) return cache[endpoint].data;
@@ -1566,7 +1566,7 @@ input[type=number]{-moz-appearance:textfield}
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef} = React;
 // Current season start year (2025 = 2025-26). Change when the new season's data is live.
-const SEASON = 2025;
+const SEASON = 2026;
 const SEASONS = [SEASON, SEASON-1, SEASON-2, SEASON-3, SEASON-4];
 const SEASON_LABEL = SEASON+'-'+String(SEASON+1).slice(2);
 const C={dark:'#FFFFFF',d2:'#F2F8F8',d3:'#E8F3F2',d4:'#D6E6E5',white:'#0F2027',text:'#0F2027',muted:'#6B8B8E',teal:'#0ABFB8',green:'#00B85C',red:'#E53535',yellow:'#E0A800',orange:'#E57300',blue:'#2979FF',gold:'#C9A227'};
